@@ -92,17 +92,19 @@ python3 check.py       # score every ticket
 ```
 
 ```
-426 of 558 tickets CANNOT BE CHECKED - no draw data reaches back that far.
-  earliest checkable: 2025-01-01
+437 of 558 tickets CANNOT BE CHECKED. They are not counted below, and are NOT losses.
+  426 predate all draw data (earliest: 2025-01-01)
+  11 in a pool no results source carries: daily/1
 
 2026-07-08  VAS00000000000  lotto/0  line A2  DIV 7 (match 2 + Bonus)  R30.00  expires 2027-07-08
 ...
-STILL CLAIMABLE: R800.20
+STILL CLAIMABLE: R700.10
 ```
 
-Results only reach back to 2025-01-01, so older tickets are reported as
-**uncheckable** rather than as losses. That distinction is deliberate: a
-ticket nobody can check is not a ticket that lost.
+Tickets are reported as **uncheckable** rather than as losses when nothing
+can score them — either they predate the results data (before 2025-01-01), or
+they are in a pool no source publishes. That distinction is deliberate and
+load-bearing: a ticket nobody can check is not a ticket that lost.
 
 Prizes expire **365 days** after the draw, which is why the output leads with
 what is still claimable rather than a lifetime total.

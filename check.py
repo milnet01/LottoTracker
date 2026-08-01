@@ -90,6 +90,8 @@ def check(tickets=None, today=None):
     today = today or datetime.now()
     wins = []
     for t in tickets:
+        if not scorable(t):
+            continue  # reported separately; never scored, never a loss
         pays = paying_combinations(t.game, t.plus_flag, t.pool_id)
         for board in t.boards:
             for d in covered(t):
@@ -120,17 +122,25 @@ if __name__ == "__main__":
     wins = check(all_tickets)
     live = [w for w in wins if not w["expired"]]
 
-    # Never let "no results available" read as "did not win".
+    # Never let "no results available" read as "did not win". Two distinct
+    # reasons, reported separately so neither hides behind the other.
     unscorable = [t for t in all_tickets if not scorable(t)]
+    no_pool = [t for t in unscorable if not all_draws(t.game, t.plus_flag)]
+    too_old = [t for t in unscorable if t not in no_pool]
     if unscorable:
         print(
-            f"{len(unscorable)} of {len(all_tickets)} tickets CANNOT BE CHECKED "
-            f"- no draw data reaches back that far. They are not counted below."
+            f"{len(unscorable)} of {len(all_tickets)} tickets CANNOT BE CHECKED. "
+            f"They are not counted below, and are NOT losses."
         )
-        print(
-            f"  earliest checkable: "
-            f"{min(all_draws(t.game, t.plus_flag)[0]['date'] for t in unscorable)}\n"
-        )
+        if too_old:
+            earliest = min(
+                all_draws(t.game, t.plus_flag)[0]["date"] for t in too_old
+            )
+            print(f"  {len(too_old)} predate all draw data (earliest: {earliest})")
+        if no_pool:
+            pools = sorted({f"{t.game}/{t.plus_flag}" for t in no_pool})
+            print(f"  {len(no_pool)} in a pool no results source carries: {', '.join(pools)}")
+        print()
 
     print(f"{len(wins)} winning lines total; {len(live)} still claimable\n")
     for w in live:

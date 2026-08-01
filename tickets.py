@@ -32,7 +32,10 @@ GAME_MAP = {
     "powerball": ("powerball", 0, 100),
     "powerball plus": ("powerball", 1, 101),
     "daily lotto": ("daily", 0, 100),
-    "daily lotto plus": ("daily", 0, 100),
+    # No results source carries this pool, so it resolves to a pool with no
+    # draws and is reported as uncheckable. Aliasing it onto plain Daily
+    # Lotto would score 11 tickets against a different game.
+    "daily lotto plus": ("daily", 1, 101),
 }
 
 

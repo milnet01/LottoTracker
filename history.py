@@ -31,6 +31,7 @@ POOL_NAMES = {
     ("powerball", 0): "PowerBall",
     ("powerball", 1): "PowerBall XTRA",
     ("daily", 0): "DAILY LOTTO",
+    ("daily", 1): "DAILY LOTTO PLUS",  # no source carries it; always empty
 }
 
 _cache = {}

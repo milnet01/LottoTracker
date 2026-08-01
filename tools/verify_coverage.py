@@ -25,7 +25,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from history import all_draws, covered, scorable  # noqa: E402
+from history import all_draws, covered  # noqa: E402
 from tickets import load  # noqa: E402
 
 DUMP = os.path.join(os.path.dirname(__file__), "..", "lotto_sms_raw.txt")
@@ -47,10 +47,14 @@ def main():
         known = all_draws(t.game, t.plus_flag)
         start = t.start.strftime("%Y-%m-%d")
 
-        if not scorable(t):
+        # Recomputed here, NOT via history.scorable(). Importing the predicate
+        # under test makes the check agree with the bug: a scorable() that
+        # regressed to `bool(rows)` would hand a 2022 ticket the first draws of
+        # 2025 and every property below would still pass.
+        if not known or start < known[0]["date"]:
             unscorable += 1
             if rows:
-                print(f"  {t.ref}: unscorable but got {len(rows)} draws")
+                print(f"  {t.ref}: predates all draw data but got {len(rows)} draws")
                 bad += 1
             continue
 
@@ -79,6 +83,15 @@ def main():
         if len(rows) != t.ndraws and rows[-1]["date"] != known[-1]["date"]:
             print(f"  {t.ref}: wants {t.ndraws} draws, got {len(rows)}, not at end")
             bad += 1
+
+    # A floor, because "everything is unscorable" is what a missing
+    # archive_results.json looks like, and it would otherwise report 0 bad.
+    if tickets and unscorable / len(tickets) > 0.90:
+        print(
+            f"  FLOOR: {unscorable}/{len(tickets)} tickets unscorable — draw "
+            f"data is probably missing; run `python3 backfill.py`"
+        )
+        bad += 1
 
     print(
         f"{len(tickets)} tickets, {unscorable} unscorable (excluded), "

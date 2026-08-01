@@ -14,6 +14,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from history import ARCHIVE, POOL_NAMES  # noqa: E402
 from results import draws  # noqa: E402
 
+# Pools that legitimately have no results anywhere, so zero overlap is the
+# expected state and not the rot signal the floor below is looking for.
+# Standard Bank sells "Daily Lotto Plus" but no source publishes such a pool.
+EXPECTED_EMPTY = {("daily", 1)}
+
 
 def main():
     if not os.path.exists(ARCHIVE):
@@ -44,7 +49,7 @@ def main():
         # A pool contributing nothing is the "game naming changed" breakage
         # this check exists to catch. Without a per-pool floor the run still
         # passes on the strength of the other five.
-        if overlap == before:
+        if overlap == before and (game, plus) not in EXPECTED_EMPTY:
             starved.append(f"{game}:{plus} ({pool})")
 
     for s in starved:

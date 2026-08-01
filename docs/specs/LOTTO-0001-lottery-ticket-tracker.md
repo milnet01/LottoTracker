@@ -1,6 +1,6 @@
 # LOTTO-0001 — Track lottery tickets from SMS and score them against real draws
 
-**Status:** spec draft (2026-08-01).
+**Status:** accepted (2026-08-01).
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0001 (user request, 2026-08-01).
 
@@ -21,7 +21,8 @@ things make manual checking impractical, and each shapes the design:
 1. **Volume.** 558 ticket purchases since 2022-11-09, covering 745 played
    lines once Multiplay entries are expanded. Most tickets run for 10 draws,
    so a single ticket is 10 separate checks per line. Only 132 are checkable
-   at all — the other 426 predate every available draw record (§4.4).
+   at all — 426 predate every available draw record and 11 sit in a pool no
+   source publishes (§4.2, §4.4).
    `python3 -c "from tickets import load; ts=load(); print(len(ts), sum(len(t.boards) for t in ts))"` → `558 745`
 2. **The SMS format changed.** Sizekhaya replaced Ithuba as licence holder on
    2026-06-01, and the bank's message wording changed with it. Both eras are
@@ -50,7 +51,7 @@ Two paths, because they solve different problems:
 | Path | Module | Use | Filtering happens |
 |------|--------|-----|-------------------|
 | adb over USB | shell `content query` | bulk history | on the phone |
-| KDE Connect over Wi-Fi | `find_lotto_sms.py` | new tickets, live | on the PC |
+| KDE Connect over Wi-Fi | `find_lotto_sms.py` | **inspection only** | on the PC |
 
 The adb query filters with a SQL `WHERE` clause executed on the device, so
 only lottery messages ever cross to the PC:
@@ -63,7 +64,14 @@ adb shell "content query --uri content://sms \
 
 KDE Connect cannot filter server-side — `activeConversations()` returns the
 newest message of every thread — so `find_lotto_sms.py` matches keywords
-locally and calls `requestConversation()` only for threads that hit.
+locally and calls `requestConversation()` only for threads that hit. Its
+keyword list is deliberately narrow for the same reason.
+
+**Only the adb path feeds the pipeline in this spec.** `find_lotto_sms.py`
+prints; it writes no file, and `tickets.py::load()` reads only the adb dump
+format (`^Row: N address=…, date=…, body=…`, one record per match, from
+`lotto_sms_raw.txt` at the repo root). Turning the KDE Connect stream into
+that format is LOTTO-0003.
 
 ### 4.2 Parsing two SMS eras
 
@@ -71,14 +79,33 @@ locally and calls `requestConversation()` only for threads that hit.
 line, not the header:
 
 ```
-old   Standard Bank: Played R10.00 Lotto Plus 2 for 1 draw(s)
-      Date 09/11/2022 to 09/11/2022
-      A: 02 03 26 36 45 52
+old   Standard Bank: Played R99.00 Lotto Plus 2 for 1 draw(s)
+      Date 01/01/2020 to 01/01/2020
+      A: 07 11 19 23 31 44
 
-new   Standard Bank: Played R300.00 Powerball
-      Date 12 Jun 2026 (for 10 draws)
-      A: 02 18 22 32 48 -03
+new   Standard Bank: Played R99.00 Powerball
+      Date 01 Jan 2020 (for 10 draws)
+      A: 08 14 27 33 41 -07
 ```
+
+The game name maps to a results pool. This table is load-bearing — an
+implementer cannot derive `winPoolId` or `plusFlag` from anything else:
+
+| SMS game name | game | plusFlag | winPoolId |
+|---|---|---|---|
+| `Lotto`, `Lotto game` | lotto | 0 | 100 |
+| `Lotto Plus 1` | lotto | 1 | 101 |
+| `Lotto Plus 2` | lotto | 2 | 102 |
+| `Powerball` | powerball | 0 | 100 |
+| `Powerball Plus` | powerball | 1 | 101 |
+| `Daily Lotto` | daily | 0 | 100 |
+| `Daily Lotto Plus` | daily | 1 | 101 — **no source carries this pool** |
+
+`Daily Lotto Plus` appears on 11 tickets and has no pool in either results
+source. It resolves to an always-empty pool so those tickets report as
+uncheckable; aliasing it onto plain Daily Lotto would score them against a
+different game. API `gameId`s are LOTTO 11101, POWERBALL 11201,
+DAILY_LOTTO 11001 — observed constants, taken from the site's own bundle.
 
 Two traps, both of which produce plausible-looking wrong answers:
 
@@ -144,6 +171,15 @@ Prize divisions are never hardcoded. For API draws they come from
 base pool's divisions, and one lookup applied to all of them drops wins whose
 division exists only in the pool they were won in.
 
+Both lookups join on an exact string this project constructs, so the grammar
+is part of the contract:
+
+| | API (`matches`, uppercased and stripped) | archive payout table (column 2) |
+|---|---|---|
+| plain | `MATCH 3` | `3` |
+| Lotto + bonus | `MATCH 3 + BONUS` | `3 + Bonus` |
+| PowerBall + PB | `MATCH 3 + PB` | `3 + PowerBall` |
+
 **Whether a line paid at all is gated by the *current* division set, in both
 eras** — `check.py::check()` tests the match label against
 `paying_combinations()` before `amount()` is reached. Only the amount is
@@ -161,14 +197,14 @@ plain match tier, which is the one that paid.
 
 - **INV-1** — For PowerBall tickets the final number on a board line is the
   PowerBall, never a main number, in both SMS eras.
-  *Test:* `python3 -c "from tickets import parse; t=parse('Standard Bank: Played R7.50 Powerball Plus for 1 draw(s)\nDate 11/11/2022 to 11/11/2022\nA: 01 13 30 31 49 09\nRef:VAS1.'); print(t.boards)"` → `[('A', [1, 13, 30, 31, 49], 9)]`
-  *Test (new era):* `python3 -c "from tickets import parse; t=parse('Standard Bank: Played R300.00 Powerball\nDate 12 Jun 2026 (for 10 draws)\nA: 02 18 22 32 48 -03\nRef:VAS3.'); print(t.boards)"` → `[('A', [2, 18, 22, 32, 48], 3)]`
+  *Test:* `python3 -c "from tickets import parse; t=parse('Standard Bank: Played R99.00 Powerball Plus for 1 draw(s)\nDate 01/01/2020 to 01/01/2020\nA: 06 12 25 38 47 05\nRef:VAS00000000000.'); print(t.boards)"` → `[('A', [6, 12, 25, 38, 47], 5)]`
+  *Test (new era):* `python3 -c "from tickets import parse; t=parse('Standard Bank: Played R99.00 Powerball\nDate 01 Jan 2020 (for 10 draws)\nA: 08 14 27 33 41 -07\nRef:VAS00000000000.'); print(t.boards)"` → `[('A', [8, 14, 27, 33, 41], 7)]`
   *Breaks when:* a parser change treats the six numbers as all-main, making
   every PowerBall ticket score one match too many and never match the PB.
 
 - **INV-2** — A Lotto board carrying more than six numbers expands to one
   line per 6-number combination, each scored independently.
-  *Test:* `python3 -c "from tickets import parse; t=parse('Standard Bank: Played R700.00 Lotto game\nDate 08 Jul 2026 (for 10 draws)\nA: 21 23 26 29 35 45 47\nRef:VAS2.'); print(len(t.boards))"` → `7`
+  *Test:* `python3 -c "from tickets import parse; t=parse('Standard Bank: Played R99.00 Lotto game\nDate 01 Jan 2020 (for 10 draws)\nA: 03 09 16 24 37 42 50\nRef:VAS00000000000.'); print(len(t.boards))"` → `7`
   *Breaks when:* the seven picks are scored as a single line, undercounting
   winnings — measured at R107.50 against a correct R392.20 on one ticket.
 
@@ -176,12 +212,16 @@ plain match tier, which is the one that paid.
   numbers, so merging them cannot introduce a contradiction.
   *Test:* `python3 tools/verify_sources.py` → `148 overlapping draws, 148 agree, 0 disagree`
   *Breaks when:* either source renames a pool, so it contributes no overlap
-  and the run passes on the strength of the other five. The check fails any
+  and the run passes on the strength of the other five. `daily:1` (Daily Lotto
+  Plus) is exempt via `EXPECTED_EMPTY` — no source publishes it, so zero
+  overlap is its correct state, not rot. The check fails any
   pool with zero overlap for that reason. The comparison is order-insensitive
   by design — the archive sorts ascending, the API preserves drawn order.
 
 - **INV-4** — No file containing real SMS content is ever tracked by git.
-  *Test:* `git grep -nE '\bVAS[0-9]{6,}' -- . | grep -cv VAS00000000000` → `0`
+  *Test:* `test "$(git grep -nE '\bVAS[0-9]{6,}' -- . | grep -cv VAS00000000000)" = 0 && echo PASS` → `PASS` (run from the repo root)
+  (`grep -c` exits 1 when its count is 0, so the bare pipeline's exit status
+  is inverted — compare the number, do not chain on `&&`.)
   *Breaks when:* a dump is committed under a name `.gitignore` does not
   match, **or a real reference is pasted into prose**. The pattern must not
   be anchored on `Ref:` — that prefix belongs to the dump format, and pasted
@@ -202,13 +242,18 @@ plain match tier, which is the one that paid.
 
 - **INV-6** — A ticket is scored against the first N drawn results on or
   after its start date, where N is the draw count in its SMS.
-  *Test:* `python3 tools/verify_coverage.py` → `558 tickets, 426 unscorable (excluded), 0 with wrong draw coverage`
+  *Test:* `python3 tools/verify_coverage.py` → `558 tickets, 437 unscorable (excluded), 0 with wrong draw coverage` (repo root, after `backfill.py`)
   *Breaks when:* a ticket predating all draw data is truncated onto later
   draws instead of excluded, or the window is computed from a weekday
   calendar so a skipped draw shifts every later match. The check asserts
   start-alignment and contiguity against the draw records directly; asserting
   `len(covered(t)) == t.ndraws` is a tautology over the function's own slice
-  and passed while 426 tickets were mis-scored.
+  and passed while 426 tickets were mis-scored. The check must **not** import
+  `history.scorable()` — the predicate under test — or it agrees with the
+  bug; it recomputes the comparison itself. Red-tested 2026-08-01 by
+  regressing `scorable()` to `bool(rows)`: 426 wrong, exit 1. It also fails
+  if over 90% of tickets are unscorable, which is what a missing
+  `archive_results.json` looks like.
 
 ## 6. Failure modes
 
@@ -248,8 +293,13 @@ plain match tier, which is the one that paid.
 time** — overlap grows with every draw, ticket totals with every SMS. What
 each invariant actually asserts is the zero-term and the exit code
 (`0 disagree`, `0 with wrong draw coverage`, exit 0); a changed count is not
-a failure. Both scripts exit non-zero on a real breach, so prefer
+a failure — **except the unscorable count**, which has a 90% floor precisely
+because "almost everything is unscorable" is what missing data looks like. Both scripts exit non-zero on a real breach, so prefer
 `&& echo PASS` over string-matching the line.
+
+Both scripts must be run **from the repository root, after
+`python3 backfill.py`**, with the SMS dump present; they resolve their inputs
+relative to the working directory.
 
 `tools/verify_sources.py` and `tools/verify_coverage.py` are the two
 executable checks; the remaining invariants are one-line commands recorded in
@@ -277,12 +327,14 @@ no pre-fix red test — the sources have agreed on every run.
 ## 9. Out of scope
 
 - The web page UI — tracked by LOTTO-0002.
+- The verified-but-unfixed tail from cold-eyes loop 3 — tracked by LOTTO-0007.
 - Automatic ingestion of new tickets as they arrive — tracked by LOTTO-0003.
 - A test framework; the two verify scripts are deliberately dependency-free.
 - Tickets predating all draw data — 426 of 558. The gate is per pool (each
   pool's own earliest known draw, 2025-01-01 for the earliest), not a global
-  date. Neither source reaches them and all are long past the 365-day
-  claim deadline. They are excluded by `history.py::scorable()` and reported
+  date. The limit is a configured default, not a source limit —
+  `backfill.build(years=(2025, 2026))` — and all are long past the 365-day
+  claim deadline. Widening the range is LOTTO-0006. They are excluded by `history.py::scorable()` and reported
   as uncheckable, not silently dropped. Extending coverage is LOTTO-0006.
 
 ## 10. Resource cost
@@ -320,6 +372,10 @@ cached to disk; only a first run fetches them.
 | §4.3 special-ball-is-last | `tools/verify_sources.py` — catches a change on either source alone; blind only if both change the same way together |
 | §4.4 expiry / `CLAIM_DAYS` | **nothing** — no test covers the 365-day boundary, and nothing tracks the gap |
 | §4.4 current-era pay gate | **nothing** — a pre-handover-only division is dropped silently |
+| §4.4 label grammar | **nothing** — a feed-side rename of `MATCH n` drops every win with no error |
+| archive payout scrape | **nothing** — an unscrapable payout page prices every archive win at R0.00 |
+| `backfill.py` date parsing | **nothing** — an abbreviated month in a href raises `KeyError`, not an empty result |
+| Multiplay on non-Lotto games | **nothing** — the PowerBall branch is tested first, so a >6-number PowerBall board silently becomes one line |
 
 ## 12. Cross-doc impact
 
@@ -331,3 +387,4 @@ README.md (usage), ROADMAP.md (LOTTO-0002 onward), CHANGELOG.md.
 |------|------|-------|------|------|-----|-----|---------|
 | 1 | 2026-08-01 | 2 | 2 | 4 | 5 | 7 | All verified findings fixed. Both lanes independently found the same CRITICAL: 426 tickets predating all draw data were scored against Jan-2025 draws, invisible to INV-6 because its test was a tautology over `covered()`'s own slice. Fixed in code (`history.py::scorable()`), in the checks (INV-4 and INV-6 rewritten to be non-circular) and in the spec. Corrected the lifetime total R1,727.10 → R960.40; claimable R800.20 unaffected. |
 | 2 | 2026-08-01 | 2 | 2 | 4 | 4 | 6 | All verified findings fixed. Both lanes independently found a real ticket reference (redacted; from the user's own messages) tracked in `README.md` — INV-4 reported 0 because its pattern was anchored on `Ref:`, which pasted program output drops. Scrubbed, pattern broadened, git history rewritten before any push. Also: §6 claimed an unmatched division is "listed at zero" when `check()` drops it before `amount()` runs; `paying_combinations()` returned `{}` for a pool with no recent draw, scoring the whole pool as losses silently (now raises); `verify_coverage.py` raised IndexError for a ticket newer than every known draw; §10 named an endpoint that does not exist and undercounted requests ~4×; §3 and §9 disagreed on whether the web UI is in scope. |
+| 3 | 2026-08-01 | 2 | 3 | 4 | 2 | 5 | Converged by cap. Fixed: §4.2's four example SMSes were verbatim real messages (numbers, dates, amounts — only the reference had been scrubbed), now synthetic and verified absent from the dump; `Daily Lotto Plus` was aliased onto plain Daily Lotto's pool, scoring 11 tickets against another game (now an empty pool, reported uncheckable — claimable corrected R800.20 → R700.10); INV-6's check still imported `history.scorable()`, the predicate under test, so a regressed `scorable()` would have passed — now recomputed independently and red-tested, plus a 90% floor for missing data; added the game-name and division-label tables an implementer cannot derive; KDE Connect documented as inspection-only. Five verified findings deferred to LOTTO-0007. |
