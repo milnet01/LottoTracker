@@ -28,10 +28,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ticket that nothing can score — one predating all draw data, or in a pool no
   source publishes — is reported as uncheckable, never scored against another
   game's draws and never counted as a loss.
-- **Two contract checks** (LOTTO-0001)
+- **Three contract checks** (LOTTO-0001)
   `tools/verify_sources.py` confirms the two results sources agree wherever
   they overlap; `tools/verify_coverage.py` confirms every ticket is scored
-  over the right draws and that none were silently dropped in parsing.
+  over the right draws and that none were silently dropped in parsing;
+  `tools/verify_privacy.py` confirms no real message content is tracked,
+  comparing against the dump itself rather than a pattern.
 
 ### Security
 

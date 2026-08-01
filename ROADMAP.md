@@ -29,8 +29,8 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 - 📋 **LOTTO-0004** Automated guard that no SMS content can be committed.
   Kind: security. Source: in-session-2026-08-01.
   Layman: make it impossible to accidentally publish your messages.
-  INV-4 is currently checked only by a command someone must remember to run.
-  A pre-commit hook would make it structural.
+  `tools/verify_privacy.py` now does the checking, but someone must remember
+  to run it. A pre-commit hook would make it structural.
 
 - 💭 **LOTTO-0005** Support other banks' ticket SMS formats.
   Kind: feature. Source: user-request-2026-08-01.

@@ -219,18 +219,19 @@ plain match tier, which is the one that paid.
   by design — the archive sorts ascending, the API preserves drawn order.
 
 - **INV-4** — No file containing real SMS content is ever tracked by git.
-  *Test:* `test "$(git grep -nE '\bVAS[0-9]{6,}' -- . | grep -cv VAS00000000000)" = 0 && echo PASS` → `PASS` (run from the repo root)
-  (`grep -c` exits 1 when its count is 0, so the bare pipeline's exit status
-  is inverted — compare the number, do not chain on `&&`.)
+  *Test:* `python3 tools/verify_privacy.py` → `14 tracked files, 0 leak(s) [content+pattern]`
   *Breaks when:* a dump is committed under a name `.gitignore` does not
-  match, **or a real reference is pasted into prose**. The pattern must not
-  be anchored on `Ref:` — that prefix belongs to the dump format, and pasted
-  program output drops it. An earlier `Ref:VAS…` form reported 0 while
-  `README.md` carried a real reference from the user's own messages
-  (found 2026-08-01, loop 2). Sample references in tracked docs must be
-  obviously fake (`VAS00000000000`). The repo is public, so a breach
-  publishes the user's messages. A filename-based check is strictly weaker:
-  it only restates `.gitignore` and passes on `messages_backup.txt`.
+  match, or real message content is pasted into prose as an "example". Two
+  leaks got past weaker forms of this check, one per review loop, and the
+  test is shaped by both: a filename check only restates `.gitignore` and
+  passes on `messages_backup.txt`; a `Ref:VAS…` check misses pasted program
+  output, which drops the prefix; and a reference-only check misses a
+  verbatim message whose reference was scrubbed but whose numbers, date and
+  amount identify the ticket anyway. `tools/verify_privacy.py` therefore
+  compares tracked files against the dump itself, not against a guessed
+  pattern, and falls back to pattern-only on a clone with no dump. Sample
+  references must be the sentinel `VAS00000000000`. Red-tested 2026-08-01 by
+  pasting a real board line into `README.md`: 1 leak, exit 1.
 
 - **INV-5** — Which match combinations pay is read from the results source at
   runtime, never hardcoded in this project.
@@ -301,16 +302,18 @@ Both scripts must be run **from the repository root, after
 `python3 backfill.py`**, with the SMS dump present; they resolve their inputs
 relative to the working directory.
 
-`tools/verify_sources.py` and `tools/verify_coverage.py` are the two
-executable checks; the remaining invariants are one-line commands recorded in
+`tools/verify_sources.py`, `tools/verify_coverage.py` and
+`tools/verify_privacy.py` are the three executable checks; the remaining invariants are one-line commands recorded in
 §5. There is no test framework in this project and adding one is out of scope
 (§9) — these run under plain `python3`.
 
-Red-tested against the pre-fix state: INV-2's one-liner against the
-pre-Multiplay scorer, INV-6's script against both the parser that dropped
-`draw(s)` and the coverage bug that mis-scored 426 tickets, and INV-4's
-command against a dump committed as `messages_backup.txt`. INV-3's script has
-no pre-fix red test — the sources have agreed on every run.
+Red-tested against a state that should fail: INV-2's one-liner against the
+pre-Multiplay scorer; INV-6's script against the parser that dropped
+`draw(s)`, against the coverage bug that mis-scored 426 tickets, and against
+a `scorable()` regressed to `bool(rows)`; INV-4's script against a real board
+line pasted into `README.md`; INV-3's per-pool floor against an un-exempted
+empty pool. Only INV-3's agreement assertion has no red test — the sources
+have agreed on every run.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -366,7 +369,7 @@ cached to disk; only a first run fetches them.
 | INV-1 | §5 command, `tickets.py::parse()` |
 | INV-2 | §5 command, `tickets.py::parse()` |
 | INV-3 | `tools/verify_sources.py` |
-| INV-4 | §5 command; **no automated hook** — tracked by LOTTO-0004 |
+| INV-4 | `tools/verify_privacy.py`; **not yet a pre-commit hook** — tracked by LOTTO-0004 |
 | INV-5 | §5 grep — labels only; **nothing** catches a hardcoded prize *amount* |
 | INV-6 | `tools/verify_coverage.py` |
 | §4.3 special-ball-is-last | `tools/verify_sources.py` — catches a change on either source alone; blind only if both change the same way together |

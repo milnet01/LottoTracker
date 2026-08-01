@@ -4,9 +4,9 @@
 Two SMS eras exist, because the bank changed its wording when Sizekhaya took
 over the licence on 2026-06-01:
 
-  old  Played R10.00 Lotto Plus 2 for 1 draw(s)      new  Played R300.00 Powerball
-       Date 09/11/2022 to 09/11/2022                      Date 12 Jun 2026 (for 10 draws)
-       A: 02 03 26 36 45 52                               A: 02 18 22 32 48 -03
+  old  Played R99.00 Lotto Plus 2 for 1 draw(s)      new  Played R99.00 Powerball
+       Date 01/01/2020 to 01/01/2020                      Date 01 Jan 2020 (for 10 draws)
+       A: 07 11 19 23 31 44                               A: 08 14 27 33 41 -07
 
 The trap: in the OLD format a PowerBall ticket's final number is the PowerBall
 itself with nothing to mark it, while the NEW format prefixes it with "-".
@@ -72,7 +72,7 @@ def parse(body):
     else:
         return None
 
-    # Board lines "A: 02 18 22 32 48 -03". Indented Multiplay combinations are
+    # Board lines "A: 08 14 27 33 41 -07". Indented Multiplay combinations are
     # derived from the board, so skip them and re-derive below instead.
     boards = []
     for line in body.split("\n"):

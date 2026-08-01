@@ -39,11 +39,10 @@ This matters enough to be explicit, because the repository is public:
   this is a keyword filter, not a sender filter — a personal message
   mentioning the lottery would come across too, so glance at the dump before
   sharing it.
-- `.gitignore` excludes the SMS dump and the results cache. Nothing containing
-  message content is tracked by git. Verify by searching tracked **content**,
-  not filenames — `git grep -nE '\bVAS[0-9]{6,}'` should print nothing. (A
-  filename check only restates `.gitignore` and would miss a dump saved under
-  some other name.)
+- `.gitignore` excludes the SMS dump and the results cache. Verify with
+  `python3 tools/verify_privacy.py`, which compares every tracked file
+  against the dump itself rather than against a guessed pattern — it catches
+  a real message pasted into a doc as an "example", not just a stray file.
 - Nothing is uploaded anywhere. The only outbound requests are to public
   lottery results pages.
 - Sample ticket references in this repo are deliberately fake
@@ -139,7 +138,7 @@ matches the PowerBall. Whatever your bank does, check that case first.
 | `tickets.py` | Parses SMSes into tickets; expands Multiplay |
 | `check.py` | Scores tickets, prices wins, flags expiry |
 | `find_lotto_sms.py` | Finds lottery threads via KDE Connect |
-| `tools/verify_*.py` | Checks the contracts in `docs/specs/` |
+| `tools/verify_*.py` | Checks the contracts in `docs/specs/`, including that no real message content is tracked |
 
 The design contract, including why each source is used and where the traps
 are, is in [`docs/specs/LOTTO-0001-lottery-ticket-tracker.md`](docs/specs/LOTTO-0001-lottery-ticket-tracker.md).
