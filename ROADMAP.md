@@ -15,14 +15,50 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 - 📋 **LOTTO-0002** Local web page showing tickets, results and claimable winnings.
   Kind: implement. Source: user-request-2026-08-01.
   Layman: a page in your browser instead of a wall of terminal text.
+  Spec: `docs/specs/LOTTO-0002-local-web-page.md`. Blocked by LOTTO-0009.
   Chosen by the user over a desktop app or CLI. Should show live tickets with
   draws remaining, wins with their expiry dates, and a claimable total.
+  A local server bound to 127.0.0.1, driven by a PySide6 tray icon that starts
+  and stops it and re-opens the page — pattern copied from the user's existing
+  `Ants_Projects_Hub_Website/serve.mjs` + `tray/ants-stats-tray.py`, which is
+  reused as a shape, not as code (that repo is public and deploys to Pages).
+  Spend is compared against winnings over the checkable tickets only.
+
+- 📋 **LOTTO-0009** Score every pool a ticket was entered in, not just the top tier.
+  Kind: fix. Source: in-session-2026-08-01 (found while sizing LOTTO-0008).
+  Layman: you paid for three lottery draws and we were only checking one of them.
+  Spec: `docs/specs/LOTTO-0009-entered-pools.md` (umbrella, covers LOTTO-0008).
+  Blocks LOTTO-0002 — the page would otherwise display known-low totals.
+  PLUS games cannot be bought alone: the operator's rules require the base game
+  and run a separate draw with its own prize pool for each tier
+  (LOTTO/PLUS 1/PLUS 2 Rules 21Sep25 §1.5, §1.16, §1.17). `tickets.py::GAME_MAP`
+  maps an SMS to one pool, so a `Lotto Plus 2` ticket is scored against
+  `lotto/2` alone and its `lotto/0` and `lotto/1` entries are never checked.
+  Affects 444 of 558 tickets; 558 of 1,233 paid entries are scored today (45%).
+  The printed game name is unreliable — the suffix is sometimes omitted, and
+  Standard Bank dropped it entirely after the 2026-06-01 handover — so the
+  entered tiers are derived from the ticket price, which resolves 558/558
+  exactly once the handover price change is applied. Name is a cross-check.
+  Also rescues the 11 `Daily Lotto Plus` tickets now reported as uncheckable:
+  no source carries `daily/1`, but their base `daily/0` entry is checkable.
 
 - 📋 **LOTTO-0003** Pick up new tickets automatically as the SMS arrives.
   Kind: implement. Source: user-request-2026-08-01.
   Layman: new tickets appear by themselves, without plugging the phone in.
   KDE Connect emits `conversationCreated` / `conversationUpdated` over D-Bus;
   subscribe rather than polling.
+
+- 📋 **LOTTO-0008** Record what each ticket cost, so prizes can be compared against spend.
+  Kind: implement. Source: user-request-2026-08-01.
+  Layman: show what you paid for a ticket next to what it won.
+  Spec: `docs/specs/LOTTO-0009-entered-pools.md` (umbrella, covers this id).
+  Every ticket SMS carries `Played R<amount>`; `tickets.py::parse()` matches it
+  and discards it. Capturing it into `Ticket` is the whole change.
+  Specified with LOTTO-0009 rather than alone: the price is also the signal for
+  which pools a ticket was entered in, so one contract governs both readings.
+  Feeds LOTTO-0002's spend-vs-prize display. The comparison must be drawn only
+  over checkable tickets: cost is known for all 558, winnings for 121, so a
+  lifetime total would convert 437 unknowns into losses.
 
 ## Hardening
 
