@@ -86,6 +86,14 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **30 new winning lines worth R1,790.40, of which R1,722.90 is still
   claimable** — claimable total R700.10 → R2,423.00. No previously reported
   win changed pool or disappeared.
+  Cold-eyes after implementation: 2 further loops (5 total), 29 verified
+  findings fixed, 0 deferred. Loop 4 found a real implementation gap both
+  lanes agreed on — the spec cited `verify_pools.py --era-audit` and the flag
+  did not exist, so the era guard was fixed rather than the claim deleted.
+  Loop 5 converged and stopped on the collateral trigger: 6 of its 9 findings
+  were loop 4's own fixes. §4 remains the split candidate before any further
+  editing. LOTTO-0001 was retrofitted in the same pass (its own loop 4, 17
+  findings) — its unit is now the entry.
 
 - 📋 **LOTTO-0003** Pick up new tickets automatically as the SMS arrives.
   Kind: implement. Source: user-request-2026-08-01.
