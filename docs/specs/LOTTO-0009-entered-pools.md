@@ -1,6 +1,6 @@
 # LOTTO-0009 — Score every pool a ticket was entered in, derived from its price
 
-**Status:** spec draft (2026-08-01).
+**Status:** accepted (2026-08-01).
 **Kind:** fix.
 **Source:** ROADMAP LOTTO-0009 (in-session-2026-08-01, found while sizing LOTTO-0008).
 **Covers:** LOTTO-0008 (record what each ticket cost), LOTTO-0009 (entered pools).

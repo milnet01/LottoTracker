@@ -42,6 +42,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   exactly once the handover price change is applied. Name is a cross-check.
   Also rescues the 11 `Daily Lotto Plus` tickets now reported as uncheckable:
   no source carries `daily/1`, but their base `daily/0` entry is checkable.
+  Cold-eyes 2026-08-01: 3 loops, 2 lanes each, 51 findings verified and fixed,
+  0 deferred; spec accepted. Converged by cap — collateral outnumbered draft
+  defects for two loops running, so §4 is a split candidate before any further
+  editing. Ready to implement.
 
 - 📋 **LOTTO-0003** Pick up new tickets automatically as the SMS arrives.
   Kind: implement. Source: user-request-2026-08-01.
