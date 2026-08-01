@@ -1,0 +1,13 @@
+# Personal data - must never leave this machine.
+# lotto_sms_raw.txt is a verbatim dump of real SMS messages pulled off the
+# phone, including ticket references. The repo is public.
+lotto_sms_raw.txt
+*_sms_raw.txt
+
+# Regenerable: scraped HTML pages and the parsed archive built from them.
+# `python3 backfill.py` rebuilds both. Large, and not ours to redistribute.
+archive_cache/
+archive_results.json
+
+__pycache__/
+*.pyc
