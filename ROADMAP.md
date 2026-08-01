@@ -22,7 +22,29 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   and stops it and re-opens the page — pattern copied from the user's existing
   `Ants_Projects_Hub_Website/serve.mjs` + `tray/ants-stats-tray.py`, which is
   reused as a shape, not as code (that repo is public and deploys to Pages).
-  Spend is compared against winnings over the checkable tickets only.
+  Decisions taken with the user 2026-08-01, not to be re-litigated:
+  - Long-running local server, not a statically generated file.
+  - The tray icon is **required**, not optional — it is how the server is
+    started, stopped and the page re-opened. PySide6 (already installed, and
+    what the user's stats tray uses). `serve.py` must not import PySide6, so
+    the server still runs headless under systemd.
+  - No database. Tickets are re-parsed from `lotto_sms_raw.txt` each run;
+    results stay in the existing `archive_results.json` / `archive_cache/`.
+    `sqlite3` only if prizes ever need marking as claimed — a separate item.
+  - Spend is compared against winnings over the **checkable** entries only;
+    total lifetime spend is shown separately and labelled.
+  Security constraints for the spec (researched 2026-08-01):
+  - Bind `127.0.0.1` and validate the `Host` header against an exact allowlist
+    (`127.0.0.1:PORT`, `localhost:PORT`), rejecting anything else with 421.
+    A localhost bind stops the network, not the user's own browser being aimed
+    at the port by a hostile page — CVE-2026-46611 (Glances) is this exact
+    pattern. `Origin` is not a substitute: a top-level navigation carries none.
+  - Subclass `BaseHTTPRequestHandler` and render HTML in memory; serving files
+    via `SimpleHTTPRequestHandler` reintroduces the whole path-traversal class.
+  - `ThreadingHTTPServer` (browsers pre-open sockets and hang a single-threaded
+    server). `Cache-Control: no-store`. Generic `<title>`, no ticket data in
+    the URL — browsers send URLs and titles to sync and search suggestions.
+  - Never pass request-derived data to `send_header()` (no CRLF validation).
 
 - 📋 **LOTTO-0009** Score every pool a ticket was entered in, not just the top tier.
   Kind: fix. Source: in-session-2026-08-01 (found while sizing LOTTO-0008).
