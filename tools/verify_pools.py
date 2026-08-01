@@ -70,11 +70,14 @@ def expected_pools(game, bought, cost, paid_lines, ndraws):
     return None
 
 
-def printed_names():
-    """{ticket ref: the game name its SMS printed}, read from the dump.
+def dump_facts():
+    """{ticket ref: (printed game name, purchase datetime)}, read from the dump.
 
-    The parsed Ticket cannot answer this any more: its plus_flag is the top
-    tier the PRICE paid for, which is the very thing being cross-checked.
+    Both are re-read here rather than taken from the parsed Ticket, because on
+    this ticket both are the thing under test: `plus_flag` is the top tier the
+    PRICE paid for, which the name cross-checks, and `bought` is what selects
+    the era. Reading the parser's own answer for either would agree with a
+    regression instead of catching it.
     """
     out = {}
     if not os.path.exists(DUMP):
@@ -90,7 +93,8 @@ def printed_names():
         )
         ref = re.search(r"Ref:(VAS\d+)", body)
         if head and ref:
-            out[ref.group(1)] = head.group(1).strip().lower()
+            bought = datetime.fromtimestamp(int(m.group(2)) / 1000)
+            out[ref.group(1)] = (head.group(1).strip().lower(), bought)
     return out
 
 
@@ -105,13 +109,22 @@ def reaches(ticket, plus_flag):
     return bool(rows) and ticket.start.strftime("%Y-%m-%d") >= rows[0]["date"]
 
 
-def main():
+def main(argv=()):
     tickets = load()
-    names = printed_names()
+    facts = dump_facts()
     bad = unresolved = 0
     disagree = {"pre": 0, "post": 0}
 
     for t in tickets:
+        name, bought = facts.get(t.ref, (None, None))
+        # The era decides the tier table, so a parser that stopped reading the
+        # SMS timestamp - falling back to the first DRAW date, which is 1-4
+        # days later on most tickets - would price a handover-week ticket in
+        # the wrong era. Compared against the dump, not against itself.
+        if bought is not None and bought != t.bought:
+            print(f"  ERA {t.ref}: parser has {t.bought}, dump says {bought}")
+            bad += 1
+
         want = expected_pools(t.game, t.bought, t.cost, len(t.boards), t.ndraws)
         if want is None:
             print(
@@ -130,7 +143,7 @@ def main():
             print(f"  UNFLAGGED {t.ref}: pools correct but reported unresolved")
             bad += 1
 
-        named = GAME_MAP.get(names.get(t.ref, ""))
+        named = GAME_MAP.get(name or "")
         if named and named[1] != want[-1][0]:
             disagree["post" if t.bought >= HANDOVER else "pre"] += 1
 
@@ -140,6 +153,23 @@ def main():
         f"{disagree['pre'] + disagree['post']} name/price disagreements "
         f"({disagree['pre']} pre-handover, {disagree['post']} post-handover)"
     )
+
+    if "--era-audit" in argv:
+        # Why the era comes from the purchase moment rather than Ticket.start:
+        # most tickets are bought days before their first draw, so the two
+        # readings can straddle a price change. They agree on every ticket in
+        # the dump today, which makes this a latent boundary case, not a live
+        # miscount - and this is what says so.
+        lag = sum(1 for t in tickets if t.bought.date() != t.start.date())
+        differ = sum(
+            1 for t in tickets
+            if (t.bought >= HANDOVER) != (t.start >= HANDOVER)
+        )
+        print(
+            f"era audit: {lag} of {len(tickets)} tickets have a start date "
+            f"later than the purchase date, {differ} where the two readings "
+            f"select different eras"
+        )
 
     # INV-11, asserted against check.py's actual report rather than against the
     # derivation: a ticket with one checkable pool and one uncheckable one must
@@ -166,4 +196,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
