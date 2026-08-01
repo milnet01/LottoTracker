@@ -20,8 +20,16 @@ against spend.
 
 **An `entry` is one `(ticket, tier)` pair** — one ticket's numbers in one game's
 draw, with that game's own prize pool. It is this spec's unit of work: 558
-tickets hold 1233 entries, and today only 558 of them are scored. "Pool" names
-the results-source side of the same thing, `(game, plus_flag, pool_id)`.
+tickets hold 1233 entries, of which today only 558 are **derived** at all — one
+per ticket. "Pool" names the results-source side of the same thing,
+`(game, plus_flag, pool_id)`.
+
+**Derived is not scored, and this spec never conflates them.** Of the 558
+entries derived today, only the ones on the 121 checkable tickets are actually
+scored against draws; the rest are excluded by `history.py::scorable()` and
+reported as uncheckable (LOTTO-0001 §4.4). Every "N of 1233" figure below is a
+*derivation* count. Treating an excluded entry as scored would be the same
+no-data-reads-as-a-loss error the project exists to prevent.
 
 ## 2. Problem
 
@@ -51,7 +59,9 @@ Three consequences, each shaping the design:
 
 1. **Most tickets are under-scored.** 449 of 558 were entered in more than one
    pool: 444 name a PLUS tier, and 5 more name a bare game but are priced as
-   multi-tier (§2.2).
+   multi-tier (consequence 2 below).
+   Measured **before** this fix — §4.4 redefines `plus_flag`, after which the
+   first command returns 449:
    `python3 -c "from tickets import load; print(sum(1 for t in load() if t.plus_flag > 0))"` → `444`
    `python3 -c "from tickets import load; print(len(load()))"` → `558`
    The remaining 5 are counted by `tools/verify_pools.py`'s disagreement line.
@@ -97,25 +107,32 @@ states only the highest.
 
 Prices are per board, per draw, VAT inclusive. The operator changed on
 2026-06-01 and PowerBall's price changed with it; `HANDOVER = datetime(2026, 6, 1)`
-in `tickets.py` — a `datetime`, not a `date`, because `Ticket.start` is a
-`datetime` and the two types do not compare. LOTTO-0001 carries the same
-handover date in its §2 and §4.3; its §4.2 distinguishes the eras by the shape
-of the date line, not by a date constant.
+in `tickets.py` — a `datetime`, not a `date`, because `bought` is built from an
+epoch and the two types do not compare. **`bought >= HANDOVER` is the Sizekhaya
+era**; the boundary is inclusive, and it matters because PowerBall's cumulative
+moves from R7.50 to R15.00 across it. LOTTO-0001 carries the same handover date
+in its §2 and §4.3; its §4.2 distinguishes the eras by the shape of the date
+line, not by a date constant.
 
 **Two prices per tier, and they are not interchangeable.** The *increment* is
 what that tier adds; the *cumulative* is what a ticket topping out at that tier
 costs per board per draw. §4.3 matches on the cumulative; §4.7 apportions with
 the increment. Conflating them prices a R10.00 Lotto ticket at R22.50.
 
+**All values are given in whole cents**, because that is the unit §4.3 compares
+in; the rand figures are the same number for a human reader. A table in rands
+alone would force the implementer to convert with `float × 100` and reintroduce
+the representation error §4.3 forbids.
+
 | Game | Tier | plus_flag | pool_id | Ithuba incr. | Ithuba cum. | Sizekhaya incr. | Sizekhaya cum. |
 |---|---|---|---|---|---|---|---|
-| lotto | LOTTO | 0 | 100 | R5.00 | R5.00 | R5.00 | R5.00 |
-| lotto | LOTTO PLUS 1 | 1 | 101 | R2.50 | R7.50 | R2.50 | R7.50 |
-| lotto | LOTTO PLUS 2 / 5 Max | 2 | 102 | R2.50 | R10.00 | R2.50 | R10.00 |
-| powerball | POWERBALL | 0 | 100 | R5.00 | R5.00 | R10.00 | R10.00 |
-| powerball | POWERBALL PLUS / XTRA | 1 | 101 | R2.50 | R7.50 | R5.00 | R15.00 |
-| daily | DAILY LOTTO | 0 | 100 | R3.00 | R3.00 | R3.00 | R3.00 |
-| daily | DAILY LOTTO PLUS | 1 | 101 | R1.50 | R4.50 | *withdrawn* | *withdrawn* |
+| lotto | LOTTO | 0 | 100 | 500 (R5.00) | **500** | 500 (R5.00) | **500** |
+| lotto | LOTTO PLUS 1 | 1 | 101 | 250 (R2.50) | **750** | 250 (R2.50) | **750** |
+| lotto | LOTTO PLUS 2 / 5 Max | 2 | 102 | 250 (R2.50) | **1000** | 250 (R2.50) | **1000** |
+| powerball | POWERBALL | 0 | 100 | 500 (R5.00) | **500** | 1000 (R10.00) | **1000** |
+| powerball | POWERBALL PLUS / XTRA | 1 | 101 | 250 (R2.50) | **750** | 500 (R5.00) | **1500** |
+| daily | DAILY LOTTO | 0 | 100 | 300 (R3.00) | **300** | 300 (R3.00) | **300** |
+| daily | DAILY LOTTO PLUS | 1 | 101 | 150 (R1.50) | **450** | *withdrawn* | *withdrawn* |
 
 Every cumulative value is distinct within a `(game, era)` pair, which is what
 makes the match in §4.3 unambiguous.
@@ -131,20 +148,33 @@ INV-7 is what makes a price change loud instead of silent.
 
 ### 4.3 Deriving the entered pools
 
-```python
-paid_lines = Σ over the SMS's board lines of
-                 C(n, 6) if game is lotto and n > 6 else 1     # Multiplay
-unit_cents = round(cost * 100) // (paid_lines × ndraws)
-top        = the tier whose cumulative price equals unit_cents, for (game, era)
-pools      = [(plus_flag, pool_id) for every tier 0..top]
+```text
+paid_lines          = Σ over the SMS's board lines of
+                          C(n, 6) if game is lotto and n > 6 else 1   # Multiplay
+unit_cents, remain  = divmod(round(cost * 100), paid_lines * ndraws)
+if remain != 0      -> unresolved                    # not divisible: never guess
+top                 = the tier whose CUMULATIVE cents equals unit_cents,
+                      for (game, era)                # §4.2's bold column
+pools               = [(plus_flag, pool_id) for every tier 0..top]
 ```
 
-**Compare in whole cents, never in floats.** `unit` is a quotient of a parsed
-decimal, so `7.50` can arrive as `7.499999…` and silently miss its tier — which
-under the fallback below degrades the ticket to name-only scoring, the exact
-behaviour this spec removes. The captured amount is also stripped of thousands
-separators before conversion: `tickets.py`'s header pattern is `Played R[\d,.]+`,
-so `R1,234.00` is admissible and `float("1,234.00")` raises.
+**Compare in whole cents, never in floats,** and take the cumulative from
+§4.2's bold column rather than converting its rand figures. A quotient of a
+parsed decimal can arrive as `7.499999…` and silently miss its tier, which
+under the fallback below degrades the ticket to name-only scoring — the exact
+behaviour this spec removes.
+
+**A non-zero remainder is `unresolved`, not a rounded-down match.** Floor
+division alone would let a price that is not an exact multiple land on a valid
+tier and be reported as resolved, which is precisely the guessing INV-7 exists
+to prevent. It would also break §4.7's identity that a resolved ticket's entry
+costs sum to its charged amount.
+
+The captured amount is stripped of thousands separators before conversion, and
+capturing it changes the header pattern: `tickets.py::parse()` currently matches
+`Played R[\d,.]+` **without** a group, and `head.group(1)` / `head.group(2)` are
+the game name and draw count. Capture the amount as a **named** group
+(`Played R(?P<cost>[\d,.]+)`) so the existing positional indices are untouched.
 
 `paid_lines` counts what was *paid for*, so it expands Multiplay the same way
 LOTTO-0001 INV-2 does — a 7-number Lotto board is 7 paid lines, not one.
@@ -158,6 +188,15 @@ in milliseconds, and currently discards it — so `load()` passes it to `parse()
 and `Ticket` gains `bought`. On the current dump both readings agree exactly
 (558 resolved either way, 0 tickets where the two eras differ), so this is a
 latent boundary defect being closed, not a live miscount.
+
+**The signature is `parse(body, bought=None)`, and an absent `bought` falls
+back to the parsed start date.** `parse()` is called directly — by every §5
+invariant fixture, and by anything bypassing `load()` — so the fallback is part
+of the contract, not an implementation detail. Without it the era of a
+one-argument `parse()` is undefined, and the era decides the tier table: INV-9's
+R22.50 PowerBall fixture resolves to two pools under Ithuba and to *none* under
+Sizekhaya. Every §5 fixture is dated before the handover, so all of them resolve
+in the Ithuba column under this rule.
 
 `tools/verify_pools.py` **does not exist yet**; this spec creates it (§7). The
 figures below were measured before drafting by an equivalent standalone
@@ -176,9 +215,11 @@ computation over the dump, and become that script's output:
 | daily/1 | 11 |
 | **total** | **1233** |
 
-Today exactly one entry per ticket is scored — 558 of 1233, 45%.
+Today exactly one entry per ticket is **derived** — 558 of 1233, 45%. How many
+of those are then *scored* is a separate and smaller number, gated by
+`history.py::scorable()`; §1 keeps the two apart.
 
-**An unresolved price is reported, never guessed.** If `unit` matches no
+**An unresolved price is reported, never guessed.** If `unit_cents` matches no
 cumulative total, `pools` falls back to the single name-derived pool, the ticket
 is added to an `unresolved` list, and `check.py` prints the count. INV-7 asserts
 that count is zero, so a future price change fails the check rather than
@@ -194,11 +235,17 @@ self.pools   # [(plus_flag, pool_id), ...] base tier first
 self.bought  # datetime, from the SMS epoch — selects the era (§4.3)
 ```
 
-`plus_flag` and `pool_id` are retained, and are redefined as **`pools[-1]` —
-the top tier the price paid for**, not the tier the SMS names. Those were the
-same thing before this spec and are not any more: on 5 tickets the name states
-a lower tier than the price (§2.2). Keeping them name-derived would leave a
-ticket whose `plus_flag` is absent from its own `pools`.
+`cost` is **the amount the SMS charged**, parsed from the header — that is its
+definition, and it is canonical. §4.7 derives per-entry costs that sum back to
+it, an identity that holds only when the price resolves; for an unresolved
+ticket no entry costs are defined and `cost` still stands alone.
+
+`plus_flag` and `pool_id` are retained and redefined as
+**`plus_flag, pool_id = pools[-1]`** — the top tier the price paid for, not the
+tier the SMS names. Those were the same thing before this spec and are not any
+more: on 5 tickets the name states a lower tier than the price (§2,
+consequence 2). Keeping them name-derived would leave a ticket whose
+`plus_flag` is absent from its own `pools`.
 
 Both known disagreement directions are handled, and only one occurs today:
 
@@ -259,12 +306,16 @@ The report shape is part of the contract, because INV-11 is an assertion about
 it. Angle brackets are counts the run produces; the wording is fixed:
 
 ```
-<e> of 1233 ENTRIES CANNOT BE CHECKED. They are not counted below, and are NOT losses.
-  <a> predate all draw data for their pool (earliest: YYYY-MM-DD)
-  <b> in a pool no results source carries: daily/1
+<e> of <n> ENTRIES CANNOT BE CHECKED. They are not counted below, and are NOT losses.
+  <a> predate all draw data for their pool (earliest: <date>)
+  <b> in a pool no results source carries: <pools>
   affecting <f> tickets fully and <p> tickets partly
     a partly-checkable ticket IS scored on its remaining pools, below
 ```
+
+Today `<n>` is 1233 and `<pools>` is `daily/1`, but both are computed — `<n>`
+grows with every ticket, and `check.py` already derives the pool list rather
+than naming it (`sorted({f"{t.game}/{t.plus_flag}" ...})`).
 
 `<f> + <p>` is the ticket count touched by uncheckable entries; only `<f>`
 tickets are excluded from scoring entirely. LOTTO-0001's two reasons
@@ -280,8 +331,8 @@ entry_cost = tier_increment(game, era, plus_flag) × paid_lines × ndraws
 ```
 
 `tier_increment()` reads §4.2's **increment** column — what that one tier adds —
-and is a different function from the cumulative lookup §4.3 matches on. Summing
-cumulatives here would price a R10.00 Lotto ticket at R22.50 and break INV-10.
+and is a different function from the cumulative lookup §4.3 matches on. §4.2
+gives the worked example of conflating them; doing so here breaks INV-10.
 
 `Ticket.cost` is the sum of its entries' costs, which is what the SMS charged.
 Apportioning
@@ -302,6 +353,8 @@ a handle.
 - **INV-7** — Every parsed ticket's price resolves to exactly one cumulative
   tier total for its game and era.
   *Test:* `python3 tools/verify_pools.py` → `558 tickets, 1233 entries, 0 unresolved, 5 name/price disagreements (3 pre-handover, 2 post-handover)`
+  Only `0 unresolved` and the exit code are asserted. The ticket, entry and
+  disagreement figures are informational and move as messages arrive (§7).
   *Breaks when:* the operator changes a board price, as happened on 2026-06-01,
   or a Multiplay shape appears that `paid_lines` does not model — a >6-number
   PowerBall board would land here rather than silently collapsing to one line
@@ -318,7 +371,7 @@ a handle.
   *Test:* `python3 -c "from tickets import parse; t=parse('Standard Bank: Played R22.50 Powerball for 3 draw(s)\nDate 01/01/2020 to 01/01/2020\nA: 08 14 27 33 41 05\nRef:VAS00000000000.'); print(t.pools)"` → `[(0, 100), (1, 101)]`
   *Breaks when:* the name is treated as authoritative. This fixture names the
   base game only and is priced at R7.50 per board per draw, which is base plus
-  PLUS — the shape of the 5 real disagreeing messages in §2.2.
+  PLUS — the shape of the 5 real disagreeing messages in §2, consequence 2.
 
 - **INV-10** — `Ticket.cost` is the total rands the SMS charged for the whole
   ticket, across all boards, draws and tiers.
@@ -359,9 +412,8 @@ a handle.
 - **A ticket is bought just before a price change.** The era comes from the
   purchase timestamp rather than the first draw date, for the reason §4.3 gives.
   Both readings agree on every ticket in the dump today.
-- **An unresolved price.** Falls back as §4.3 specifies and is counted; INV-7
-  asserts the count is zero, so price rot fails the check rather than quietly
-  reverting the project to name-only scoring.
+- **An unresolved price** — a total matching no tier, or one not divisible by
+  `paid_lines × ndraws`. Handled as §4.3 specifies; INV-7 is what makes it loud.
 
 ## 7. Tests
 
@@ -384,10 +436,15 @@ asserted, because it is a property of the bank's wording rather than of this
 code; it is printed split by era, since a post-handover disagreement means
 something different from a pre-handover one (§2).
 
-Red-test each invariant before accepting the fix: INV-8 against the current
-top-tier-only mapping (expect 675 entries missing), INV-9 against a name-first
-derivation (expect the R22.50 fixture to return one pool), INV-11 against a
-per-ticket uncheckable report (expect the 11 Daily tickets to be double-counted).
+Red-test all five invariants before accepting the fix:
+
+| INV | Red-test against | Expect |
+|---|---|---|
+| 7 | §4.2's table with the Sizekhaya PowerBall row removed | the post-handover tickets land in `unresolved`, exit 1 |
+| 8 | the current top-tier-only mapping | 675 entries missing |
+| 9 | a name-first derivation | the R22.50 fixture returns one pool, not two |
+| 10 | `cost` stored per draw | `4.5` instead of `13.5` |
+| 11 | a per-ticket uncheckable report | the 11 Daily tickets reported as wholly uncheckable, exit 1 |
 
 ## 8. Alternatives considered (and rejected)
 
@@ -424,10 +481,13 @@ Six of the seven pools are already fetched today — `history.scorable()` calls
 `all_draws()` for every ticket, so each pool named by at least one SMS is
 loaded whether or not it is scored. **`lotto/1` is the exception**: no message
 in the dump names `Lotto Plus 1`, so that pool is fetched by nothing today and
-this fix adds 226 entries in it. It costs one extra
-`issueWinPoolInfoPageQuery` (via `all_draws()`) plus one
-`getIssueDrawResultDetail` (via `paying_combinations()`). Beyond that, the added
-cost is one `getIssueDrawResultDetail` per distinct draw a *new* win lands on.
+this fix adds 226 entries in it. It costs **two** extra
+`issueWinPoolInfoPageQuery` calls, not one: `results.py::draws()` is not
+memoised (LOTTO-0001 §10), and both `history.all_draws()` and
+`check.paying_combinations()` call it for the pool. Add one
+`getIssueDrawResultDetail` to establish that pool's paying set. Beyond that, the
+added cost is one `getIssueDrawResultDetail` per distinct draw a *new* win
+lands on.
 
 **This figure is not yet measured.** LOTTO-0001 §10 states about 12 requests
 before scoring; the post-fix number is to be measured against the shipped
@@ -465,7 +525,9 @@ Twelve rows, four `nothing`.
   `558 tickets, 437 unscorable (excluded), 0 with wrong draw coverage` is a
   per-ticket count that no longer describes what is excluded — the 11
   `Daily Lotto Plus` tickets inside that 437 become partly scorable. INV-6's
-  expected line is restated in entry terms; its 90% floor and its rule against
+  expected line is restated in entry terms and its new figures are **measured
+  against the shipped implementation**, not predicted here — this spec does not
+  invent another contract's expected output. Its 90% floor and its rule against
   importing `history.scorable()` both stand unchanged.
 - `ROADMAP.md` — LOTTO-0008 and LOTTO-0009 flip on ship; LOTTO-0002 unblocks.
 - `README.md` — the sample output and the uncheckable wording change.
@@ -475,4 +537,5 @@ Twelve rows, four `nothing`.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 2 | 2026-08-01 | 2 | 1 | 4 | 6 | 7 | 17 verified fixed, 1 dismissed on evidence (INV-11's literal `11` was called a lower bound; `archive_results.json` shows every pool within a game shares an earliest draw date — `lotto:0/1/2` all 2025-01-01, `powerball:0/1` both 2025-01-03 — so `daily/1`, the one empty pool, is the only source of partial uncheckability). **14 of 18 were collateral from loop 1's own fixes**, 4 were draft defects — the signal that the loop-1 sweep under-ran, answered here by a whole-document consistency pass rather than by looping harder. Both lanes again found the same CRITICAL, this time self-inflicted: loop 1 added `bought` for the era but left `parse()`'s signature and its era default unstated, and all three §5 fixtures call `parse()` with one argument — INV-9's R22.50 PowerBall resolves to two pools under Ithuba and none under Sizekhaya, so the invariant passed or failed on an unspecified default. Also collateral: three references to a `§2.2` that does not exist; `//` floor division silently rounding a non-divisible price onto a valid tier, defeating the guard INV-7 exists to be; a cents comparison rule against a rands-only table, forcing the `float × 100` it forbids; and `pools[-1]` assigned to two scalars. Draft defects: "558 of 1233 **scored**" counted 437 excluded tickets as scored — the project's one forbidden conflation, in the figure the fix is justified by; §10 undercounted `lotto/1` by one request because `results.draws()` is not memoised; §7 red-tested 3 of 5 invariants. |
 | 1 | 2026-08-01 | 2 | 1 | 5 | 7 | 5 | All 18 verified findings fixed; 0 unverified, 1 dismissed (no TOC — the sibling LOTTO-0001 carries none at 394 lines, and it changes nothing an implementer builds). Both lanes independently found the same CRITICAL: §4.5 re-pointed the scoring loop at the entry but left `check.py::amount()` reading `ticket.pool_id`/`ticket.plus_flag`, so all 675 newly-scored entries would have been priced from the top tier's division table — wrong money in both directions. Also: §4.2 conflated incremental and cumulative board prices, which would have priced a R10.00 Lotto ticket at R22.50; the era was taken from `Ticket.start`, which is the first draw date rather than the purchase date (319 of 558 differ by 1–4 days — the SMS epoch was available and discarded); INV-11 asserted a property of the derivation while claiming one about `check.py`'s report, and §11 credited a catcher that did not exist; §12 omitted LOTTO-0001 INV-6, whose `tools/verify_coverage.py` imports the `covered()` this spec re-signatures; `tools/verify_pools.py` was quoted as measured when it does not exist yet; float equality on a divided price could silently degrade a ticket to name-only scoring; and §2 said 444 tickets were under-scored where 449 are. |
