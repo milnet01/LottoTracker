@@ -1,6 +1,9 @@
 # LOTTO-0009 — Score every pool a ticket was entered in, derived from its price
 
-**Status:** accepted (2026-08-01).
+**Status:** accepted (2026-08-01); **implemented and verified 2026-08-01**.
+All five invariants red-tested per §7's table; the four executable checks pass
+from the repository root. The figures §10 and §12 left to be measured against
+the shipped implementation are folded in below.
 **Kind:** fix.
 **Source:** ROADMAP LOTTO-0009 (in-session-2026-08-01, found while sizing LOTTO-0008).
 **Covers:** LOTTO-0008 (record what each ticket cost), LOTTO-0009 (entered pools).
@@ -227,9 +230,9 @@ R22.50 PowerBall fixture resolves to two pools under Ithuba and to *none* under
 Sizekhaya. Every §5 fixture is dated before the handover, so all of them resolve
 in the Ithuba column under this rule.
 
-`tools/verify_pools.py` **does not exist yet**; this spec creates it (§7). The
-figures below were measured before drafting by an equivalent standalone
-computation over the dump, and become that script's output:
+`tools/verify_pools.py` was created by this spec (§7) and now prints exactly
+the figures below, which were measured before drafting by an equivalent
+standalone computation over the dump:
 
 `python3 tools/verify_pools.py` → `558 tickets, 1233 entries, 0 unresolved, 5 name/price disagreements (3 pre-handover, 2 post-handover)`
 
@@ -263,6 +266,14 @@ self.cost    # float, rands, the total charged for the whole ticket
 self.pools   # [(plus_flag, pool_id), ...] base tier first
 self.bought  # datetime, from the SMS epoch — selects the era (§4.3)
 ```
+
+**A fourth, `self.resolved`, was added during implementation** and is not a
+change of contract: §4.3 requires an unresolved ticket to be *reported* rather
+than guessed at, and `parse()` returns one ticket at a time, so the flag is
+where that fact lives. `check.py` and `tools/verify_pools.py` build the
+"unresolved" list from it. `resolved` is False exactly when `pools` is the
+name-derived fallback; the two cannot disagree, and `verify_pools.py` fails a
+ticket whose pools are right but whose flag says otherwise.
 
 `cost` is **the amount the SMS charged**, parsed from the header — that is its
 definition, and it is canonical. §4.7 derives per-entry costs that sum back to
@@ -392,6 +403,15 @@ tiers to a spend-versus-winnings comparison.
 every entry; winnings are known only where results exist. Comparing total spend
 against visible winnings would convert every unscorable entry into a loss —
 LOTTO-0002 owns the display, this spec owns the rule.
+
+**`tier_increment()` was deliberately not written here.** Nothing in this fix
+calls it: `Ticket.cost` is what INV-10 asserts, and the only consumer of a
+per-entry apportionment is LOTTO-0002's display, which does not exist yet. The
+data it needs is already in `tickets.py::TIER_PRICES`, which stores the
+**increment** column and derives the cumulative as a running sum — so the two
+columns of §4.2 cannot drift apart. Writing an unused helper now would be
+scaffolding for a caller that may want a different shape; LOTTO-0002 adds it
+at its own call site, under the rule this section states.
 
 ## 5. Invariants
 
@@ -544,9 +564,20 @@ memoised (LOTTO-0001 §10), and both `history.all_draws()` and
 added cost is one `getIssueDrawResultDetail` per distinct draw a *new* win
 lands on.
 
-**This figure is not yet measured.** LOTTO-0001 §10 states about 12 requests
-before scoring; the post-fix number is to be measured against the shipped
-implementation and folded back here, rather than estimated now.
+**Measured 2026-08-01 against the shipped implementation**, one whole
+`check.py` run each with the archive cache warm, by counting every
+`urllib.request.urlopen` call:
+
+| | `issueWinPoolInfoPageQuery` | `getIssueDrawResultDetail` | total | winning lines |
+|---|---|---|---|---|
+| before | 11 | 12 | **23** | 56 |
+| after | 13 | 14 | **27** | 86 |
+
+So 2.2× the entries cost **4 extra requests, not 2.2×** — the memoisation
+argument above holds. The +2 pool queries are exactly the `lotto/1` pair this
+section predicted; of the +2 detail calls, one establishes that pool's paying
+set and one is the single new draw a win landed on that no earlier win shared.
+Zero archive fetches in either run, as LOTTO-0001 §10 describes.
 
 ## 11. What checks this
 
@@ -584,6 +615,11 @@ Twelve rows, four `nothing`.
   against the shipped implementation**, not predicted here — this spec does not
   invent another contract's expected output. Its 90% floor and its rule against
   importing `history.scorable()` both stand unchanged.
+  **Landed 2026-08-01:** the script now iterates entries, and INV-6's expected
+  line reads `558 tickets, 1233 entries, 974 unscorable (excluded), 0 with
+  wrong draw coverage`. The 90% floor was re-based on entries too — 974/1233
+  is 79%, where the old per-ticket 437/558 was 78%, so the floor keeps roughly
+  the same headroom and still fires on a missing `archive_results.json`.
 - `ROADMAP.md` — LOTTO-0008 and LOTTO-0009 flip on ship; LOTTO-0002 unblocks.
 - `README.md` — the sample output and the uncheckable wording change.
 - `CHANGELOG.md` — a `Fixed` entry; this changes reported winnings.

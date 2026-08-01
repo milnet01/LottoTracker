@@ -11,11 +11,15 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Covers both SMS eras, both results sources, Multiplay expansion and prize
   pricing. 558 tickets parsed, 121 checkable (426 predate all draw data, 11
   are in a pool no source publishes); R700.10 found still claimable.
+  Superseded 2026-08-01 by LOTTO-0009, which counts in entries rather than
+  tickets: 1,233 entries, 259 checkable, R2,423.00 still claimable. Its §4.2,
+  §4.4 and INV-6 are amended accordingly.
 
 - 📋 **LOTTO-0002** Local web page showing tickets, results and claimable winnings.
   Kind: implement. Source: user-request-2026-08-01.
   Layman: a page in your browser instead of a wall of terminal text.
-  Spec: `docs/specs/LOTTO-0002-local-web-page.md`. Blocked by LOTTO-0009.
+  Spec: `docs/specs/LOTTO-0002-local-web-page.md`. Unblocked 2026-08-01 —
+  LOTTO-0009 shipped, so the page will render 1,233 entries rather than 558.
   Chosen by the user over a desktop app or CLI. Should show live tickets with
   draws remaining, wins with their expiry dates, and a claimable total.
   A local server bound to 127.0.0.1, driven by a PySide6 tray icon that starts
@@ -46,7 +50,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
     the URL — browsers send URLs and titles to sync and search suggestions.
   - Never pass request-derived data to `send_header()` (no CRLF validation).
 
-- 📋 **LOTTO-0009** Score every pool a ticket was entered in, not just the top tier.
+- ✅ **LOTTO-0009** Score every pool a ticket was entered in, not just the top tier.
   Kind: fix. Source: in-session-2026-08-01 (found while sizing LOTTO-0008).
   Layman: you paid for three lottery draws and we were only checking one of them.
   Spec: `docs/specs/LOTTO-0009-entered-pools.md` (umbrella, covers LOTTO-0008).
@@ -67,7 +71,20 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Cold-eyes 2026-08-01: 3 loops, 2 lanes each, 51 findings verified and fixed,
   0 deferred; spec accepted. Converged by cap — collateral outnumbered draft
   defects for two loops running, so §4 is a split candidate before any further
-  editing. Ready to implement.
+  editing.
+  Resolved (2026-08-01): implemented. The entered tiers come from the ticket
+  price in whole cents — 1,233 of 1,233 entries derived, 0 unresolved, and the
+  5 tickets whose printed name disagrees with their price are reported rather
+  than silently reinterpreted. `scorable()`, `covered()` and `amount()` take
+  the entry's pool; the uncheckable report moved out of `__main__` into
+  `check.py::uncheckable_report()`, counts entries, and splits tickets into
+  wholly and partly uncheckable so the 11 Daily Lotto Plus tickets are scored
+  on `daily/0` instead of written off. New `tools/verify_pools.py` (INV-7,
+  INV-11) recomputes the price table independently; `tools/verify_coverage.py`
+  re-based on entries. All five invariants red-tested per spec §7.
+  **30 new winning lines worth R1,790.40, of which R1,722.90 is still
+  claimable** — claimable total R700.10 → R2,423.00. No previously reported
+  win changed pool or disappeared.
 
 - 📋 **LOTTO-0003** Pick up new tickets automatically as the SMS arrives.
   Kind: implement. Source: user-request-2026-08-01.
@@ -75,7 +92,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   KDE Connect emits `conversationCreated` / `conversationUpdated` over D-Bus;
   subscribe rather than polling.
 
-- 📋 **LOTTO-0008** Record what each ticket cost, so prizes can be compared against spend.
+- ✅ **LOTTO-0008** Record what each ticket cost, so prizes can be compared against spend.
   Kind: implement. Source: user-request-2026-08-01.
   Layman: show what you paid for a ticket next to what it won.
   Spec: `docs/specs/LOTTO-0009-entered-pools.md` (umbrella, covers this id).
@@ -84,8 +101,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Specified with LOTTO-0009 rather than alone: the price is also the signal for
   which pools a ticket was entered in, so one contract governs both readings.
   Feeds LOTTO-0002's spend-vs-prize display. The comparison must be drawn only
-  over checkable tickets: cost is known for all 558, winnings for 121, so a
-  lifetime total would convert 437 unknowns into losses.
+  over checkable entries: cost is known for all 1,233, winnings only where
+  results exist, so a lifetime total would convert 974 unknowns into losses.
+  Resolved (2026-08-01): shipped inside LOTTO-0009. `Ticket.cost` is the total
+  rands the SMS charged for the whole ticket — every board, draw and tier
+  (INV-10) — and the same price is what derives the entered pools. The display
+  itself is LOTTO-0002; the checkable-entries-only rule is spec §4.7.
 
 ## Hardening
 

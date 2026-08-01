@@ -10,7 +10,7 @@ draw data were being scored against January 2025.
 So the properties below are asserted against the draw records directly, never
 against the shape of what covered() returned:
 
-  1. an unscorable ticket gets NO draws (not the wrong ones)
+  1. an unscorable entry gets NO draws (not the wrong ones)
   2. every covered draw falls on or after the ticket's start date
   3. no known draw sits between the start date and the first covered draw
   4. the window is contiguous - no known draw is skipped inside its span
@@ -18,6 +18,11 @@ against the shape of what covered() returned:
 
 Property 5 exists because a regex that quietly matched nothing once dropped
 552 of 558 tickets while every downstream number still looked plausible.
+
+The unit is the ENTRY, not the ticket: a ticket is entered in every pool its
+price paid for, each pool draws separately, and one can reach back far enough
+to be scorable while another does not. Checking only the top tier would leave
+the other 675 entries unexamined - which is the bug LOTTO-0009 fixed.
 """
 
 import os
@@ -41,10 +46,12 @@ def main():
             print(f"  PARSE GAP: {expected} purchase SMSes, {len(tickets)} parsed")
             bad += 1
 
+    entries = [(t, pf) for t in tickets for pf, _ in t.pools]
     unscorable = 0
-    for t in tickets:
-        rows = covered(t)
-        known = all_draws(t.game, t.plus_flag)
+    for t, plus_flag in entries:
+        who = f"{t.ref} {t.game}/{plus_flag}"
+        rows = covered(t, plus_flag)
+        known = all_draws(t.game, plus_flag)
         start = t.start.strftime("%Y-%m-%d")
 
         # Recomputed here, NOT via history.scorable(). Importing the predicate
@@ -54,12 +61,12 @@ def main():
         if not known or start < known[0]["date"]:
             unscorable += 1
             if rows:
-                print(f"  {t.ref}: predates all draw data but got {len(rows)} draws")
+                print(f"  {who}: predates all draw data but got {len(rows)} draws")
                 bad += 1
             continue
 
         if any(d["date"] < start for d in rows):
-            print(f"  {t.ref}: covers a draw before its start date")
+            print(f"  {who}: covers a draw before its start date")
             bad += 1
             continue
 
@@ -68,34 +75,34 @@ def main():
         if not after:
             continue  # bought since the last draw; nothing to score yet
         if not rows:
-            print(f"  {t.ref}: no draws covered but {len(after)} available")
+            print(f"  {who}: no draws covered but {len(after)} available")
             bad += 1
             continue
         if rows and rows[0]["date"] != after[0]["date"]:
-            print(f"  {t.ref}: skipped {after[0]['date']}, started {rows[0]['date']}")
+            print(f"  {who}: skipped {after[0]['date']}, started {rows[0]['date']}")
             bad += 1
             continue
         span = [d for d in known if rows[0]["date"] <= d["date"] <= rows[-1]["date"]]
         if len(span) != len(rows):
-            print(f"  {t.ref}: window has a gap ({len(span)} known, {len(rows)} used)")
+            print(f"  {who}: window has a gap ({len(span)} known, {len(rows)} used)")
             bad += 1
             continue
         if len(rows) != t.ndraws and rows[-1]["date"] != known[-1]["date"]:
-            print(f"  {t.ref}: wants {t.ndraws} draws, got {len(rows)}, not at end")
+            print(f"  {who}: wants {t.ndraws} draws, got {len(rows)}, not at end")
             bad += 1
 
     # A floor, because "everything is unscorable" is what a missing
     # archive_results.json looks like, and it would otherwise report 0 bad.
-    if tickets and unscorable / len(tickets) > 0.90:
+    if entries and unscorable / len(entries) > 0.90:
         print(
-            f"  FLOOR: {unscorable}/{len(tickets)} tickets unscorable — draw "
+            f"  FLOOR: {unscorable}/{len(entries)} entries unscorable — draw "
             f"data is probably missing; run `python3 backfill.py`"
         )
         bad += 1
 
     print(
-        f"{len(tickets)} tickets, {unscorable} unscorable (excluded), "
-        f"{bad} with wrong draw coverage"
+        f"{len(tickets)} tickets, {len(entries)} entries, "
+        f"{unscorable} unscorable (excluded), {bad} with wrong draw coverage"
     )
     return 0 if bad == 0 else 1
 

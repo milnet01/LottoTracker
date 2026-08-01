@@ -21,8 +21,11 @@ things make manual checking impractical, and each shapes the design:
 1. **Volume.** 558 ticket purchases since 2022-11-09, covering 745 played
    lines once Multiplay entries are expanded. Most tickets run for 10 draws,
    so a single ticket is 10 separate checks per line. Only 132 are checkable
-   at all — 426 predate every available draw record and 11 sit in a pool no
-   source publishes (§4.2, §4.4).
+   at all — 426 predate every available draw record (§4.2, §4.4). Of those
+   132, 11 are checkable in one pool and not another, because no source
+   publishes `daily/1`; LOTTO-0009 scores those on the pools that remain and
+   counts in **entries** rather than tickets, since one ticket is entered in
+   every tier its price paid for.
    `python3 -c "from tickets import load; ts=load(); print(len(ts), sum(len(t.boards) for t in ts))"` → `558 745`
 2. **The SMS format changed.** Sizekhaya replaced Ithuba as licence holder on
    2026-06-01, and the bank's message wording changed with it. Both eras are
@@ -89,7 +92,17 @@ new   Standard Bank: Played R99.00 Powerball
 ```
 
 The game name maps to a results pool. This table is load-bearing — an
-implementer cannot derive `winPoolId` or `plusFlag` from anything else:
+implementer cannot derive `winPoolId` or `plusFlag` from anything else.
+
+**Amended by LOTTO-0009: this table maps an SMS to the one pool its name
+states, which is the *top* tier only.** A PLUS game cannot be bought alone, so
+a ticket is entered in every tier below its top one as well, and those tiers
+are derived from the ticket price rather than from this table — see
+`docs/specs/LOTTO-0009-entered-pools.md` §4.2–§4.3. `tickets.py::GAME_MAP` is
+still exactly this table, and is still what `parse()` falls back to when a
+price matches no tier, but `Ticket.pools` is what scoring iterates and
+`Ticket.plus_flag` / `Ticket.pool_id` are now the top tier the **price** paid
+for, which differs from the name on 5 of the 558 tickets.
 
 | SMS game name | game | plusFlag | winPoolId |
 |---|---|---|---|
@@ -102,9 +115,11 @@ implementer cannot derive `winPoolId` or `plusFlag` from anything else:
 | `Daily Lotto Plus` | daily | 1 | 101 — **no source carries this pool** |
 
 `Daily Lotto Plus` appears on 11 tickets and has no pool in either results
-source. It resolves to an always-empty pool so those tickets report as
+source. It resolves to an always-empty pool so those **entries** report as
 uncheckable; aliasing it onto plain Daily Lotto would score them against a
-different game. API `gameId`s are LOTTO 11101, POWERBALL 11201,
+different game. Since LOTTO-0009 the tickets themselves are not uncheckable —
+their `daily/0` entry is scored, and they are reported as *partly*
+uncheckable. API `gameId`s are LOTTO 11101, POWERBALL 11201,
 DAILY_LOTTO 11001 — observed constants, taken from the site's own bundle.
 
 Two traps, both of which produce plausible-looking wrong answers:
@@ -147,18 +162,21 @@ INV-3.
 
 ### 4.4 Scoring
 
-`check.py::check()` walks every ticket × board × covered draw. A ticket
-covers the first N draws on or after its start date, taken from real draw
-data rather than a computed calendar, so a cancelled or moved draw cannot
-shift the window (INV-6).
+`check.py::check()` walks every ticket × **pool it was entered in** × board ×
+covered draw (the pool level added by LOTTO-0009 §4.5). A ticket covers the
+first N draws on or after its start date, taken from real draw data rather
+than a computed calendar, so a cancelled or moved draw cannot shift the
+window (INV-6).
 
-**A ticket starting before the earliest known draw for its pool is not
+**An entry starting before the earliest known draw for its pool is not
 scorable and must be excluded, never truncated.** `history.py::scorable()`
-gates this and `covered()` returns empty for such a ticket. Without the gate
-a 2022 ticket silently takes the first N draws of 2025 - real draws, wrong
-ones - and every count-based check still reports it as correct. 426 of 558
-tickets fall in this window; `check.py` reports them as uncheckable rather
-than as losses.
+gates this and `covered()` returns empty for such an entry. Both take the pool
+as an argument rather than reading it off the ticket, because a ticket can be
+checkable in one pool and not another. Without the gate a 2022 ticket silently
+takes the first N draws of 2025 - real draws, wrong ones - and every
+count-based check still reports it as correct. 426 of 558 tickets fall wholly
+in this window (974 of 1233 entries); `check.py` reports them as uncheckable
+rather than as losses, at entry granularity (LOTTO-0009 §4.6).
 
 Prize expiry uses `check.py::CLAIM_DAYS = 365`, the SA claim deadline. A win
 older than that is counted in the lifetime total but not listed individually,
@@ -241,19 +259,24 @@ plain match tier, which is the one that paid.
   hardcoded division *label* only — it cannot see a hardcoded prize amount,
   which nothing checks (§11).
 
-- **INV-6** — A ticket is scored against the first N drawn results on or
-  after its start date, where N is the draw count in its SMS.
-  *Test:* `python3 tools/verify_coverage.py` → `558 tickets, 437 unscorable (excluded), 0 with wrong draw coverage` (repo root, after `backfill.py`)
-  *Breaks when:* a ticket predating all draw data is truncated onto later
+- **INV-6** — An entry is scored against the first N drawn results on or
+  after its ticket's start date, where N is the draw count in its SMS.
+  *Test:* `python3 tools/verify_coverage.py` → `558 tickets, 1233 entries, 974 unscorable (excluded), 0 with wrong draw coverage` (repo root, after `backfill.py`)
+  **The unit is the entry, not the ticket** (LOTTO-0009 §4.5): `covered()`
+  takes the pool, and each of a ticket's entries is checked separately, since
+  one can reach back far enough to be scorable while another does not. The
+  figures above were measured against the shipped implementation on
+  2026-08-01, not predicted.
+  *Breaks when:* an entry predating all draw data is truncated onto later
   draws instead of excluded, or the window is computed from a weekday
   calendar so a skipped draw shifts every later match. The check asserts
   start-alignment and contiguity against the draw records directly; asserting
-  `len(covered(t)) == t.ndraws` is a tautology over the function's own slice
-  and passed while 426 tickets were mis-scored. The check must **not** import
-  `history.scorable()` — the predicate under test — or it agrees with the
-  bug; it recomputes the comparison itself. Red-tested 2026-08-01 by
+  `len(covered(t, pf)) == t.ndraws` is a tautology over the function's own
+  slice and passed while 426 tickets were mis-scored. The check must **not**
+  import `history.scorable()` — the predicate under test — or it agrees with
+  the bug; it recomputes the comparison itself. Red-tested 2026-08-01 by
   regressing `scorable()` to `bool(rows)`: 426 wrong, exit 1. It also fails
-  if over 90% of tickets are unscorable, which is what a missing
+  if over 90% of **entries** are unscorable, which is what a missing
   `archive_results.json` looks like.
 
 ## 6. Failure modes
@@ -295,15 +318,17 @@ time** — overlap grows with every draw, ticket totals with every SMS. What
 each invariant actually asserts is the zero-term and the exit code
 (`0 disagree`, `0 with wrong draw coverage`, exit 0); a changed count is not
 a failure — **except the unscorable count**, which has a 90% floor precisely
-because "almost everything is unscorable" is what missing data looks like. Both scripts exit non-zero on a real breach, so prefer
+because "almost everything is unscorable" is what missing data looks like. Every script exits non-zero on a real breach, so prefer
 `&& echo PASS` over string-matching the line.
 
-Both scripts must be run **from the repository root, after
+Every script must be run **from the repository root, after
 `python3 backfill.py`**, with the SMS dump present; they resolve their inputs
 relative to the working directory.
 
 `tools/verify_sources.py`, `tools/verify_coverage.py` and
-`tools/verify_privacy.py` are the three executable checks; the remaining invariants are one-line commands recorded in
+`tools/verify_privacy.py` are this spec's executable checks, joined by
+`tools/verify_pools.py` for LOTTO-0009's invariants; the remaining invariants
+here are one-line commands recorded in
 §5. There is no test framework in this project and adding one is out of scope
 (§9) — these run under plain `python3`.
 
@@ -355,12 +380,16 @@ one payout page per draw a winning ticket touches — 3.7 MB measured
 
 **Network, per `check.py` run:** `results.py::draws()` is **not** memoised, so
 `issueWinPoolInfoPageQuery` is called once per pool by `history.all_draws()`
-and again per pool by `check.paying_combinations()` — about 12 requests before
-anything is scored. Then one `getIssueDrawResultDetail` per pool to establish
+and again per pool by `check.paying_combinations()` — 13 requests before
+anything is scored (7 pools, minus the always-empty `daily/1`, which is never
+asked for a paying set because no entry in it is scorable). Then one
+`getIssueDrawResultDetail` per pool to establish
 its paying set, plus one per distinct `(game, issue, pool, plusFlag)` a win
 lands on. `divisions()` **is** memoised, so a 7-line Multiplay ticket over 10
 draws costs at most 10 detail requests, not 70. Archive payout pages are
-cached to disk; only a first run fetches them.
+cached to disk; only a first run fetches them. **27 requests measured** for a
+whole run on 2026-08-01 with the archive cache warm (13 + 14); LOTTO-0009 §10
+carries the breakdown and the before/after.
 
 ## 11. What checks this
 

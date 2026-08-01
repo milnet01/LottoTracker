@@ -76,25 +76,30 @@ def all_draws(game, plus_flag):
     return _cache[key]
 
 
-def scorable(ticket):
-    """False when no source reaches back to this ticket's draws.
+def scorable(ticket, plus_flag):
+    """False when no source reaches back to this ticket's draws in this pool.
 
     Without this, a 2022 ticket silently takes the first N draws of 2025 --
     real draws, wrong ones -- and every check downstream reports it as fine
     because the count matches. 426 of 558 tickets fall in this window.
+
+    The pool is passed in rather than read off the ticket: a ticket is entered
+    in every tier its price paid for, and one of them can be checkable while
+    another is not. All 11 Daily Lotto Plus tickets are exactly that -- no
+    source carries daily/1, but their daily/0 entry scores normally.
     """
-    rows = all_draws(ticket.game, ticket.plus_flag)
+    rows = all_draws(ticket.game, plus_flag)
     return bool(rows) and ticket.start.strftime("%Y-%m-%d") >= rows[0]["date"]
 
 
-def covered(ticket):
-    """The draws a ticket actually covers: first N on or after its start.
+def covered(ticket, plus_flag):
+    """The draws one entry actually covers: first N on or after its start.
 
-    Empty for a ticket predating all known draws -- see scorable(). Callers
+    Empty for an entry predating all known draws -- see scorable(). Callers
     must treat empty as "cannot be checked", never as "did not win".
     """
-    if not scorable(ticket):
+    if not scorable(ticket, plus_flag):
         return []
     start = ticket.start.strftime("%Y-%m-%d")
-    rows = [d for d in all_draws(ticket.game, ticket.plus_flag) if d["date"] >= start]
+    rows = [d for d in all_draws(ticket.game, plus_flag) if d["date"] >= start]
     return rows[: ticket.ndraws]

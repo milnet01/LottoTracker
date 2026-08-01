@@ -35,6 +35,40 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tools/verify_privacy.py` confirms no real message content is tracked,
   comparing against the dump itself rather than a pattern.
 
+- **Record what each ticket cost** (LOTTO-0008)
+  `Ticket.cost` is the total the SMS charged for the whole ticket — every
+  board, every draw, every tier. The same figure is what derives the entered
+  pools, which is why the two were specified together.
+- **A fourth contract check** (LOTTO-0009)
+  `tools/verify_pools.py` asserts that every ticket's price resolves to real
+  tiers and that a ticket checkable in one pool is never reported as wholly
+  uncheckable. It transcribes the price table independently rather than
+  importing the derivation it is testing.
+
+### Fixed
+
+- **Score every draw a ticket was entered in, not just the top one**
+  (LOTTO-0009)
+  A "plus" game cannot be bought alone: the operator requires the base game
+  and runs a separate draw with its own prize pool for each tier, so a Lotto
+  Plus 2 ticket is three entries with three prize pools. Only the top tier was
+  being scored, so 675 of 1,233 paid entries — 55% — were never checked at
+  all. Which tiers were bought is now derived from the ticket price in whole
+  cents, because the printed game name states only the highest and, after the
+  2026-06-01 handover, stops stating even that. All 1,233 entries resolve;
+  a price matching no tier is reported, never guessed at.
+  **This found 30 further winning lines worth R1,790.40, of which R1,722.90 is
+  still claimable.** The claimable total moves R700.10 → R2,423.00. No
+  previously reported win changed or disappeared.
+- **Report what cannot be checked per entry, not per ticket** (LOTTO-0009)
+  A ticket can now be checkable in one pool and not another — all 11
+  `Daily Lotto Plus` tickets are, since no source publishes that pool while
+  their base Daily Lotto entry scores normally. `check.py` counts uncheckable
+  entries and splits the tickets behind them into wholly and partly
+  uncheckable, so a ticket with one dead pool is still scored on the rest
+  instead of being written off. The rule that no-data must never read as a
+  loss now holds at the level the data actually varies.
+
 ### Security
 
 - **Exclude all SMS content from version control** (LOTTO-0001)

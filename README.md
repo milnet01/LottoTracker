@@ -25,8 +25,9 @@ needs teaching. See [Adding your bank](#adding-your-bank).
 ## What it does
 
 - Pulls lottery SMSes off an Android phone — by USB, or over Wi-Fi
-- Parses ticket reference, numbers, game, start date and number of draws
+- Parses ticket reference, numbers, game, start date, draw count and price
 - Fetches draw results, including for draws before the 2026 handover
+- Works out every draw you paid to enter, from the price, and checks them all
 - Scores every line, expands Multiplay entries correctly, and prices each win
 - Flags what is still claimable, and when each prize expires
 
@@ -91,19 +92,33 @@ python3 check.py       # score every ticket
 ```
 
 ```
-437 of 558 tickets CANNOT BE CHECKED. They are not counted below, and are NOT losses.
-  426 predate all draw data (earliest: 2025-01-01)
+974 of 1233 ENTRIES CANNOT BE CHECKED. They are not counted below, and are NOT losses.
+  963 predate all draw data for their pool (earliest: 2025-01-01)
   11 in a pool no results source carries: daily/1
+  affecting 426 tickets wholly and 11 tickets partly
+    a partly-checkable ticket IS scored on its remaining pools, below
 
-2026-07-08  VAS00000000000  lotto/0  line A2  DIV 7 (match 2 + Bonus)  R30.00  expires 2027-07-08
+2026-05-04  VAS00000000000  lotto/0  line A2  DIV 7 (match 2 + Bonus)  R18.30  expires 2027-05-04
 ...
-STILL CLAIMABLE: R700.10
+STILL CLAIMABLE: R123.45
 ```
 
-Tickets are reported as **uncheckable** rather than as losses when nothing
+(The ticket reference and the win line above are made up. The counts are real.)
+
+**One ticket is usually several entries.** A "plus" game cannot be bought on
+its own — the lottery requires the base game, and runs a *separate draw with
+its own prizes* for each level. So a Lotto Plus 2 ticket is three entries with
+three chances, not one, and all three are checked. Which levels you paid for
+is worked out from the ticket price, because the game name printed in the SMS
+only ever names the highest one — and since June 2026 it doesn't name it at
+all.
+
+Entries are reported as **uncheckable** rather than as losses when nothing
 can score them — either they predate the results data (before 2025-01-01), or
 they are in a pool no source publishes. That distinction is deliberate and
-load-bearing: a ticket nobody can check is not a ticket that lost.
+load-bearing: a ticket nobody can check is not a ticket that lost. It works
+per entry, so a ticket that can be checked in one draw and not another is
+still scored on the one that can — it is never written off whole.
 
 Prizes expire **365 days** after the draw, which is why the output leads with
 what is still claimable rather than a lifetime total.
