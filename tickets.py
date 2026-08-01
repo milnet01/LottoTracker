@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Parse Standard Bank lottery ticket SMSes and score them against real draws.
+"""Parse Standard Bank lottery ticket SMSes into tickets. Scoring is check.py.
 
 Two SMS eras exist, because the bank changed its wording when Sizekhaya took
 over the licence on 2026-06-01:
@@ -78,7 +78,9 @@ def entered_pools(game, bought, cost, paid_lines, ndraws):
     exactly the silent wrong answer this derivation exists to replace.
     """
     tiers = TIER_PRICES[(game, "sizekhaya" if bought >= HANDOVER else "ithuba")]
-    if paid_lines:  # a message with no board lines must never reach the divide
+    # A message with no board lines, or one claiming zero draws, must never
+    # reach the divide - both are unresolved, not a crash.
+    if paid_lines and ndraws:
         # Whole cents on both sides. A quotient taken in floats can arrive as
         # 7.499999... and miss its tier, which would degrade the ticket to
         # name-only scoring - the behaviour being fixed here.

@@ -160,15 +160,23 @@ def main(argv=()):
         # readings can straddle a price change. They agree on every ticket in
         # the dump today, which makes this a latent boundary case, not a live
         # miscount - and this is what says so.
-        lag = sum(1 for t in tickets if t.bought.date() != t.start.date())
+        lag = [
+            (t.start.date() - t.bought.date()).days
+            for t in tickets
+            if t.start.date() != t.bought.date()
+        ]
         differ = sum(
             1 for t in tickets
             if (t.bought >= HANDOVER) != (t.start >= HANDOVER)
         )
+        # Reported as a difference with its signed range, not as "later": the
+        # comparison is an inequality, and a negative day count would mean a
+        # start date BEFORE the purchase, which is a different anomaly.
+        span = f" (by {min(lag)} to {max(lag)} days)" if lag else ""
         print(
-            f"era audit: {lag} of {len(tickets)} tickets have a start date "
-            f"later than the purchase date, {differ} where the two readings "
-            f"select different eras"
+            f"era audit: {len(lag)} of {len(tickets)} tickets have a start date "
+            f"differing from the purchase date{span}, {differ} where the two "
+            f"readings select different eras"
         )
 
     # INV-11, asserted against check.py's actual report rather than against the

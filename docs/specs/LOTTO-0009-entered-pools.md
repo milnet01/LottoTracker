@@ -30,11 +30,12 @@ thing, and appears in three renderings that are all the same pool: the full
 `Ticket.pools`, where the game is the ticket's; and the `game/plus_flag` string
 used in output, where `pool_id` is implied by `plus_flag`.
 
-**"Today" throughout §2 and §4 means *before this fix*, not now.** The document
-was written as a proposal and is kept in that tense, because the reasoning only
-makes sense against the state it argues from; §3 onward it is describing what
-to build. The Status line above says what actually shipped, and every figure
-below can be read as pre-fix unless it is labelled measured-after.
+**"Today" and "currently", everywhere below, mean *before this fix*.** The
+document was written as a proposal and is kept in that tense, because the
+reasoning only makes sense against the state it argues from. The Status line
+above says what actually shipped, and every figure below is a pre-fix figure
+**unless it is explicitly labelled as measured after the fix** — §7, §10, §12
+and the report shape in §4.6 carry such labels.
 
 **Derived is not scored, and this spec never conflates them.** Of the 558
 entries derived before this fix, only the ones on the 121 checkable tickets are
@@ -135,7 +136,7 @@ costs per board per draw. §4.3 matches on the cumulative; §4.7 apportions with
 the increment. Conflating them prices a R10.00 Lotto ticket at R22.50.
 
 **All values are given in whole cents**, because that is the unit §4.3 compares
-in; the rand figures are the same number for a human reader. A table in rands
+in; the rand figures beside them are the same amount for a human reader. A table in rands
 alone would force the implementer to convert with `float × 100` and reintroduce
 the representation error §4.3 forbids.
 
@@ -169,7 +170,7 @@ called by `parse()` and returning `(pools, resolved)`:
 ```text
 paid_lines          = Σ over the SMS's board lines of
                           C(n, 6) if game is lotto and n > 6 else 1   # Multiplay
-if paid_lines == 0  -> unresolved                    # no board lines: never divide
+if paid_lines == 0 or ndraws == 0 -> unresolved      # never divide by zero
 unit_cents, remain  = divmod(round(cost * 100), paid_lines * ndraws)
 if remain != 0      -> unresolved                    # not divisible: never guess
 top                 = the tier whose CUMULATIVE cents equals unit_cents,
@@ -303,7 +304,11 @@ more: on 5 tickets the name states a lower tier than the price (§2,
 consequence 2). Keeping them name-derived would leave a ticket whose
 `plus_flag` is absent from its own `pools`.
 
-Both known disagreement directions are handled, and only one occurs today:
+Both known disagreement directions are handled, and only one occurs today.
+**The table below applies when the price resolves**; when it does not, §4.3's
+fallback makes the *name* the answer, which is the one path on which a tier the
+price never paid for can be scored — see §6's third and fifth failure modes.
+INV-7 exists to keep that path empty:
 
 | Direction | Occurs in dump | Behaviour |
 |---|---|---|
@@ -357,7 +362,9 @@ not another.** All 11 `Daily Lotto Plus` tickets are exactly this.
 
 So `check.py` reports uncheckable **entries**, and states the ticket count
 separately as *wholly* and *partly* uncheckable. A partly-uncheckable ticket must
-never be counted as wholly uncheckable, and must never be counted as scored.
+never be counted as wholly uncheckable, and **its uncheckable entries** must
+never be counted as scored. The ticket itself *is* scored — on its remaining
+pools — which is the whole point; only the dead entries are excluded.
 
 The report shape is part of the contract, because INV-11 is an assertion about
 it. Angle brackets are counts the run produces; the wording is fixed:
@@ -373,17 +380,22 @@ it. Angle brackets are counts the run produces; the wording is fixed:
 **Wholly** is the word throughout — the report, the prose and INV-11 — against
 `partly`. **Double-counted** means a ticket appearing in both `<f>` and `<p>`;
 the two tallies partition the affected tickets, so their overlap is always zero
-and INV-11 asserts it.
+and INV-11 asserts it. Under the construction above (`any` against `not any`
+over the same set) that term *cannot* fail — it is a regression guard against a
+future implementation that builds the two lists separately, not live coverage.
+INV-11's load-bearing term is `0 reported as wholly uncheckable`.
 
-Today `<n>` is 1233 and `<pools>` is `daily/1`, but both are computed. The pool
+Measured after the fix, `<n>` is 1233 and `<pools>` is `daily/1`, but both are
+computed rather than fixed. The pool
 list must be derived **per entry**, not per ticket: today's
 `sorted({f"{t.game}/{t.plus_flag}" ...})` reads the top tier, so under §4.4's
 redefinition a ticket uncheckable only in `lotto/1` would report `lotto/2`. It
 becomes `sorted({f"{t.game}/{pf}" for t, pf in no_pool})`, where `no_pool` is
 the uncheckable entries whose pool has **no draws at all** — not every
-uncheckable entry. Built over all of them it would list six pools under a line
-that reads "in a pool no results source carries", which is false of five of
-them; INV-11 does not assert the pool string, so that would ship silently.
+uncheckable entry. Measured 2026-08-01: built over all of them it would list
+all **seven** pools under a line that reads "in a pool no results source
+carries", which is false of six of them. INV-11 does not assert the pool
+string, so that would ship silently.
 
 **The report body moves out of `__main__` into a function**, because INV-11
 asserts against it and `check.py`'s reporting block is currently unreachable by
@@ -514,9 +526,9 @@ a handle.
   purchase timestamp rather than the first draw date, for the reason §4.3 gives.
   Both readings agree on every ticket in the dump today.
 - **An unresolved price** — a total matching no tier, one not divisible by
-  `paid_lines × ndraws`, or a message with no board lines at all
-  (`paid_lines == 0`, which must never reach the division). Handled as §4.3
-  specifies; INV-7 is what makes it loud.
+  `paid_lines × ndraws`, or a message with no board lines at all or claiming
+  zero draws (either makes the divisor zero, and neither must reach the
+  division). Handled as §4.3 specifies; INV-7 is what makes it loud.
 
 ## 7. Tests
 
@@ -676,8 +688,10 @@ Twelve rows, four `nothing`.
   pool up in `PAYOUT_SLUG` — a missing key is a `KeyError` on a money path.
   Verified 2026-08-01: `PAYOUT_SLUG[("lotto", 1)]` is `lotto-plus-1`, `SLUGS`
   carries the same, and `archive_results.json` holds 165 `lotto:1` draws from
-  2025-01-01. Nothing checks this automatically — a future pool added to §4.2
-  without its archive slug fails only when a win lands in it.
+  2025-01-01. `history.py::POOL_NAMES` needs the key too, and is the least
+  forgiving of the three — `all_draws()` indexes it unguarded, so a missing
+  entry there fails on **every** run rather than only when a win lands. Nothing
+  checks any of this automatically.
 - `ROADMAP.md` — LOTTO-0008 and LOTTO-0009 flip on ship; LOTTO-0002 unblocks.
 - `README.md` — the sample output and the uncheckable wording change.
 - `CHANGELOG.md` — a `Fixed` entry; this changes reported winnings.
@@ -686,7 +700,8 @@ Twelve rows, four `nothing`.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
-| 4 | 2026-08-01 | 2 | 0 | 2 | 5 | 9 | **First loop after implementation** — the doc re-read against the code built from it. 18 verified findings fixed, 2 dismissed, 0 deferred. Both lanes independently found the same top item, and it was an *implementation* gap rather than a doc defect: §4.3 cited `tools/verify_pools.py --era-audit` as the source of its "319 of 558" and "0 tickets where the eras differ" figures, and the shipped script parsed no arguments at all, so the documented command silently no-opped and both figures were unsourced. Fixed in code, not by deleting the claim — and the fix went further than the flag, because §11 credited the same script with catching a wrongly-taken era while it read the parser's own `bought` and would have agreed with a regression. It now re-reads each SMS's epoch from the dump and fails any ticket whose `bought` differs; red-tested by regressing `load()` to drop the timestamp (558 mismatches, exit 1, and the lag figure collapses 319 → 0). `--era-audit` now prints 319, exactly as claimed. Second HIGH: §4.6's one implementation snippet built the "pool no source carries" line from *all* uncheckable entries rather than the no-source subset, which would have printed six pools under a line that is false of five of them, with no invariant asserting the string. Also fixed: `uncheckable_report()`'s return shape left `wholly`/`partly` described as counts when INV-11's overlap term requires them to be the ticket lists; §7's blanket "must not import the derivation it is testing" contradicted INV-11's requirement to call `uncheckable_report()`, now scoped to predicates rather than imports; §7's INV-7 red test said the price row was "removed" when removing the key raises `KeyError` and only emptying it produces `unresolved`; and the §12 archive precondition for `lotto/1` — a pool nothing scored before this fix — was unstated on a path where a missing `PAYOUT_SLUG` key is a `KeyError` on real money (verified present). **Most of the LOW tail was collateral from this session's own fold-back edits** — the new "implemented" Status line put the document's deliberate pre-fix present tense in conflict with itself, now signposted once in §1 rather than re-tensed sentence by sentence. Dismissed: no TOC (same evidence as loop 1 — the sibling LOTTO-0001 carries none, and it changes nothing an implementer builds); "Twelve rows, four `nothing`" (recounted, correct). |
+| 5 | 2026-08-01 | 1 | 0 | 1 | 4 | 6 | **Converged.** 11 verified findings fixed, 0 deferred. The one HIGH was a sentence that, read alone, undid the fix's main win: §4.6 said a partly-uncheckable ticket *"must never be counted as wholly uncheckable, and must never be counted as scored"* — the second clause taking the ticket as its subject, so it instructed the implementer to exclude exactly the 11 `Daily Lotto Plus` tickets whose base entries this spec exists to recover. Now scoped to the entries. Also real: §4.4's name-versus-price table stated "price wins" unconditionally, while §4.3's unresolved path makes the *name* the answer — the one path that can score a tier nobody paid for, now named as such and cross-linked to §6; and `ndraws == 0` reached the divisor unguarded, a `ZeroDivisionError` where §4.3 promises `unresolved` (fixed in code and in the pseudocode). **Of the remaining nine findings, six were collateral from loop 4's own fixes** — the "today" signpost loop 4 added was itself violated two lines from where §4.6 uses "today" in the after-fix sense; the new §4.6 snippet said six pools where measurement says seven; and loop 4's new `--era-audit` claimed "later than" while testing inequality, now reporting the signed 1-to-4-day range so the spec's own "1–4 days" claim is sourced too. **That ratio — 6 collateral against 3 draft defects, after loop 4's tail was also mostly collateral — is the stop-and-consolidate trigger, so the run ends here rather than at the loop cap.** The document is 700 lines and §4 remains the split candidate loop 3 named; that is the consolidation to make before the next substantive edit, not another cold read. |
+| 4 | 2026-08-01 | 2 | 0 | 2 | 5 | 9 | **First loop after implementation** — the doc re-read against the code built from it. 18 verified findings fixed, 2 dismissed, 0 deferred. Both lanes independently found the same top item, and it was an *implementation* gap rather than a doc defect: §4.3 cited `tools/verify_pools.py --era-audit` as the source of its "319 of 558" and "0 tickets where the eras differ" figures, and the shipped script parsed no arguments at all, so the documented command silently no-opped and both figures were unsourced. Fixed in code, not by deleting the claim — and the fix went further than the flag, because §11 credited the same script with catching a wrongly-taken era while it read the parser's own `bought` and would have agreed with a regression. It now re-reads each SMS's epoch from the dump and fails any ticket whose `bought` differs; red-tested by regressing `load()` to drop the timestamp (558 mismatches, exit 1, and the lag figure collapses 319 → 0). `--era-audit` now prints 319, exactly as claimed. Second HIGH: §4.6's one implementation snippet built the "pool no source carries" line from *all* uncheckable entries rather than the no-source subset, which would have printed all seven pools under a line that is false of six of them, with no invariant asserting the string. (Loop 4's own fix put that figure at six/five; loop 5 measured it.) Also fixed: `uncheckable_report()`'s return shape left `wholly`/`partly` described as counts when INV-11's overlap term requires them to be the ticket lists; §7's blanket "must not import the derivation it is testing" contradicted INV-11's requirement to call `uncheckable_report()`, now scoped to predicates rather than imports; §7's INV-7 red test said the price row was "removed" when removing the key raises `KeyError` and only emptying it produces `unresolved`; and the §12 archive precondition for `lotto/1` — a pool nothing scored before this fix — was unstated on a path where a missing `PAYOUT_SLUG` key is a `KeyError` on real money (verified present). **Most of the LOW tail was collateral from this session's own fold-back edits** — the new "implemented" Status line put the document's deliberate pre-fix present tense in conflict with itself, now signposted once in §1 rather than re-tensed sentence by sentence. Dismissed: no TOC (same evidence as loop 1 — the sibling LOTTO-0001 carries none, and it changes nothing an implementer builds); "Twelve rows, four `nothing`" (recounted, correct). |
 | 3 | 2026-08-01 | 2 | 2 | 3 | 6 | 5 | **Converged by cap (3 loops).** All 16 verified findings fixed; 0 deferred. Both lanes found the same CRITICAL, again self-inflicted: loop 2 said capturing the ticket price as a *named* group would leave `parse()`'s positional indices untouched. It does not — Python numbers named groups alongside unnamed ones, so `head.group(1)` would return `"30.00"`, miss `GAME_MAP`, and return `None` for **every** message (verified by running both patterns; 558 tickets silently dropped, which LOTTO-0001 INV-6 would then fail). Second CRITICAL: §4.7's cost identity mixed units — §4.2 became a cents table in loop 2 while `Ticket.cost` stayed rands, a 100× error in the spend total. Also: the epoch→`datetime` conversion had no divisor and no timezone, the one detail `bought` was added for; INV-11 asserted against `check.py`'s report, which lives in `__main__` and no importer can reach, so §4.6 now moves it into `uncheckable_report()`; §4.6's only implementation hint quoted the per-ticket pool expression its own thesis obsoletes; and `paid_lines == 0` reached a `divmod` that would raise rather than resolving to `unresolved`. Dismissed on evidence (both lanes, twice now): INV-11's `11` is not a lower bound — `archive_results.json` shows `lotto:0/1/2` all start 2025-01-01 and `powerball:0/1` both 2025-01-03, so `daily/1` is the only pool that can make a ticket partly uncheckable; the evidence is now stated in INV-11 so it stops being re-raised. **Collateral outnumbered draft defects for a second consecutive loop (≈9:2, after 14:4), which is this skill's stop-and-split trigger** — the run exits at the cap rather than looping a fourth time, and §4 should be split before implementation (see the run's closing note). |
 | 2 | 2026-08-01 | 2 | 1 | 4 | 6 | 7 | 17 verified fixed, 1 dismissed on evidence (INV-11's literal `11` was called a lower bound; `archive_results.json` shows every pool within a game shares an earliest draw date — `lotto:0/1/2` all 2025-01-01, `powerball:0/1` both 2025-01-03 — so `daily/1`, the one empty pool, is the only source of partial uncheckability). **14 of 18 were collateral from loop 1's own fixes**, 4 were draft defects — the signal that the loop-1 sweep under-ran, answered here by a whole-document consistency pass rather than by looping harder. Both lanes again found the same CRITICAL, this time self-inflicted: loop 1 added `bought` for the era but left `parse()`'s signature and its era default unstated, and all three §5 fixtures call `parse()` with one argument — INV-9's R22.50 PowerBall resolves to two pools under Ithuba and none under Sizekhaya, so the invariant passed or failed on an unspecified default. Also collateral: three references to a `§2.2` that does not exist; `//` floor division silently rounding a non-divisible price onto a valid tier, defeating the guard INV-7 exists to be; a cents comparison rule against a rands-only table, forcing the `float × 100` it forbids; and `pools[-1]` assigned to two scalars. Draft defects: "558 of 1233 **scored**" counted 437 excluded tickets as scored — the project's one forbidden conflation, in the figure the fix is justified by; §10 undercounted `lotto/1` by one request because `results.draws()` is not memoised; §7 red-tested 3 of 5 invariants. |
 | 1 | 2026-08-01 | 2 | 1 | 5 | 7 | 5 | All 18 verified findings fixed; 0 unverified, 1 dismissed (no TOC — the sibling LOTTO-0001 carries none at 394 lines, and it changes nothing an implementer builds). Both lanes independently found the same CRITICAL: §4.5 re-pointed the scoring loop at the entry but left `check.py::amount()` reading `ticket.pool_id`/`ticket.plus_flag`, so all 675 newly-scored entries would have been priced from the top tier's division table — wrong money in both directions. Also: §4.2 conflated incremental and cumulative board prices, which would have priced a R10.00 Lotto ticket at R22.50; the era was taken from `Ticket.start`, which is the first draw date rather than the purchase date (319 of 558 differ by 1–4 days — the SMS epoch was available and discarded); INV-11 asserted a property of the derivation while claiming one about `check.py`'s report, and §11 credited a catcher that did not exist; §12 omitted LOTTO-0001 INV-6, whose `tools/verify_coverage.py` imports the `covered()` this spec re-signatures; `tools/verify_pools.py` was quoted as measured when it does not exist yet; float equality on a divided price could silently degrade a ticket to name-only scoring; and §2 said 444 tickets were under-scored where 449 are. |

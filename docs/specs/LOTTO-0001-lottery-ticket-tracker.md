@@ -19,9 +19,11 @@ Tickets arrive only as SMS on a Galaxy S21 and are never checked. Three
 things make manual checking impractical, and each shapes the design:
 
 1. **Volume.** 558 ticket purchases since 2022-11-09, covering 745 played
-   lines once Multiplay entries are expanded. Most tickets run for 10 draws,
-   so a single ticket is 10 separate checks per line. Only 132 are checkable
-   at all — 426 predate every available draw record (§4.2, §4.4). Of those
+   lines once Multiplay boards are expanded. Most tickets run for 10 draws,
+   so a single ticket is 10 separate checks per line **per pool it was entered
+   in** — a Lotto Plus 2 ticket is 30. Only 132 tickets are checkable
+   at all (259 of 1233 entries) — 426 predate every available draw record
+   (§4.2, §4.4). Of those
    132, 11 are checkable in one pool and not another, because no source
    publishes `daily/1`; LOTTO-0009 scores those on the pools that remain and
    counts in **entries** rather than tickets, since one ticket is entered in
@@ -91,8 +93,12 @@ new   Standard Bank: Played R99.00 Powerball
       A: 08 14 27 33 41 -07
 ```
 
-The game name maps to a results pool. This table is load-bearing — an
-implementer cannot derive `winPoolId` or `plusFlag` from anything else.
+The game name maps to a results pool. This table is load-bearing and cannot be
+derived from anything else *in the SMS text* — but since LOTTO-0009 it is no
+longer the authority on `winPoolId` / `plusFlag`. **The ticket price is**, and
+this table is the fallback used when a price resolves to no tier. An
+implementer who builds name-authoritative scoring from the table alone
+reproduces the bug LOTTO-0009 removed.
 
 **Amended by LOTTO-0009: this table maps an SMS to the one pool its name
 states, which is the *top* tier only.** A PLUS game cannot be bought alone, so
@@ -174,9 +180,14 @@ gates this and `covered()` returns empty for such an entry. Both take the pool
 as an argument rather than reading it off the ticket, because a ticket can be
 checkable in one pool and not another. Without the gate a 2022 ticket silently
 takes the first N draws of 2025 - real draws, wrong ones - and every
-count-based check still reports it as correct. 426 of 558 tickets fall wholly
-in this window (974 of 1233 entries); `check.py` reports them as uncheckable
-rather than as losses, at entry granularity (LOTTO-0009 §4.6).
+count-based check still reports it as correct. **963 of 1233 entries** fall in
+this window, on 426 of 558 tickets that fall in it wholly. A further 11 entries
+are uncheckable for the *other* reason — `daily/1`, which no source publishes
+(§4.2) — for 974 uncheckable entries in total. The two reasons are counted
+separately and must stay that way: merging them is how "nobody publishes this"
+starts reading as "the data does not go back far enough". `check.py` reports
+both as uncheckable rather than as losses, at entry granularity
+(LOTTO-0009 §4.6).
 
 Prize expiry uses `check.py::CLAIM_DAYS = 365`, the SA claim deadline. A win
 older than that is counted in the lifetime total but not listed individually,
@@ -209,7 +220,8 @@ bottom tier of `2 + Bonus`, others a plain `2`. When the bonus-qualified
 label is absent from a payout table, `check.py::amount()` falls back to the
 plain match tier, which is the one that paid.
 
-`tickets.py` parses and nothing else - `check.py` is the only scoring path.
+`tickets.py` parses, and since LOTTO-0009 also derives which pools a ticket was
+entered in from its price - `check.py` is still the only scoring path.
 
 ## 5. Invariants
 
@@ -237,7 +249,7 @@ plain match tier, which is the one that paid.
   by design — the archive sorts ascending, the API preserves drawn order.
 
 - **INV-4** — No file containing real SMS content is ever tracked by git.
-  *Test:* `python3 tools/verify_privacy.py` → `14 tracked files, 0 leak(s) [content+pattern]`
+  *Test:* `python3 tools/verify_privacy.py` → `17 tracked files, 0 leak(s) [content+pattern]`
   *Breaks when:* a dump is committed under a name `.gitignore` does not
   match, or real message content is pasted into prose as an "example". Two
   leaks got past weaker forms of this check, one per review loop, and the
@@ -295,13 +307,22 @@ plain match tier, which is the one that paid.
   every `Played R` message in the dump must parse: a purchase for a game
   outside `GAME_MAP` fails the check rather than being quietly skipped, which
   is the intended behaviour.
-- **A ticket predates all draw data.** Excluded by `history.py::scorable()`
-  and reported by `check.py` as uncheckable. It is never scored against later
-  draws, and never counted as a loss.
-- **A ticket's window runs past the last known draw.** Scored over the draws
+- **An entry predates all draw data for its pool.** Excluded by
+  `history.py::scorable(ticket, plus_flag)` and reported by `check.py` as
+  uncheckable. It is never scored against later draws, and never counted as a
+  loss. The *ticket* is excluded only when every one of its entries is; one
+  checkable pool is enough for it to be scored and reported as partly
+  uncheckable (LOTTO-0009 §4.6).
+- **An entry's window runs past the last known draw.** Scored over the draws
   that exist so far. `tools/verify_coverage.py` distinguishes this from a real
   gap, including the case where a ticket is newer than every known draw and no
   draws are available at all; `check.py` itself does not report the shortfall.
+- **A ticket's price matches no board price on record.** `entered_pools()`
+  returns unresolved, `pools` falls back to the single pool the game name
+  states, and `check.py` prints the count — loudly, because that fallback is
+  the project's pre-LOTTO-0009 behaviour and is invisible otherwise. It is the
+  one path on which a tier the ticket never paid for could be scored.
+  LOTTO-0009 INV-7 asserts the count is zero.
 - **No division matches a win's label.** The line is **dropped**, not listed
   at zero: `check.py::check()` gates on `paying_combinations()` before
   `amount()` runs. `amount()`'s 0.00 return is reachable only for a label
@@ -357,12 +378,12 @@ have agreed on every run.
 - The web page UI — tracked by LOTTO-0002.
 - The verified-but-unfixed tail from cold-eyes loop 3 — tracked by LOTTO-0007.
 - Automatic ingestion of new tickets as they arrive — tracked by LOTTO-0003.
-- A test framework; the two verify scripts are deliberately dependency-free.
+- A test framework; the four verify scripts are deliberately dependency-free.
 - Tickets predating all draw data — 426 of 558. The gate is per pool (each
   pool's own earliest known draw, 2025-01-01 for the earliest), not a global
   date. The limit is a configured default, not a source limit —
   `backfill.build(years=(2025, 2026))` — and all are long past the 365-day
-  claim deadline. Widening the range is LOTTO-0006. They are excluded by `history.py::scorable()` and reported
+  claim deadline. They are excluded by `history.py::scorable()` and reported
   as uncheckable, not silently dropped. Extending coverage is LOTTO-0006.
 
 ## 10. Resource cost
@@ -380,11 +401,14 @@ one payout page per draw a winning ticket touches — 3.7 MB measured
 
 **Network, per `check.py` run:** `results.py::draws()` is **not** memoised, so
 `issueWinPoolInfoPageQuery` is called once per pool by `history.all_draws()`
-and again per pool by `check.paying_combinations()` — 13 requests before
-anything is scored (7 pools, minus the always-empty `daily/1`, which is never
-asked for a paying set because no entry in it is scorable). Then one
-`getIssueDrawResultDetail` per pool to establish
-its paying set, plus one per distinct `(game, issue, pool, plusFlag)` a win
+and once per pool by `check.paying_combinations()` — **7 + 6 = 13 requests**
+before anything is scored. Seven for `all_draws()`, one per pool; six for the
+paying sets, because the always-empty `daily/1` is never asked for one (no
+entry in it is scorable). **`paying_combinations()` is itself memoised** in
+`check.py::_struct`, keyed `(game, plus_flag, pool_id)` — without that it would
+fire once per *scorable entry*, 259 of them, against a free public endpoint.
+Establishing each paying set costs one `getIssueDrawResultDetail`, and then one
+more per distinct `(game, issue, pool, plusFlag)` a win
 lands on. `divisions()` **is** memoised, so a 7-line Multiplay ticket over 10
 draws costs at most 10 detail requests, not 70. Archive payout pages are
 cached to disk; only a first run fetches them. **27 requests measured** for a
@@ -407,16 +431,21 @@ carries the breakdown and the before/after.
 | §4.4 label grammar | **nothing** — a feed-side rename of `MATCH n` drops every win with no error |
 | archive payout scrape | **nothing** — an unscrapable payout page prices every archive win at R0.00 |
 | `backfill.py` date parsing | **nothing** — an abbreviated month in a href raises `KeyError`, not an empty result |
-| Multiplay on non-Lotto games | **nothing** — the PowerBall branch is tested first, so a >6-number PowerBall board silently becomes one line |
+| Multiplay on non-Lotto games | `tools/verify_pools.py` (LOTTO-0009 INV-7) — the PowerBall branch is tested first, so a >6-number PowerBall board still becomes one line, but the price paid for more, so it resolves to no tier and exits non-zero. The wrong line *count* itself is still unchecked |
+| §4.2 pools derived from price, not from the game name | `tools/verify_pools.py` (LOTTO-0009 INV-7, INV-8) |
 
 ## 12. Cross-doc impact
 
-README.md (usage), ROADMAP.md (LOTTO-0002 onward), CHANGELOG.md.
+README.md (usage), ROADMAP.md (LOTTO-0002 onward), CHANGELOG.md, and
+`docs/specs/LOTTO-0009-entered-pools.md`, which amends this document in §2,
+§4.2, §4.4, INV-6, §7, §10 and §11 — it changed the unit of work from the
+ticket to the entry.
 
 ## 13. Cold-eyes loop log
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 4 | 2026-08-01 | 2 | 0 | 3 | 6 | 8 | **Retrofit pass, after LOTTO-0009 changed the unit of work from the ticket to the entry.** All 17 verified findings fixed, 1 dismissed, 0 deferred. Both lanes independently found the same two HIGH items. First: §4.2 still said an implementer *"cannot derive `winPoolId` or `plusFlag` from anything else"* — false since `tickets.py::entered_pools()` derives both from the price, and the sentence sat directly above its own amendment, so a top-down reader was told the table was authoritative before being told it was not. Second: §4.4's *"(974 of 1233 entries)"* merged the two uncheckable reasons this project exists to keep apart — 963 entries predate their pool's data, and the other 11 are `daily/1`, which nobody publishes. Third HIGH: §11 still credited **nothing** with catching a >6-number PowerBall board when LOTTO-0009 INV-7 now exits non-zero on one, so two live contracts asserted opposite things about the same known defect. Also fixed: §10's 13-request budget was unreachable from what the document stated, because `paying_combinations()`'s memoisation was never mentioned and `check()` calls it once per scorable **entry** — an implementer building to the text would have fired 259 requests at a free public endpoint; §6's failure modes still excluded whole tickets; §6 had no failure mode at all for the shipped unresolved-price path; §9 said "the two verify scripts" where §7 names four; and INV-4's expected tracked-file count was two files stale. Dismissed on evidence: a lane read §11's `KeyError` claim against `backfill.py::payouts()`, which raises `IndexError` — the row is about `parse_page()`'s `MONTHS[...]` lookup, which does raise `KeyError`. |
 | 1 | 2026-08-01 | 2 | 2 | 4 | 5 | 7 | All verified findings fixed. Both lanes independently found the same CRITICAL: 426 tickets predating all draw data were scored against Jan-2025 draws, invisible to INV-6 because its test was a tautology over `covered()`'s own slice. Fixed in code (`history.py::scorable()`), in the checks (INV-4 and INV-6 rewritten to be non-circular) and in the spec. Corrected the lifetime total R1,727.10 → R960.40; claimable R800.20 unaffected. |
 | 2 | 2026-08-01 | 2 | 2 | 4 | 4 | 6 | All verified findings fixed. Both lanes independently found a real ticket reference (redacted; from the user's own messages) tracked in `README.md` — INV-4 reported 0 because its pattern was anchored on `Ref:`, which pasted program output drops. Scrubbed, pattern broadened, git history rewritten before any push. Also: §6 claimed an unmatched division is "listed at zero" when `check()` drops it before `amount()` runs; `paying_combinations()` returned `{}` for a pool with no recent draw, scoring the whole pool as losses silently (now raises); `verify_coverage.py` raised IndexError for a ticket newer than every known draw; §10 named an endpoint that does not exist and undercounted requests ~4×; §3 and §9 disagreed on whether the web UI is in scope. |
 | 3 | 2026-08-01 | 2 | 3 | 4 | 2 | 5 | Converged by cap. Fixed: §4.2's four example SMSes were verbatim real messages (numbers, dates, amounts — only the reference had been scrubbed), now synthetic and verified absent from the dump; `Daily Lotto Plus` was aliased onto plain Daily Lotto's pool, scoring 11 tickets against another game (now an empty pool, reported uncheckable — claimable corrected R800.20 → R700.10); INV-6's check still imported `history.scorable()`, the predicate under test, so a regressed `scorable()` would have passed — now recomputed independently and red-tested, plus a 90% floor for missing data; added the game-name and division-label tables an implementer cannot derive; KDE Connect documented as inspection-only. Five verified findings deferred to LOTTO-0007. |
