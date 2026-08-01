@@ -34,7 +34,8 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   (LOTTO/PLUS 1/PLUS 2 Rules 21Sep25 §1.5, §1.16, §1.17). `tickets.py::GAME_MAP`
   maps an SMS to one pool, so a `Lotto Plus 2` ticket is scored against
   `lotto/2` alone and its `lotto/0` and `lotto/1` entries are never checked.
-  Affects 444 of 558 tickets; 558 of 1,233 paid entries are scored today (45%).
+  449 of 558 tickets are entered in more than one pool (444 name a PLUS tier,
+  5 more are priced as one); 558 of 1,233 paid entries are scored today (45%).
   The printed game name is unreliable — the suffix is sometimes omitted, and
   Standard Bank dropped it entirely after the 2026-06-01 handover — so the
   entered tiers are derived from the ticket price, which resolves 558/558
