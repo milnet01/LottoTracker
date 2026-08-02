@@ -113,6 +113,54 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   editing. LOTTO-0001 was retrofitted in the same pass (its own loop 4, 17
   findings) — its unit is now the entry.
 
+- 📋 **LOTTO-0010** Read the payout SMSes and reconcile them against computed wins.
+  Kind: implement. Source: user-correction-2026-08-02.
+  Layman: the bank already told you what it paid you — check our maths against it.
+  The dump holds 575 messages: 558 ticket purchases and 17 others.
+  `tickets.py::parse()` returns `None` for all 17, so they are read and
+  discarded on every run. **14 of them carry a `Ref:VAS…` that matches a ticket
+  we already parse**, which is the join — the same reference `Ticket.ref`
+  already holds, so no new parsing key is needed. The remaining 3 are a
+  different message shape and are not payouts.
+  They are the only *external* ground truth this project has; every existing
+  check verifies the code against itself or against the two results sources.
+  **Measured 2026-08-02, and the result is not what it looks like:** all 14 paid
+  tickets are from 2023, which predates the earliest draw data (2025-01-01), so
+  every one is `scorable() == False` and we compute no win for any of them.
+  Overlap with the 46 tickets we *do* report wins for is exactly zero.
+  That makes this item worth doing for a different reason than expected:
+  - **Today it validates the uncheckable logic, not the scoring.** The bank paid
+    out on 14 tickets this project deliberately refuses to score. Had they been
+    scored against the wrong draws — the bug this project was built after
+    hitting — 14 real wins would have been reported as R0.00. That is external
+    confirmation of INV-6 and of `history.py::scorable()`, and it is the only
+    such confirmation available.
+  - **It becomes a scoring check the moment LOTTO-0006 lands.** Backfill results
+    to 2023 and these 14 stop being unscorable, at which point they are 14
+    known-correct answers to test the whole engine against — ticket in, amount
+    out, compared to what the bank actually paid.
+  Build it as `tools/verify_payouts.py` beside the other four, exit-code style.
+  Feeds LOTTO-0011; upgrades LOTTO-0006 from low-value to test-bearing.
+
+- 📋 **LOTTO-0011** Stop saying "still claimable" — the bank pays automatically.
+  Kind: fix. Source: user-correction-2026-08-02.
+  Layman: the wording implies you have to go and collect money that is already
+  in your account.
+  `check.py` prints `STILL CLAIMABLE:` and computes `expired` from
+  `CLAIM_DAYS = 365`; README.md and `docs/specs/LOTTO-0002-local-web-page.md`
+  §4.5 carry the same framing, and LOTTO-0002's whole first page section is
+  called "Claimable now". The user is paid the winnings directly, so the figure
+  is money **already received**, not money outstanding — the current wording
+  invites a trip to a lottery office for a prize that was banked months ago.
+  Two things to settle before rewording, neither of which should be guessed:
+  (a) whether a threshold exists above which a South African prize must still be
+  claimed in person, in which case expiry stays meaningful for that band only;
+  (b) what the 365-day expiry then means for the rest — likely informational,
+  not actionable. LOTTO-0010's payout messages are the evidence for both.
+  Do not simply delete the expiry logic: an unpaid large prize is exactly the
+  case where a deadline would matter, and that is the case this project exists
+  to catch.
+
 - 📋 **LOTTO-0003** Pick up new tickets automatically as the SMS arrives.
   Kind: implement. Source: user-request-2026-08-01.
   Layman: new tickets appear by themselves, without plugging the phone in.
@@ -142,6 +190,35 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Layman: make it impossible to accidentally publish your messages.
   `tools/verify_privacy.py` now does the checking, but someone must remember
   to run it. A pre-commit hook would make it structural.
+  **A second, separate gap found 2026-08-02, and the hook does not close it.**
+  `verify_privacy.py` compares tracked files against the dump's *text*, so it
+  catches content that was copied. It cannot catch content that merely
+  *identifies*: LOTTO-0002's spec drafts twice stated facts that pin a single
+  real ticket while quoting nothing from it — a purchase week plus draw count
+  over a two-ticket population, and one win's exact amount with a derivable
+  draw date. Both passed the checker cleanly; both were caught by a human-style
+  read in review.
+  So the hook is worth building and must not be mistaken for completeness. Note
+  it in the README as "catches copied content, not inferred identity", and keep
+  the reviewer's eye on aggregates in any prose that quotes figures.
+
+- 📋 **LOTTO-0012** Retry the results API instead of dying on its first refusal.
+  Kind: fix. Source: in-session-2026-08-02.
+  Layman: the lottery website drops connections a lot; try again instead of
+  giving up.
+  `results.py::_post()` calls `urlopen` once with no retry. Measured while
+  writing LOTTO-0002's spec: **four of seven** build attempts failed with
+  `URLError(SSL: UNEXPECTED_EOF_WHILE_READING)`, and each failure aborts the
+  whole run — `check.py`, `tools/verify_*.py` and (once it exists) the page's
+  refresh alike, since all of them reach the API through this one function.
+  A bounded retry with backoff in `_post()` fixes every caller at once, which is
+  the reason to put it there rather than in each script.
+  Bound it: 3 attempts, exponential backoff, and re-raise the original error on
+  exhaustion. Never a bare `except: pass` — a silently empty result set is the
+  "no data reads as no win" failure this project exists to prevent, arriving
+  through the network layer.
+  LOTTO-0002 §6 and INV-18 already specify the page's behaviour when this fails,
+  so that item does not block on this one; this reduces how often it happens.
 
 - 💭 **LOTTO-0005** Support other banks' ticket SMS formats.
   Kind: feature. Source: user-request-2026-08-01.
@@ -156,7 +233,11 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Verified but unfixed at the loop cap; each has a §11 row in
   `docs/specs/LOTTO-0001-lottery-ticket-tracker.md`:
   (a) an unscrapable payout page prices every archive-era win at R0.00
-  instead of raising, unlike `paying_combinations()` which does raise;
+  instead of raising, unlike `paying_combinations()` which does raise —
+  **do this one first: it is the project's cardinal rule ("no data must never
+  read as did not win") violated by shipped code, on a money path, and every
+  other item in this list is cosmetic beside it. R0.00 is indistinguishable
+  from a real losing line in `check.py`'s output;**
   (b) `backfill.py::parse_page()` raises `KeyError` on an abbreviated month
   in a href rather than skipping the row;
   (c) INV-5's grep sees only a double-quoted `"MATCH <digit>` literal — it
@@ -166,9 +247,19 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   board would silently collapse to one line (no such ticket exists today);
   (e) §8's "~30 lookups a month" is not recomputed from §10's request model.
 
-- 💭 **LOTTO-0006** Backfill results earlier than 2025-01-01.
-  Kind: enhancement. Source: in-session-2026-08-01.
-  Layman: check really old tickets too.
-  Low value: prizes expire after 365 days, so these can no longer be claimed.
-  Note the 2025-01-01 floor is a configured default in
+- 📋 **LOTTO-0006** Backfill results earlier than 2025-01-01.
+  Kind: enhancement. Source: in-session-2026-08-01; re-valued 2026-08-02.
+  Layman: check really old tickets too — and it would prove the maths is right.
+  The 2025-01-01 floor is a configured default in
   `backfill.build(years=(2025, 2026))`, not a limit of the archive itself.
+  **Promoted from 💭 to 📋 on 2026-08-02.** Both reasons it was parked have gone:
+  it was "low value" because prizes expire after 365 days and could no longer be
+  claimed, but the bank pays winnings out automatically (LOTTO-0011), so an old
+  win is money already received rather than money forfeited — and reporting it
+  correctly still matters.
+  The stronger reason is that it now comes with a **test oracle**. LOTTO-0010
+  found 14 payout messages, all for 2023 tickets, all currently unscorable.
+  Backfilling to 2023 converts them into 14 tickets whose correct answer is
+  already known from the bank's own record — the only end-to-end check of
+  parsing, pool derivation, matching and pricing this project can have.
+  Do LOTTO-0010 first: without the reconciliation script the oracle is unread.
