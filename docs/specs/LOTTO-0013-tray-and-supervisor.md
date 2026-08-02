@@ -86,7 +86,9 @@ share one test script (§7).
 
 ```text
 supervise.py  stdlib only. Mints the token, resolves the port, spawns and
-              reaps the server child. Never imports PySide6, serve or page.
+              reaps the server child, and READS the two settings — the paths
+              and the reader, not their format (LOTTO-0002 §4.7 owns that).
+              Never imports PySide6, serve or page.
 tray.py       PySide6. The menu and the icon, and nothing else. Imports
               supervise; never imports serve or page.
 icons/        tray-running.svg, tray-stopped.svg — read by tray.py only.
@@ -99,6 +101,23 @@ the page about what a refresh did. That is the property the user's existing
 stats tray already relies on (`post_refresh()` in
 `Ants_Projects_Hub_Website/tray/ants-stats-tray.py` POSTs to the same route its
 dashboard page does).
+
+**The settings reader lives here because of that arrow, and this is the
+document that says so.** `config_home()`, `autostart_path()`, `settings_path()`
+and `read_settings()` are `supervise.py`'s. `tray.py` has to read
+`open_on_start` at startup (§4.3) and may not import `serve`, so a reader living
+in `serve.py` leaves only two ways out, and both are worse: the import this
+section forbids, or a second copy of the read in the tray. **Writing stays in
+`serve.py`**, because `POST /settings` is a server route and the write needs the
+lock that serialises two concurrent toggles — a lock the tray has no business
+holding. So the split is by verb, not by file: one reader, one writer, and the
+reader is the shared one because it has three callers — the tray at startup, the
+model builder on every build, and the settings route re-reading after it writes.
+That is what LOTTO-0002 §4.7's "same fallback binds all three" assumes: three
+callers of one function, not three implementations of one rule. A second
+implementation satisfies every case in `tools/verify_page.py` on the day it is
+written and diverges later, which is why §11 tabulates it as unchecked rather
+than as covered.
 
 **`supervise.py` exists so INV-20 is testable**, and that is its whole
 justification as a separate module. Putting the spawn-and-reap contract in
@@ -311,16 +330,18 @@ that exited on its own (port taken, an unhandled error at startup) otherwise
 leaves an icon claiming it is running, and the Refresh item failing for a reason
 the user cannot see.
 
-**`open_on_start` is read here, because `tray.py` is the file that acts on
-it.** LOTTO-0002 §4.7 owns the setting — its path, its key and its default of
-**true** — and this document owns what the tray does with it: at startup, after
-`start()` and once `is_ready()` returns true, the tray opens the page if the
-setting is true and does not if it is false. **A missing, unreadable or
-malformed `settings.json` falls back to the default rather than raising**, and
-that rule belongs here rather than with the file format, because the
-consequence is the tray's: a corrupt settings file must never be the reason no
-icon appears. Without this paragraph the setting has a writer (LOTTO-0002's
-settings panel) and no reader.
+**`open_on_start` is acted on here, because `tray.py` is the file that acts on
+it.** LOTTO-0002 §4.7 owns the setting — its path, its key, its default of
+**true** and the fallback below — and this document owns what the tray does with
+it: at startup, after `start()` and once `is_ready()` returns true, the tray
+opens the page if the setting is true and does not if it is false. It gets the
+value from `supervise.read_settings()` (§4.1) and never opens the file itself.
+**A missing, unreadable or malformed `settings.json` falls back to the default
+rather than raising** — one rule, stated by §4.7 and implemented once in the one
+reader, so what is left to say here is the tray's *consequence*: a corrupt
+settings file must never be the reason no icon appears. Without this paragraph
+the setting has a writer (LOTTO-0002's settings panel) and nothing that acts on
+what it reads.
 
 **Two SVG icons, `icons/tray-running.svg` and `icons/tray-stopped.svg`,
 resolved relative to `tray.py`** — `os.path.dirname(os.path.abspath(__file__))`,
@@ -647,18 +668,19 @@ breakages, and the last three matter because the obvious ones do not go red:
 | §4.3 the state poll noticing a child that died on its own | **nothing mechanical** — driving it needs a tray; observable by starting the tray with the port already occupied |
 | §4.3 the busy guard admitting one long action at a time | **nothing** — a second click needs a running tray and a display. The server's 409 (LOTTO-0014 §4.1) is the backstop; it is the tray's *reporting* of it that goes unchecked |
 | §4.3 `tray.py` reading `open_on_start`, and its fallback on a corrupt file | **nothing mechanical** — needs a tray and a session. The fallback is what stops a bad settings file hiding the icon, so it is verified by writing a malformed `settings.json` and starting the tray once |
+| §4.1 one reader, with no second copy of it in `serve.py` or `tray.py` | **nothing** — a duplicate that agrees on the day it is written passes every case in `tools/verify_page.py`, because agreeing readers are indistinguishable from one reader until one of them is edited. Found once, by reading, in shipped code (§13) |
 | §4.5 the port being read once and agreeing end to end | **nothing** — a disagreement surfaces as a 421 on every request, which is loud at run time and invisible to a check that supplies the port itself |
 | §6 the tray exiting non-zero with no system tray | **nothing mechanical** — depends on the session's tray implementation; verified by running it under a session with no tray |
 
-Fourteen rows, ten `nothing`. (§4.2's environment channel for the token is not
+Fifteen rows, eleven `nothing`. (§4.2's environment channel for the token is not
 tabulated here — LOTTO-0014 §11 owns that row, since the rule it states is the
 token's, and a rule tabulated twice becomes two rules that disagree.)
 
 That ratio is high, and it is honest rather than alarming: this part of the
 split is the one needing a display and a desktop session, and its mechanically
 checkable contracts — the headless imports and the reaped child — are exactly
-the ones that fail silently. **Seven of the ten are loud at run time**, and the
-three that are not are the ones worth knowing about, all code-review only:
+the ones that fail silently. **Seven of the eleven are loud at run time**, and
+the four that are not are the ones worth knowing about, all code-review only:
 
 - the **per-`start()` token**, whose breach is silent by construction — a
   supervisor reusing one token across restarts leaves a stale page authorised
@@ -666,7 +688,10 @@ three that are not are the ones worth knowing about, all code-review only:
 - the **busy guard's reporting**, since a dropped second Refresh draws
   LOTTO-0014 §4.1's 409 and the failure is that the tray says nothing about it;
 - the **runnable-wrapper lifetime**, which is a crash a short run does not
-  reproduce rather than an error anyone sees.
+  reproduce rather than an error anyone sees;
+- the **single reader**, whose breach is silent for exactly as long as the two
+  copies agree — and which shipped broken, undetected by all five checks, until
+  a read caught it (§13).
 
 ## 12. Cross-doc impact
 
@@ -692,6 +717,7 @@ three that are not are the ones worth knowing about, all code-review only:
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 3-impl | 2026-08-02 | — | — | — | — | — | **Implementation row — no reviewer was dispatched, and this is not a review loop.** Origin is building the thing (commit `45e3fc3`), not reading it, which is why it hangs off loop 3 rather than numbering as loop 4. **§4.1's file-role line was false the moment the code shipped.** It described `supervise.py` as minting the token, resolving the port and spawning and reaping the child — and implementation put `config_home()`, `autostart_path()`, `settings_path()` and `read_settings()` there too, because `tray.py` must read `open_on_start` at startup (§4.3) and may not import `serve` (this section's one-way arrow). The two ways out of that were an import §4.1 forbids or a second copy of the read in the tray, so the reader moved and the *writing* stayed in `serve.py`, where `POST /settings` has the lock that serialises two concurrent toggles. The split is by verb, not by file, and §4.1 now says so; §4.3 gains the clause that the tray reads through `supervise.read_settings()` rather than opening the file. **Writing the amendment then found something the implementation had not: the single reader it was about did not exist.** `serve.py` imported `read_settings` from `supervise` and redefined it twenty lines later, and in Python the local definition wins — so the file that the amendment credits with having *one* reader shipped with two. Both bodies were identical, nothing misbehaved, and all five `tools/verify_*.py` were green over it, which is exactly the failure's shape: agreeing duplicates are indistinguishable from one reader until somebody edits one of them, and then the divergence surfaces as a settings panel and a tray that disagree about `open_on_start`. The duplicate was deleted in the same change — `serve.py` now imports the reader and defines only `write_settings()` — and the five checks are green after it, one of them re-run against a deliberate break to confirm the suite can still go red. **§11 gained the row that says nothing catches this**, taking the table to fifteen rows and eleven `nothing`, and the silent-breach list from three entries to four. No invariant moved, no case changed, and no behaviour changed: the deletion is inert at run time and the amendment is the contract catching up with the code. |
 | 1 | 2026-08-02 | 2 | 4 | 4 | 9 | 8 | All 27 verified findings fixed; 0 unverified, 0 deferred. Both lanes independently led on the same two CRITICALs, and both were about the one code block an implementer copies. **§4.2's sketch minted the token and called `Popen` at module scope**, contradicting §4.1's "minted per `start()`" and §4.4's "importing it must spawn nothing" — and encoding precisely the alternative §8 rejects; it is now a `Supervisor` class with the mint inside `start()`. **The same `Popen` set no `cwd`.** The spec had already identified the hazard — an autostart entry's working directory is not the repository — and closed only the half about the *script* path. Verified: `history.py::ARCHIVE` is `"archive_results.json"`, `backfill.py::CACHE` is `"archive_cache"` and `tickets.py::load()` defaults to `"lotto_sms_raw.txt"`, all cwd-relative, so an autostarted tray would spawn a server that finds no data and renders the empty state — this project's cardinal failure arriving through the one launch path this item adds, on a machine where running the same server by hand works. `cwd=HERE` added. **Two further CRITICALs, one per lane.** §11 credited `no_orphan_server` with catching a Qt import in `supervise.py`; measured (`env -u DISPLAY python3 -c "import PySide6.QtWidgets"` succeeds — only constructing a `QApplication` needs a display), so the row was false in the one table whose purpose is saying what is *not* checked. INV-19 now covers both modules and the row cites it. And `open_on_start` was orphaned across the split: LOTTO-0002 §4.7 states it is "read by **`tray.py`** at startup", while this document — which owns `tray.py` — never mentioned it, so an implementer reading only this spec ships a tray that ignores the setting the other spec promises. §4.3 now owns the reading and the corrupt-file fallback; §4.7 keeps the file. **One HIGH was a live tautology:** `no_orphan_server` asserted the child had exited and the port was free, both of which a `serve.py` that dies instantly on an import error satisfies — the case would have passed against a server that never worked. It now waits on a new `is_ready()` and fails if the child never answers. That split also fixed a real design gap neither lane framed as one: `Popen` returns before the child binds, so every browser open raced the bind. Also fixed: `token: str | None` in the surface block, a runtime `TypeError` before 3.10 against a floor both README.md:55 and CLAUDE.md:9 assert; §10 cited a busy guard §4.3 never stated (the prior art has one, the spec dropped it); §11's "The six are all loud at run time" was false of the per-`start()` token row, whose own text calls the breach silent; and §7's constraint sentence left "Two of them" with no referent. Doc grew 443 -> 580 lines, most of it §4.1's readiness contract and §6's three new failure modes. |
 | 2 | 2026-08-02 | 2 | 1 | 5 | 8 | 10 | All 24 verified findings fixed; 0 unverified, 0 deferred. **Origin split: roughly 9 fix collateral against 5 draft defects**, so the batch was answered by re-sweeping wholesale rather than item by item. Loop 1's own `is_ready()` and `cwd=HERE` additions generated most of it, which is the expected shape and worth watching: a second consecutive loop like this is the stop-and-consolidate signal. **The CRITICAL was a draft defect both loops had walked past.** §4.2 claimed the `wait()` after the kill "is what INV-20 observes", but INV-20's case asserted only that the child had exited and the port was free — and an unreaped zombie satisfies both, having exited and holding no socket. The reap, the invariant's headline promise, was unchecked. Verified that `Popen.returncode` stays `None` until a `wait()` or `poll()` collects the status, so the case now asserts `child.returncode is not None` and the reap became observable. **A related HIGH: neither red-test breakage §7 prescribed could go red.** Dropping `kill()` fails nothing, because a `serve.py` honouring `SIGTERM` exits on `terminate()` and the fallback is never reached — INV-20's own *Breaks when* names the missing precondition (a child mid-fetch) that §7 had dropped. The breakage is now "install a no-op `SIGTERM` handler *and* drop `kill()`". So the one case justifying `supervise.py`'s existence could have been accepted without ever failing. **The largest collateral was loop 1's `is_ready()`**, which is a blocking ten-second poll: §4.3 put only *long* actions on a `QThreadPool`, so an implementer would call it inline from the left-click handler and freeze the menu on the application's most-used interaction. §4.1 now puts `start()`, `is_ready()`, `stop()` and `post()` all through `run_async()`. It also made §10's "Network: none of its own" false — the readiness poll is loopback traffic — and left the retry interval the only unpinned budget in a document that numbers every other one; both fixed, at 100 ms. `webbrowser.open(supervise.url)` named a module attribute §4.4 forbids, `url` being an instance attribute. **A dedup rather than a reconciliation:** the argument for `supervise.py` being a separate module was stated in four places (§2, §4.1, §8, §11); §4.1 keeps it and the rest point there, deleting three future sources of "these disagree" findings rather than aligning them. §11 grew to fourteen rows and ten `nothing` — one loop-1 row overclaimed, crediting `no_orphan_server` with proving the *tray* gates browser opens on `is_ready()`, which needs a display like every other `tray.py` rule; split into the checkable half and two honest gaps. Doc grew 580 -> 639 lines. |
 | 3 | 2026-08-02 | 2 | 2 | 4 | 10 | 7 | **Converged by cap, and by the collateral trigger — both fired together.** All 23 verified findings fixed; 0 unverified, 0 deferred. Origin split: **roughly 11 fix collateral against 4 draft defects**, after loop 2's 9-against-5 — collateral outnumbering draft defects two loops running, which is the stop-and-consolidate signal, reached on the same pass as the 3-loop cap. **Both lanes led on the same CRITICAL, and loop 2 had created it.** Loop 2 ruled that `start()`, `is_ready()`, `stop()` and `post()` all run through `run_async()` to keep the GUI thread free — which collides with §4.2's rule that the reap also runs on `aboutToQuit`. Dispatched to a thread pool, that handler returns immediately, the event loop ends and the process exits before `wait()` completes, producing exactly the orphan INV-20 forbids, on the commonest exit path, in the one place §11 already recorded that nothing checks. The shutdown reap is now explicitly synchronous and the up-to-5-second freeze is named as the accepted cost; the prior-art tray does the same thing, calling `systemctl("stop")` inline before `QApplication.quit()`. **The second CRITICAL was loop 2's other fix eating itself.** Loop 2 added `child.returncode is not None` to INV-20 to make the reap observable — but the case observes exit through `is_running()`, which calls `Popen.poll()`, and **`poll()` reaps**. Measured: `returncode` is `None` before the call and set after it. So the assertion could never fail, and the fix that was meant to close the tautology reinstated it one line later. The case now checks `os.kill(child.pid, 0)` first, which succeeds against a zombie and does not collect — verified — and only then reads `returncode`. The order is the assertion. Its red-test was restated for the same reason: only replacing `stop()`'s body with a bare `terminate()` goes red, since any variant still calling `wait(timeout)` has already collected the status. **The consolidation this trigger calls for was done rather than deferred:** the `Supervisor` contract had been stated twice — a surface block in §4.1 and a fuller class sketch in §4.2 — and every loop's edits to one drifted from the other, which is where most of three loops' collateral came from. §4.1 is now the only statement of it, carrying `child`, `port_fallback`, the `post()` error contract and the `stop()` semantics that were previously implied; §4.2 keeps one method and prose. Genuine draft defects, all present since the split: the tray availability check had no stated ordering against `start()`, so a desktop with no tray would exit non-zero having already orphaned a live child; `post()` had no error contract while §6 branched on 403/409/500; nothing said what Open page does while the server is stopped; and `run_async()` was named four times and never defined, existing only as a reference to a file in another repository. Doc grew 639 -> 696 lines. **Stopping here is the right call, not a budget compromise** — three loops have produced a document whose remaining findings are its own fixes, and the consolidation above removes the duplication that was generating them. |

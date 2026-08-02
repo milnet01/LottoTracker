@@ -108,6 +108,17 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **One settings reader, not two that agree today** (LOTTO-0013)
+  `serve.py` imported `read_settings()` from `supervise` and then redefined
+  it twenty lines below, so the local copy won and the file shipped with two
+  readers of the same settings file. Both bodies were identical, so nothing
+  misbehaved and all five checks were green over it — which is the shape of
+  the defect rather than a mitigation: agreeing duplicates are
+  indistinguishable from one reader until somebody edits one, and the
+  divergence then surfaces as the settings panel and the tray disagreeing
+  about `open_on_start`. The duplicate is gone; `serve.py` imports the reader
+  and defines only `write_settings()`. No behaviour change.
+
 - **Score every draw a ticket was entered in, not just the top one**
   (LOTTO-0009)
   A "plus" game cannot be bought alone: the operator requires the base game

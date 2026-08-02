@@ -63,28 +63,6 @@ X-GNOME-Autostart-enabled=true
 """
 
 
-def read_settings():
-    """The two settings as currently stored (LOTTO-0002 §4.7).
-
-    A missing, unreadable or malformed settings.json yields the default rather
-    than raising. All three readers share that rule, because each fails
-    differently otherwise - the tray never appears, the build dies, or a toggle
-    500s - and all three would be caused by one corrupt file.
-    """
-    open_on_start = True
-    try:
-        with open(settings_path()) as fh:
-            data = json.load(fh)
-        if isinstance(data, dict) and isinstance(data.get("open_on_start"), bool):
-            open_on_start = data["open_on_start"]
-    except (OSError, ValueError):
-        pass
-    return {
-        "autostart": os.path.exists(autostart_path()),
-        "open_on_start": open_on_start,
-    }
-
-
 def write_settings(changes):
     """Apply the validated booleans, then re-read from disk.
 

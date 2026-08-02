@@ -244,6 +244,58 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   (INV-10) — and the same price is what derives the entered pools. The display
   itself is LOTTO-0002; the checkable-entries-only rule is spec §4.7.
 
+- 📋 [LOTTO-0015] **Ship a Linux AppImage and a Windows executable, both build-tested locally first.**
+  Verified 2026-08-02: the project has no packaging manifest and no `.github/`
+  at all, so this item adds the first of both.
+  **Two entry points are platform-bound and one of them cannot cross.**
+  `tray.py` needs PySide6, which bundles fine on both targets;
+  `find_lotto_sms.py` needs `dbus-python` and KDE Connect, which is Linux-only.
+  So a Windows build ships the page and the scoring but not the way tickets get
+  in, and the decision to take before building is where its `lotto_sms_raw.txt`
+  comes from. Whatever the answer, the absent fetcher must be *named* in the UI
+  — an SMS import that silently does nothing renders an empty page, which is
+  this project's cardinal failure ("no data" reading as "did not win") arriving
+  through the packaging.
+  **The local scripts must RUN the artifact, not just build it.** A bundler
+  resolving imports proves nothing about the files this project opens at run
+  time: `icons/`, `archive_results.json`, `archive_cache/` and the dump are all
+  resolved relative to the process, and LOTTO-0013 §4.2 already had to fix that
+  class once with `cwd=HERE` for the autostarted tray. A frozen build relocates
+  every one of those paths, so the check is: build, run the artifact from a
+  directory that is not the repository, and confirm the page renders real
+  figures rather than the empty state.
+  Publishing from CI would add the first workflow to a repo that has none. The
+  repo is public, so runner minutes are free, but say so when it lands — the
+  project's push cadence currently assumes no workflows exist.
+  **Layman:** One file you can double-click, instead of needing Python and PySide6 installed.
+  Kind: package.
+  Source: user-request-2026-08-02.
+
+- 📋 [LOTTO-0016] **Run the CI locally before pushing, from the same script CI runs.**
+  Pairs with LOTTO-0015, which adds the first workflow this repo has ever had.
+  **"Exactly replicates" is only achievable one way, and it is not by writing
+  the steps twice.** Two files listing the same commands drift on the first
+  edit, and the drift is invisible until CI fails on something the local run
+  passed. So the steps live in ONE script — `tools/ci.sh` — which the workflow
+  invokes as its single build step and which a developer runs by hand. Then
+  "replicates" is structural rather than maintained.
+  **Where the parity genuinely stops, and it must be said rather than implied:**
+  the runner's OS and image are not reproducible locally. `tools/ci.sh` on this
+  openSUSE box is not `ubuntu-24.04`, and nothing local reaches a Windows runner
+  at all — so LOTTO-0015's Windows executable has its first real build in CI no
+  matter what this item does. `podman run --rm ubuntu:24.04` closes the Linux
+  half of that gap and is worth doing; the Windows half stays open, and the
+  script should print that it is open rather than exiting 0 and reading as full
+  coverage.
+  The five `tools/verify_*.py` are the natural core of the run, but note that
+  three of them need `lotto_sms_raw.txt` and `archive_results.json`, which are
+  gitignored real data — so CI can run a subset the local script cannot, and
+  vice versa. Decide that split explicitly; a check skipped for missing data
+  must say so, not pass quietly.
+  **Layman:** Catch the breakage on your own machine instead of finding it on GitHub.
+  Kind: chore.
+  Source: user-request-2026-08-02.
+
 ## Hardening
 
 - 📋 **LOTTO-0004** Automated guard that no SMS content can be committed.
