@@ -17,7 +17,8 @@ After this ships, an icon sits by the clock. Clicking it opens
 `http://127.0.0.1:4322` in the browser: every ticket, what it cost, which pools
 it was entered in, which of them could be checked, what it won, and — the
 actionable part — when each unclaimed prize expires. A settings panel on the
-page turns the tray's start-at-login on and off. `check.py` keeps working
+page carries two switches: start the tray at login, and open the page when the
+tray starts. `check.py` keeps working
 exactly as it does; this adds a second face on the same data, and no new source
 of truth.
 
@@ -72,28 +73,83 @@ labelled. The security constraints in that bullet are §4.4 of this document.
   over a tickable item in the tray menu, knowing the trade: it gives the server
   its first state-changing endpoint, and therefore §4.4's token. The tray-menu
   option would have left the HTTP surface read-only.
-- **Settings render as on/off switches, not checkboxes** — user preference,
-  stated 2026-08-02. §4.7 fixes the accessible markup this must not cost.
+- **Settings render as sliding on/off switches rather than square checkboxes** —
+  user preference, stated 2026-08-02. This is about the *appearance*: §4.7 keeps
+  a real `<input type="checkbox">` underneath, because that is what preserves
+  keyboard and screen-reader behaviour.
 
 ## 4. Design
 
-### 4.1 Three files, and the import direction that keeps them separable
+### 4.1 Four files, the model between them, and the I/O boundary
 
 ```text
-serve.py    stdlib only. Builds the model, serves it. Never imports PySide6.
-page.py     Renders a model dict to one HTML string. Pure function, no I/O.
-supervise.py  stdlib only. Spawns and reaps the server child; mints the token
-              and the port and puts them in the child's environment (§4.4).
-tray.py     PySide6. The menu and the icon. Imports supervise, never serve.
-icons/      tray-running.svg, tray-stopped.svg — read by tray.py only.
+serve.py      stdlib only. Does ALL I/O: builds the model, serves it.
+              Never imports PySide6.
+page.py       Renders a model dict to one HTML string. Pure function, no I/O,
+              no imports of check/history/results/tickets.
+supervise.py  stdlib only. Mints the token, resolves the port, spawns and
+              reaps the server child (§4.4). Never imports PySide6.
+tray.py       PySide6. The menu and the icon, and nothing else. Calls
+              supervise; never imports serve or page.
+icons/        tray-running.svg, tray-stopped.svg — read by tray.py only.
 ```
 
-**`supervise.py` exists so INV-20 is testable.** The spawn-and-reap contract is
+**`supervise.py` is the sole owner of the token, the port and the child
+process**, and it exists so INV-20 is testable. The spawn-and-reap contract is
 what that invariant asserts, and putting it in `tray.py` would make the check
 import PySide6 and need a running display — inside an exit-code script that has
 to sit beside four headless `tools/verify_*.py`. Splitting it out costs one
-small module and buys a testable lifecycle; it is also what lets a user with no
-tray supervise the server from a script.
+small module and buys a testable lifecycle; it also lets a user with no tray
+supervise the server from a script.
+
+**`page.py` is pure, and that is load-bearing rather than tidy.** Every figure,
+string and reason it renders is already in the model — it never calls
+`all_draws()`, `scorable()` or anything else that touches disk or network. That
+is what lets §7 render the whole page against a fixture with no socket and no
+`archive_results.json`, and it is why the derivations §4.5 and §4.6 describe
+happen in `serve.py`'s builder, not in the renderer.
+
+**The model** is a plain dict, and it is the seam every §7 fixture is built to:
+
+```python
+{
+  "built":  "2026-08-02T14:31:07" | None,   # last SUCCESSFUL build (§4.2)
+  "stale":  False,                          # last refresh attempt raised
+  "wins":   [ {...check.py win dict..., "expires_in_days": int} ],
+  "entries":[ {"ref", "game", "plus_flag", "pool_id", "cost_cents",
+               "scorable": bool, "reason": str|None,   # §4.5 derives these
+               "draws_covered": int, "draws_remaining": int|None} ],
+  "tickets":[ {"ref", "game", "cost", "boards": int, "ndraws",
+               "resolved": bool, "bought": "YYYY-MM-DD"} ],
+  "uncheckable": {...counts from check.py::uncheckable_report()...},
+  "spend":  {"compared_cents", "lifetime_cents", "unresolved_cents",
+             "unresolved_tickets": int},
+  "won":    {"lifetime_cents", "unexpired_cents"},
+}
+```
+
+`reason` is `None` for a scorable entry and otherwise the §4.5 string;
+`draws_remaining` is `None` for an unscorable entry, never `0` and never
+`ndraws` — the type carries the cardinal rule so a renderer cannot lose it.
+
+**Environment**, the complete list — three variables, all read by exactly one
+module each, all with a default that makes the plain `python3 serve.py` case
+work:
+
+| Variable | Default | Read by | Effect |
+|---|---|---|---|
+| `LOTTO_PORT` | `4322` | `supervise.py`, `serve.py` | bind port; also builds §4.4's `Host` allowlist |
+| `LOTTO_TOKEN` | minted per run | `supervise.py`, `serve.py` | §4.4's write token; standalone `serve.py` mints its own |
+| `LOTTO_NO_BUILD` | unset | `serve.py` | bind and serve, build nothing — for INV-20 only, see §6 |
+
+`page.py` emits the page's inline JavaScript along with its markup. It has
+exactly four jobs and no others: the two POSTs (which must carry a custom
+header, §4.4), filtering the ticket table (which must not touch the URL,
+INV-21), and **polling `GET /status` every 2 s while `building` is true, or
+after a `POST /refresh`, reloading when `built` changes**. Without the fourth,
+the opening *building* page never leaves that state and `GET /status` has no
+consumer at all. It is inline rather than a served asset because a fifth route
+serving files is the thing §4.3 exists to avoid.
 
 `page.py` emits the page's inline JavaScript along with its markup. The page
 needs script for exactly three things and nothing else: the two POSTs (which
@@ -153,11 +209,21 @@ figure this spec can hold anyone to. The counts are what the design rests on:
   invisible from the page, which is why INV-17 counts requests rather than
   checking that the button works.
 
-All three, enumerated by command rather than by reading — and the pattern was
-widened to `^[A-Za-z_]+ *(:[^=]+)? *= *(\{\}|dict\(\))` before being trusted,
-so an annotated or `dict()`-built memo could not hide from it. Three matches,
-in `history.py`, `check.py` and `results.py`; `tickets.py` holds none, so
-re-parsing the dump is already unconditional (2026-08-02):
+All three, enumerated by command rather than by reading. The pattern was widened
+before being trusted, so an annotated or `dict()`-built memo could not hide from
+it, and the decorator forms were ruled out separately (2026-08-02):
+
+```console
+$ grep -nE "^[A-Za-z_]+ *(:[^=]+)? *= *(\{\}|dict\(\))" *.py
+check.py:20:_struct = {}
+history.py:37:_cache = {}
+results.py:44:_divisions_cache = {}
+$ grep -nE "lru_cache|@cache|functools|cached_property" *.py
+$                      # no output: no decorator-based memo anywhere
+```
+
+`tickets.py` holds none, so re-parsing the dump is already unconditional — the
+tickets half of a refresh needs no invalidation at all.
 
 ```python
 class State:
@@ -175,7 +241,8 @@ def refresh(state, build_model):
     is INV-18, and it is why `fail()` never touches `model`.
     """
     if not state.begin():
-        return  # a build is already running; a second Refresh click is a no-op
+        return False  # already building; the route answers 409, not 202, so a
+                      # second Refresh click is visibly declined, not silently lost
     def work():
         import check, history, results
         history._cache.clear()            # {(game, plus_flag): [draw, ...]}
@@ -215,7 +282,7 @@ Four routes, and nothing else — every other path is 404.
 |---|---|---|---|
 | GET | `/` | the page (HTML) | no |
 | GET | `/status` | `{"building": bool, "built": "<ISO>"\|null, "stale": bool}` | no |
-| POST | `/refresh` | 202, starts a rebuild | results only |
+| POST | `/refresh` | 202 accepted, or 409 if one is already running | results only |
 | POST | `/settings` | 200 + the settings as now stored | writes §4.7's two files |
 
 `POST /settings` takes `{"autostart": bool, "open_on_start": bool}` as JSON and
@@ -291,17 +358,39 @@ not optional: §4.8 gives the tray a *Refresh results now* item, which is a
 spawns. Left unstated, an implementer resolves it by exempting the tray — which
 deletes the defence this section is built on.
 
-```text
-tray.py   token = secrets.token_urlsafe(32)
-          Popen(["python3", "serve.py"], env={**os.environ, "LOTTO_TOKEN": token})
-serve.py  token = os.environ.get("LOTTO_TOKEN") or secrets.token_urlsafe(32)
+```python
+# supervise.py — the sole owner of the token and the child (§4.1)
+HERE  = os.path.dirname(os.path.abspath(__file__))
+token = secrets.token_urlsafe(32)
+Popen([sys.executable, os.path.join(HERE, "serve.py")],
+      env={**os.environ, "LOTTO_TOKEN": token, "LOTTO_PORT": str(port)})
+
+# serve.py
+token = os.environ.get("LOTTO_TOKEN") or secrets.token_urlsafe(32)
 ```
 
-The tray mints it and hands it down; a standalone `serve.py` with no
+`supervise.py` mints it and hands it down; a standalone `serve.py` with no
 `LOTTO_TOKEN` mints its own, so the headless case is unchanged. The environment
 rather than argv, because argv is world-readable through `ps` while
 `/proc/<pid>/environ` is readable only by the owning user — and rather than a
 file, because a token on disk outlives the run that issued it.
+
+**Both paths are absolute and `sys.executable` is used, not `"python3"`.** The
+tray is launched from an autostart entry whose working directory is not the
+repository (§4.7 ships exactly that entry), so a relative `"serve.py"` fails in
+the configuration this item adds; and the child must run under the interpreter
+the parent is already using rather than whatever `python3` resolves to in a
+session PATH.
+
+**Every response carries `X-Frame-Options: DENY` and
+`Content-Security-Policy: frame-ancestors 'none'`.** Without them the token
+defends against a *forged* request and not against a real one: a hostile page
+can `<iframe src="http://127.0.0.1:4322">`, the `Host` header is the
+allowlisted value so the frame renders, and the framed page carries the token
+in its own DOM. Every defence above survives that, and the user still clicks
+§4.7's switch through an invisible overlay. Framing is the hole a `Host`
+allowlist and a token cannot see, so it is closed here rather than left to the
+implementer to notice. INV-12.
 
 **No request-derived data reaches a response header or a written file.**
 Header values come from a fixed table of literals; `send_header()` is never
@@ -358,6 +447,12 @@ the page with a deadline:
    reports a 2019 ticket as having all ten draws still to come. That is the
    project's cardinal error wearing a new hat — "no data" rendered as "yet to
    be drawn" instead of as "did not win" — and INV-15 is what catches it.
+
+   An entry that is unscorable **and** whose window has not closed is not
+   silently dropped from this section either: it renders with
+   "draws remaining unknown — not checkable", carrying
+   `draws_remaining: None` per §4.1. Omitting it would be the same error a third
+   time, since a reader would take its absence for "nothing outstanding".
 3. **Every ticket** — filterable by game and pool, showing cost, boards, the
    pools its price paid for, and per pool: scored, or the reason it could not be.
    **Filtering is client-side**, over rows already in the document: it must not
@@ -371,10 +466,12 @@ returns `(lines, counts)`, and `counts["wholly"]` / `counts["partly"]` are the
 ticket lists themselves — which is what the banner needs. **It is not the source
 for the per-entry reason**: `counts["too_old"]` and `counts["no_pool"]` are
 integers (`"too_old": len(too_old)`), and the `(ticket, plus_flag)` lists behind
-them are local to the function. So `page.py` derives each entry's reason itself:
+them are local to the function. So **`serve.py`'s builder** derives each entry's
+reason into `model["entries"][i]["reason"]` (§4.1); `page.py` only renders what
+it finds there:
 
 ```python
-rows = all_draws(t.game, plus_flag)
+rows = all_draws(t.game, plus_flag)                      # in serve.py's builder
 reason = ("no results source carries this pool" if not rows
           else f"predates all draw data for this pool (earliest {rows[0]['date']})"
           if t.start.strftime("%Y-%m-%d") < rows[0]["date"] else None)
@@ -410,6 +507,19 @@ board price, in cents:
 ```text
 entry_cost_cents = tier_increment(game, era, plus_flag) * paid_lines * ndraws
 ```
+
+**`paid_lines` is `len(Ticket.boards)`.** There is no `paid_lines` attribute —
+`tickets.py::entered_pools()` takes it as a parameter and `parse()` passes
+`len(boards)`, under the comment *"Multiplay is already expanded above, so one
+board here is one paid line"*. So the expansion has already happened by the
+time anything here sees a ticket, and `len(t.boards)` is the count that was
+charged for, including each Multiplay combination. Stating it matters because
+the two readings differ **only** on Multiplay tickets, which is the one place
+the error would not show up in a spot check.
+
+`tier_increment()` lives in **`serve.py`, in the model builder** — the only
+module that computes, per §4.1 — and writes `cost_cents` onto each entry.
+`page.py` sums what it is given.
 
 `tier_increment()` reads the **increment** column of `tickets.py::TIER_PRICES`
 — a different column from the cumulative total `entered_pools()` matches on,
@@ -496,6 +606,29 @@ The autostart setting has no separate record — the file *is* the state, so the
 switch cannot drift from what the desktop actually does. Both paths honour
 `$XDG_CONFIG_HOME` and fall back to `~/.config`.
 
+The written file, verbatim and entirely constant apart from the one derived
+path (INV-14 asserts these bytes):
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=Lotto Tracker
+Comment=Tray control for the local lottery page
+Exec=python3 "<dirname(abspath(serve.__file__))>/tray.py"
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+```
+
+The path is quoted, because a repository directory containing a space would
+otherwise split into two arguments and the entry would silently do nothing.
+
+`open_on_start` is read by **`tray.py` at startup** and defaults to **true**: a
+missing, unreadable or malformed `settings.json` falls back to the default
+rather than raising, because a corrupt settings file must not be the reason the
+tray fails to appear. Writing the file creates its directory with
+`parents=True`.
+
 **Accessible switch markup.** The switch is a styled
 `<input type="checkbox" role="switch">`, not a `<div>` with a click handler:
 `role="switch"` is the ARIA pattern for a two-state toggle, and building it on
@@ -513,18 +646,20 @@ page. Two SVG icons, `icons/tray-running.svg` and `icons/tray-stopped.svg`,
 resolved relative to `tray.py` rather than to the working directory — the tray
 is launched from an autostart entry whose CWD is not the repository.
 
-**The server is a child process, and Quit reaps it.** `subprocess.Popen(["python3", "serve.py"], env=…)`,
-`terminate()` then `kill()` after a timeout on quit, and the same on
-`aboutToQuit` so a session logout does not leave an orphan holding the port.
-The spawn and reap live in a **Qt-free module** that `tray.py` imports, so
-INV-20's case can drive them without a `QApplication` or a display.
+**The server is a child process, and Quit reaps it.** `supervise.py` owns the
+`Popen` (§4.4 gives it verbatim), `terminate()` then `kill()` after a timeout on
+quit, and the same on `aboutToQuit` so a session logout does not leave an orphan
+holding the port. Because that lives in a **Qt-free module**, INV-20's case can
+drive it without a `QApplication` or a display.
 
-**One port, read once.** `LOTTO_PORT` is an environment variable defaulting to
-4322. `tray.py` reads it, passes it to the child alongside `LOTTO_TOKEN`
-(§4.4), and uses the same value for the URL it opens; `serve.py` uses it to
-bind and to build the `Host` allowlist. A tray and server disagreeing about the
-port fail as a 421 on every request — the allowlist rejecting the very URL the
-tray just opened.
+**One port, read once.** `supervise.py` resolves `LOTTO_PORT` (default 4322,
+§4.1), passes it to the child alongside `LOTTO_TOKEN`, and hands `tray.py` the
+URL to open; `serve.py` uses the same value to bind and to build the `Host`
+allowlist. A tray and server disagreeing about the port fail as a 421 on every
+request — the allowlist rejecting the very URL the tray just opened. The
+autostart entry §4.7 writes carries no `LOTTO_PORT`, so an autostarted tray uses
+the default; anyone overriding the port sets it in their session environment,
+where both the entry and a manual run inherit it.
 
 ## 5. Invariants
 
@@ -538,8 +673,10 @@ INV-7 to INV-11, and CHANGELOG.md cites them unqualified.
   case: a good `Host` (expect 200), `evil.example:4322` (421),
   `127.0.0.1.evil.example:4322` (421, the suffix-test trap), and **no `Host`
   header at all** (421). The good request is what stops the case passing
-  against a server that answers 421 to everything. The same case asserts no
-  `Access-Control-Allow-*` header on any of the four responses.
+  against a server that answers 421 to everything. The same case asserts, on
+  every one of the four responses, that no `Access-Control-Allow-*` header is
+  present and that both `X-Frame-Options: DENY` and
+  `Content-Security-Policy: frame-ancestors 'none'` are.
   *Breaks when:* the check becomes a substring or suffix test, admitting
   `127.0.0.1.evil.example`; the header is absent and treated as trusted; or a
   CORS header is added while debugging the page's own `fetch()` calls, which
@@ -550,9 +687,14 @@ INV-7 to INV-11, and CHANGELOG.md cites them unqualified.
   *Test:* `tools/verify_page.py`, case `token_required` — four POSTs, all with
   a valid `Host`: no token (403), a wrong token (403), a wrong `Origin` with the
   right token (403, §4.4's table), and the right token with no `Origin` (accepted
-  — the tray's own case). Each 403 also asserts the autostart file is
-  byte-identical, so "changes nothing" is observed rather than assumed. The
-  valid `Host` is what isolates this rule: with a bad one INV-12 answers 421
+  — the tray's own case).
+  **Every one of them is fired at both `/settings` and `/refresh`.** The
+  *Breaks when* below names exempting `/refresh` as the likeliest breach, so a
+  case that only ever POSTs to `/settings` cannot catch the very failure it is
+  written for. "Changes nothing" is observed per route: for `/settings`, the
+  autostart file is byte-identical; for `/refresh`, the stub builder's call
+  count is unchanged.
+  The valid `Host` is what isolates this rule: with a bad one INV-12 answers 421
   first and the case passes without the token check existing at all.
   The same case spawns a child with `LOTTO_TOKEN` in its environment and
   asserts that token is accepted — the §4.4 channel the tray depends on, which
@@ -564,8 +706,9 @@ INV-7 to INV-11, and CHANGELOG.md cites them unqualified.
   `/refresh` so the tray's menu item works, which removes the defence for the
   one route that re-fetches.
 
-- **INV-14** — No value derived from a request reaches a response header or a
-  file written by the server.
+- **INV-14** — No request-derived **string** reaches a response header or a
+  written file. The only request-derived values ever written are §4.3's two
+  validated booleans; the `.desktop` file's contents are constant.
   *Test:* `tools/verify_page.py`, case `no_reflected_headers` — the poison is
   **percent-encoded** (`/a%0d%0aX-Injected:+yes`), not raw, and the `Host`
   header is valid on every request. Asserts no `X-Injected` header appears in
@@ -592,8 +735,11 @@ INV-7 to INV-11, and CHANGELOG.md cites them unqualified.
   checkable in one pool and not another shows both facts.
   *Test:* `tools/verify_page.py`, case `uncheckable_not_a_loss` — renders a
   synthetic two-pool ticket, one pool scorable and one not, and asserts the
-  reason string is present and no zero-amount cell stands in for the unscorable
-  pool.
+  unscorable pool's row is present, that its reason string is rendered, and
+  that the text of its amount cell is **not** in
+  `{"", "-", "–", "—", "0", "0.00", "R0.00"}`. Naming the forbidden strings is
+  the assertion; "no zero-amount cell" is not observable, and a blank or a dash
+  is the likelier rendering than a literal zero.
   *Breaks when:* the renderer iterates wins rather than entries, so an entry
   with no win simply does not appear — the failure mode that needs no bug, only
   an omission.
@@ -602,7 +748,13 @@ INV-7 to INV-11, and CHANGELOG.md cites them unqualified.
   entries of resolved tickets, and nothing else; lifetime spend appears only as
   a separately labelled figure.
   *Test:* `tools/verify_page.py`, case `spend_over_checkable` — over a fixture
-  of three tickets (one fully checkable, one partly, one wholly unscorable),
+  of **four** tickets (one fully checkable, one partly, one wholly unscorable,
+  and one whose price resolves to no tier), asserting the unresolved one
+  contributes to neither side of the comparison and appears on §4.6's separate
+  labelled line. Without that fourth ticket the "of resolved tickets" clause
+  cannot fail, and the real dump supplies no case — it currently holds
+  **`unresolved tickets 0`**, so this fixture is the only place the rule is
+  ever exercised. The case
   asserts the rendered compared-spend figure **equals** an independently
   recomputed `Σ tier_increment × paid_lines × ndraws` over scorable entries of
   resolved tickets, and that the rendered lifetime figure is a different, larger
@@ -613,11 +765,18 @@ INV-7 to INV-11, and CHANGELOG.md cites them unqualified.
   R25,592.90 on the page; or an unresolved ticket is folded into the compared
   spend, where its name-derived single tier cannot sum to what it cost (§4.6).
 
-- **INV-17** — A refresh re-fetches from the sources rather than redrawing the
-  memoised model.
-  *Test:* `tools/verify_page.py`, case `refresh_refetches` — counts
-  `urllib.request.urlopen` calls across two consecutive refreshes and asserts
-  the second is non-zero.
+- **INV-17** — A refresh empties **all three** of §4.2's memos before rebuilding,
+  which is what makes it re-fetch rather than redraw.
+  *Test:* `tools/verify_page.py`, case `refresh_refetches` — puts a sentinel
+  entry in each of `history._cache`, `results._divisions_cache` and
+  `check._struct`, runs a refresh with a stub builder, and asserts all three are
+  empty afterwards and the builder was called once.
+  Counting `urlopen` calls would be the obvious test and cannot work here: §7's
+  seam replaces the builder, so no request is ever issued and the count is zero
+  on every refresh whether or not the memos were cleared — a case that can
+  never pass, let alone fail for the right reason. Asserting the memos are
+  empty tests the contract §4.2 actually states, and it is the assertion that
+  distinguishes clearing three from clearing two.
   *Breaks when:* any of the three memos in §4.2 is not cleared —
   `history._cache`, `results._divisions_cache` or `check._struct`. Measured: a
   second build in the same process makes 0 requests and returns an identical
@@ -628,9 +787,10 @@ INV-7 to INV-11, and CHANGELOG.md cites them unqualified.
 
 - **INV-18** — A failed refresh leaves the previous model serving and says so;
   it never serves an empty or zeroed page.
-  *Test:* `tools/verify_page.py`, case `failed_refresh_keeps_model` — patches
-  the fetch to raise, refreshes, and asserts the wins still render and a
-  staleness notice is present.
+  *Test:* `tools/verify_page.py`, case `failed_refresh_keeps_model` — serves a
+  fixture model, refreshes with a **stub builder that raises**, and asserts the
+  original wins still render, that `GET /status` reports `stale: true`, and that
+  `built` is unchanged from before the failed attempt.
   *Breaks when:* the model is cleared before the rebuild, or an exception on
   the background thread leaves `state` empty. The operator's API failed with
   `URLError(SSL: UNEXPECTED_EOF_WHILE_READING)` on **four of the seven** build
@@ -653,22 +813,26 @@ INV-7 to INV-11, and CHANGELOG.md cites them unqualified.
 - **INV-20** — Quitting the tray leaves no server process holding the port.
   *Test:* `tools/verify_page.py`, case `no_orphan_server` — spawns and reaps a
   real child, then asserts it has exited and the port accepts a fresh bind.
-  Two constraints make this runnable inside a headless exit-code script beside
-  the other four `tools/verify_*.py`, and both are requirements on the code,
-  not on the test: the spawn/reap helper lives in a **Qt-free module** that
-  `tray.py` imports (importing `tray.py` itself would need a `QApplication`
-  and a display), and `serve.py` honours `LOTTO_NO_BUILD=1`, binding the port
-  and serving an empty model without touching the network or
-  `lotto_sms_raw.txt`. Without the second, this one case would cost the 27
-  requests and the real dump that §7's other two constraints forbid.
+  The case binds an **ephemeral port** (`LOTTO_PORT=0`), never 4322 — otherwise
+  a developer running their own tray fails this check for a reason that has
+  nothing to do with the contract.
+  Two conditions make it runnable inside a headless exit-code script beside the
+  other four `tools/verify_*.py`, and both are requirements on the code rather
+  than on the test: the spawn/reap contract lives in `supervise.py`, which is
+  Qt-free (driving it through `tray.py` would need a `QApplication` and a
+  display), and `serve.py` honours `LOTTO_NO_BUILD` (§4.1). Without the second,
+  this one case would cost the 27 requests and the real dump that §7's other two
+  constraints forbid.
   *Breaks when:* the child is left to `SIGHUP`, or `terminate()` is sent without
   a `kill()` fallback and the server is mid-build in a non-interruptible fetch.
 
 - **INV-21** — No ticket data appears in any URL, fragment or page `<title>`,
   and every response carries `Cache-Control: no-store`.
-  *Test:* `tools/verify_page.py`, case `nothing_in_the_url` — asserts each of
-  the four routes serves identically with and without a query string appended
-  (so no parameter can be load-bearing), that the rendered `<title>` is the
+  *Test:* `tools/verify_page.py`, case `nothing_in_the_url` — asserts `GET /`
+  serves a byte-identical body with and without a query string appended, and
+  that `GET /status` returns the same JSON key set and the same `stale` value
+  either way (its `built` and `building` legitimately move between calls, so
+  byte-equality there would be flaky rather than strict). It asserts the
   constant `Lotto Tracker`, that `no-store` is on all four responses, and that
   the page's inline script contains no `pushState`, `replaceState` or
   `location.hash` assignment. It also asserts §4.3's routing floor — an unknown
@@ -695,6 +859,12 @@ INV-7 to INV-11, and CHANGELOG.md cites them unqualified.
 - **`lotto_sms_raw.txt` is absent.** The page renders its empty state and says
   the dump is missing and how to produce it — never "0 tickets, R0.00", which
   reads as "you have never won".
+- **`LOTTO_NO_BUILD` is set** (§4.1 — it exists for INV-20's case, not for
+  users). The page renders that same empty state with an explicit *"no build
+  was performed"* notice. This is the one situation in which an empty page is
+  correct, and it is not an exception to INV-18: nothing was ever built, so
+  there is no previous model to lose. The notice is what keeps it from reading
+  as "no wins".
 - **No system tray on the desktop.** `QSystemTrayIcon.isSystemTrayAvailable()`
   is false: the tray reports it and exits non-zero, as the stats tray does.
   `serve.py` is unaffected, which is the point of INV-19.
@@ -817,7 +987,10 @@ can fail at all.
 - **Network:** 27 requests per build (measured, §4.2), and a build happens at
   startup and on explicit refresh only — never per page view. This is the same
   27 requests `check.py` already makes per run, so the page costs the operator
-  nothing extra unless the user presses Refresh.
+  nothing extra unless the user presses Refresh. §4.1's `GET /status` poll is
+  loopback-only and runs at 2 s **only while a build is in flight**, so it costs
+  the operator nothing and the machine about fifteen requests per build; an
+  idle page polls nothing.
 - **Disk:** two files under `$XDG_CONFIG_HOME` (§4.7), both a few hundred bytes.
   Nothing written to the repository, which `tools/verify_privacy.py` continues
   to assert.
@@ -843,13 +1016,16 @@ can fail at all.
 | §4.4 `Origin` rule on POSTs, incl. absent-is-allowed | `tools/verify_page.py::token_required` |
 | §4.4 the tray's `LOTTO_TOKEN` channel | `tools/verify_page.py::token_required` — a child spawned with the variable accepts that token |
 | §4.3 404 / 405 routing floor | `tools/verify_page.py::nothing_in_the_url` |
-| §4.7 the `.desktop` `Exec` naming `tray.py`, not the writing module | `tools/verify_page.py::no_reflected_headers` — the file's content is asserted byte-for-byte |
+| §4.4 anti-framing headers on every response | `tools/verify_page.py::host_allowlist` |
+| §4.4 the `.desktop` `Exec` naming `tray.py`, not the writing module | `tools/verify_page.py::no_reflected_headers` — §4.7's body is asserted byte-for-byte |
+| §4.1 `page.py` performing no I/O | `tools/verify_page.py` — every case renders against a fixture model with no `archive_results.json` and no socket; an `all_draws()` call in the renderer raises there |
+| §4.1 the model's key set | **nothing** — a builder and a renderer that agree on a wrong shape are consistent with each other, and every fixture is written to the same shape |
 | §4.2 the 27-request figure staying true | **nothing** — a dated measurement; a larger dump or an API paging change moves it without failing anything |
 | §4.5 the page being *readable* — ordering, filters, marking near-expiry | **nothing** — no check can tell a clear layout from a cluttered one |
 | §4.7 the written `.desktop` file actually autostarting on this desktop | **nothing mechanical** — it depends on the session's XDG implementation; verified by logging out once |
 | §4.4 the token surviving a browser that strips custom headers | **nothing** — no such browser is known, and the failure is visible (403 on every toggle) rather than silent |
 
-Eighteen rows, four `nothing`.
+Twenty-one rows, five `nothing`.
 
 ## 12. Cross-doc impact
 
@@ -878,4 +1054,5 @@ Eighteen rows, four `nothing`.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 2 | 2026-08-02 | 2 | 3 | 8 | 6 | 9 | All 26 verified findings fixed; 0 unverified, 0 deferred. **Roughly half were collateral from loop 1's own fixes — 14 against 13 draft defects — and they shared one root cause: the model dict passed between `serve.py` and `page.py` had never been written down.** Loop 1 moved reason-derivation into `page.py` (which §4.1 calls a pure function while `history.all_draws()` reads disk *and* network), changed §7's seam from a model to a builder, and added `supervise.py`; each of the three then contradicted passages elsewhere. Answered wholesale rather than item by item: §4.1 now defines the four modules, the I/O boundary, the model's key set and the complete environment contract, and the derivations moved to `serve.py`'s builder where they were always going to run. **Both lanes found the same CRITICAL, which loop 1 created:** INV-17 counted `urlopen` calls across two refreshes, but under the new stub-builder seam no request is ever issued — so the case could never *pass*, let alone fail for the right reason, and §11 credited it with catching the one bug §4.2 calls invisible from the page. Restated as the assertion that actually tests the contract: sentinel entries in all three memos, empty after a refresh. Second CRITICAL, also collateral: INV-14 claimed no request-derived value reaches a written file while §4.3 — added in loop 1 — has `/settings` write two request-derived booleans, so an implementer had to break settings writes or treat the invariant as decorative; now scoped to strings. **One genuine draft defect was the most serious security finding of the run:** no anti-framing header anywhere, so a hostile page could `<iframe>` the port, the `Host` allowlist passes because the header *is* the allowlisted value, the framed page holds the token in its own DOM, and the whole §4.4 boundary survives while the user clicks the autostart switch through an overlay. `X-Frame-Options: DENY` and `frame-ancestors 'none'` added and asserted in INV-12's case. Also draft defects: nothing ever polled `GET /status`, so the opening *building* page had no defined way to leave that state and the route had no consumer at all; `paid_lines` in §4.6's formula is not a `Ticket` attribute (verified — `parse()` passes `len(boards)` with Multiplay already expanded, so the two readings differ only on Multiplay tickets); `open_on_start` had no reader and no default; and INV-16's fixture held no unresolved ticket, so its "of resolved tickets" clause — added in loop 1 — could not fail, and the real dump supplies no case since it holds 0 unresolved. Lane B's open question about decorator-based memos was checked and closed: `grep -nE "lru_cache\|@cache\|functools\|cached_property" *.py` returns nothing, so §4.2's three dicts are provably the complete set, and that command is now in the document beside the figure it warrants. Doc grew 880 → 1,057 lines. |
 | 1 | 2026-08-02 | 2 | 3 | 7 | 13 | 8 | All 31 verified findings fixed; 0 unverified, 0 deferred. **Both lanes independently found the same three CRITICALs, and all three were contract gaps that an implementer would have closed by weakening the security model.** (a) The tray has a *Refresh results now* item, which is a `POST /refresh`, and §4.4 generated the token inside a process the tray only spawns — so the one menu item that needed the token could not obtain it, and the cheap fix is exempting `/refresh`. The channel is now specified (`LOTTO_TOKEN` in the child's environment; env rather than argv, which `ps` exposes, and rather than a file, which outlives the run). (b) §4.4 built the autostart `.desktop` from `os.path.abspath(__file__)`, but the writer is `serve.py` while the setting is "start the **tray** at login" — the switch would have autostarted a headless server and no icon would ever have appeared, and §11 already admitted nothing mechanical catches a wrong autostart. `Exec` now names `tray.py`, and INV-14 asserts the file's content outright rather than only that it did not change: byte-equality passes a file wrong since first written, which is exactly this bug. (c) §7's test seam took a finished model (`make_server(model, …)`), leaving `POST /refresh` nothing to invoke — so INV-17 and INV-18 had no rebuild to exercise and INV-15 needed a stubbed `all_draws`, three of ten cases untestable while §11 credited the script with locking them. The seam is now the builder. **One lane finding was upheld with its reasoning replaced by measurement:** INV-14's fixture was called vacuous because raw CRLF supposedly draws a 400 before the handler runs. Measured on 3.13 — no 400: the request line is truncated, the handler sees path `/a`, the injected line is swallowed as a malformed header and the response is an ordinary 200. Vacuous for the opposite reason, and the fix (percent-encoded `%0d%0a`, which *does* arrive intact) is the same either way. Also fixed: §4.6 dropped LOTTO-0009 §4.7's "only when the price resolves" qualifier and left an unresolved ticket's rendering undefined on a money display; two privacy defects that `tools/verify_privacy.py` cannot see because it compares against the dump's text rather than what the text implies (a purchase week plus draw count over a two-ticket population, and one win's exact amount with a derivable draw date); `check.py::uncheckable_report()` was named as the source of §4.5's per-entry reasons when its `too_old`/`no_pool` are integers, so `page.py` now recomputes them; the `refresh()` sketch was synchronous with no lock and no `try` while the prose two paragraphs above promised a background thread and a lock, and INV-18 depends entirely on the exception path it omitted; `/settings` had no request body format and no client-side JS was mentioned though three features require it; and four section cross-references were off by one, all landing an implementer chasing the settings contract in the money section. **The sweep caught one defect created by these fixes**: requiring a Qt-free spawn/reap module for INV-20 left it absent from §4.1's file list — now `supervise.py`. Doc grew 624 → 880 lines. |
