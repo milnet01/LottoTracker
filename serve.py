@@ -1,0 +1,508 @@
+"""Serve the local page. Standard library only, and NEVER imports PySide6.
+
+Three specs govern this file:
+  LOTTO-0002  the model, the build lifecycle, what the page shows
+  LOTTO-0014  the HTTP surface and the security boundary
+  LOTTO-0013  INV-19 - nothing here may import Qt, at any depth
+
+Everything that binds, builds or serves sits behind `if __name__ == "__main__"`,
+so importing this module is safe and starts nothing. INV-19's check depends on
+that: without it the check hangs instead of failing, and a hanging check reads
+as a broken test rather than a broken contract.
+
+    python3 serve.py            # http://127.0.0.1:4322
+    LOTTO_PORT=5000 python3 serve.py
+"""
+
+import datetime
+import json
+import os
+import secrets
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import page
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_PORT = 4322
+MAX_BODY = 4096  # LOTTO-0014 §4.1: an unbounded rfile.read() is a hang
+BODY_KEYS = ("autostart", "open_on_start")
+
+# Header values come from literals only. BaseHTTPRequestHandler does NOT
+# validate CRLF in a header value - measured - so send_header() is never called
+# with anything derived from a request (LOTTO-0014 INV-14).
+SECURITY_HEADERS = (
+    ("X-Frame-Options", "DENY"),
+    ("Content-Security-Policy", "frame-ancestors 'none'"),
+    ("Cache-Control", "no-store"),
+)
+ALLOW = {"/": "GET", "/status": "GET", "/refresh": "POST", "/settings": "POST"}
+
+
+# --------------------------------------------------------------- settings I/O
+#
+# The paths and the reader live in supervise.py, which tray.py can import and
+# this file can too; writing stays here because POST /settings is a server
+# route. Rule 3: one reader, not two that will disagree.
+
+from supervise import (  # noqa: E402
+    autostart_path,
+    read_settings,
+    settings_path,
+)
+
+DESKTOP_ENTRY = """[Desktop Entry]
+Type=Application
+Name=Lotto Tracker
+Comment=Tray control for the local lottery page
+Exec="{python}" "{here}/tray.py"
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+"""
+
+
+def read_settings():
+    """The two settings as currently stored (LOTTO-0002 §4.7).
+
+    A missing, unreadable or malformed settings.json yields the default rather
+    than raising. All three readers share that rule, because each fails
+    differently otherwise - the tray never appears, the build dies, or a toggle
+    500s - and all three would be caused by one corrupt file.
+    """
+    open_on_start = True
+    try:
+        with open(settings_path()) as fh:
+            data = json.load(fh)
+        if isinstance(data, dict) and isinstance(data.get("open_on_start"), bool):
+            open_on_start = data["open_on_start"]
+    except (OSError, ValueError):
+        pass
+    return {
+        "autostart": os.path.exists(autostart_path()),
+        "open_on_start": open_on_start,
+    }
+
+
+def write_settings(changes):
+    """Apply the validated booleans, then re-read from disk.
+
+    Under one lock: the server is threaded, this writes two files and then reads
+    them back, and two concurrent toggles without it can each return the other's
+    result - a switch snapping to a value the user did not choose, which is the
+    failure the read-back exists to prevent.
+    """
+    with _settings_lock:
+        if "autostart" in changes:
+            path = autostart_path()
+            if changes["autostart"]:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w") as fh:
+                    fh.write(
+                        DESKTOP_ENTRY.format(
+                            python=sys.executable, here=HERE
+                        )
+                    )
+            else:
+                # Delete it. Rewriting X-GNOME-Autostart-enabled to false would
+                # leave the file present, and "presence IS the state" is what
+                # stops this switch drifting from what the desktop does.
+                try:
+                    os.remove(path)
+                except FileNotFoundError:
+                    pass
+        if "open_on_start" in changes:
+            path = settings_path()
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as fh:
+                json.dump({"open_on_start": changes["open_on_start"]}, fh)
+        return read_settings()
+
+
+# ----------------------------------------------------------------- the model
+
+
+def tier_increments(game, era):
+    """The INCREMENT column of TIER_PRICES, keyed by plus_flag.
+
+    A different column from the cumulative total entered_pools() matches on;
+    conflating them prices a R10.00 Lotto ticket at R22.50.
+    """
+    import tickets
+
+    return {pf: inc for pf, _cum, inc in tickets.TIER_PRICES[(game, era)]}
+
+
+def build_model():
+    """Everything the page renders, computed here so page.py stays pure.
+
+    Returns the DATA half of the model. built/stale/error belong to State and
+    are overlaid at render time: State.fail() leaves the model untouched by
+    design, so a `stale` key living inside it could never become true.
+    """
+    import check
+    import history
+    import tickets
+
+    if not os.path.exists(os.path.join(HERE, "lotto_sms_raw.txt")):
+        return {"no_dump": True, "settings": read_settings()}
+
+    all_tickets = tickets.load()
+    wins = check.check(all_tickets)
+    _lines, counts = check.uncheckable_report(all_tickets)
+    today = datetime.date.today()
+
+    entries, spend_life, spend_cmp, unresolved_cents, unresolved_n = [], 0, 0, 0, 0
+    won_by_entry = {}
+    for w in wins:
+        won_by_entry.setdefault(
+            (w["ref"], w["plus_flag"], w["pool_id"]), 0
+        )
+        won_by_entry[(w["ref"], w["plus_flag"], w["pool_id"])] += round(
+            w["amount"] * 100
+        )
+
+    for t in all_tickets:
+        era = "sizekhaya" if t.bought >= tickets.HANDOVER else "ithuba"
+        inc = tier_increments(t.game, era)
+        if not t.resolved:
+            unresolved_n += 1
+            unresolved_cents += round(t.cost * 100)
+        for plus_flag, pool_id in t.pools:
+            cost_cents = inc[plus_flag] * len(t.boards) * t.ndraws
+            spend_life += cost_cents
+            ok = history.scorable(t, plus_flag)
+            if ok and t.resolved:
+                spend_cmp += cost_cents
+            rows = history.all_draws(t.game, plus_flag)
+            reason = None
+            if not rows:
+                reason = "no results source carries this pool"
+            elif t.start.strftime("%Y-%m-%d") < rows[0]["date"]:
+                reason = (
+                    "predates all draw data for this pool "
+                    f"(earliest {rows[0]['date']})"
+                )
+            covered = len(history.covered(t, plus_flag)) if ok else None
+            entries.append(
+                {
+                    "ref": t.ref,
+                    "game": t.game,
+                    "plus_flag": plus_flag,
+                    "pool_id": pool_id,
+                    "cost_cents": cost_cents,
+                    "scorable": ok,
+                    "reason": reason,
+                    # None, never 0: "0 draws checked" on an unscorable entry
+                    # is the cardinal failure one column left.
+                    "won_cents": won_by_entry.get((t.ref, plus_flag, pool_id), 0)
+                    if ok
+                    else None,
+                    "draws_covered": covered,
+                    "draws_remaining": (t.ndraws - covered) if ok else None,
+                }
+            )
+
+    won_life = sum(round(w["amount"] * 100) for w in wins)
+    won_live = sum(round(w["amount"] * 100) for w in wins if not w["expired"])
+    resolved_refs = {t.ref for t in all_tickets if t.resolved}
+    won_cmp = sum(
+        round(w["amount"] * 100) for w in wins if w["ref"] in resolved_refs
+    )
+
+    out_wins = []
+    for w in wins:
+        d = dict(w)
+        d["amount_cents"] = round(d.pop("amount") * 100)  # drop the rands key
+        expires = datetime.date.fromisoformat(d["expires"])
+        d["expires_in_days"] = (expires - today).days
+        out_wins.append(d)
+
+    return {
+        "wins": out_wins,
+        "entries": entries,
+        "tickets": [
+            {
+                "ref": t.ref,
+                "game": t.game,
+                "cost_cents": round(t.cost * 100),
+                "boards": len(t.boards),
+                "ndraws": t.ndraws,
+                "resolved": t.resolved,
+                "bought": t.bought.strftime("%Y-%m-%d"),
+            }
+            for t in all_tickets
+        ],
+        "uncheckable": {
+            "entries": counts["entries"],
+            "uncheckable": counts["uncheckable"],
+            "too_old": counts["too_old"],
+            "no_pool": counts["no_pool"],
+            "wholly": len(counts["wholly"]),
+            "partly": len(counts["partly"]),
+        },
+        "spend": {
+            "compared_cents": spend_cmp,
+            "lifetime_cents": spend_life,
+            "unresolved_cents": unresolved_cents,
+            "unresolved_tickets": unresolved_n,
+        },
+        "won": {
+            "compared_cents": won_cmp,
+            "lifetime_cents": won_life,
+            "unexpired_cents": won_live,
+        },
+        "settings": read_settings(),
+    }
+
+
+# ------------------------------------------------------------------- state
+
+
+class State:
+    """The one mutable thing in the server. All access under one lock."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._idle = threading.Condition(self._lock)
+        self.model = None
+        self.building = False
+        self.built = None
+        self.stale = False
+        self.error = None
+
+    def get(self):
+        with self._lock:
+            return (self.model, self.building, self.built, self.stale, self.error)
+
+    def begin(self):
+        """True if this caller owns the build. Sets `building` before returning,
+        which is what makes wait_idle() race-free."""
+        with self._lock:
+            if self.building:
+                return False
+            self.building = True
+            return True
+
+    def finish(self, model):
+        with self._lock:
+            self.model = model
+            self.built = datetime.datetime.now().isoformat(timespec="seconds")
+            self.stale = False
+            self.error = None
+            self.building = False
+            self._idle.notify_all()
+
+    def fail(self, exc, pools=()):
+        with self._lock:
+            # model UNTOUCHED - that is what INV-18 rests on.
+            self.stale = True
+            self.error = {"what": str(exc), "pools": list(pools)}
+            self.building = False
+            self._idle.notify_all()
+
+    def wait_idle(self, timeout):
+        with self._lock:
+            if not self.building:
+                return True
+            return self._idle.wait_for(lambda: not self.building, timeout)
+
+
+def refresh(state, build_model_fn):
+    """Rebuild on a worker thread. Clears the memos FIRST.
+
+    Clearing before is the contract: a second build in the same process makes
+    zero requests and returns an identical result, so a refresh that skipped
+    this would redraw the same numbers and report success. Worse, clearing two
+    of the three would price new draws from the previous run's division tables.
+    """
+    if not state.begin():
+        return False
+
+    def work():
+        import check
+        import history
+        import results
+
+        history._cache.clear()
+        results._divisions_cache.clear()
+        check._struct.clear()
+        try:
+            state.finish(build_model_fn())
+        except Exception as exc:  # noqa: BLE001 - any failure keeps the model
+            state.fail(exc)
+
+    threading.Thread(target=work, daemon=True).start()
+    return True
+
+
+# -------------------------------------------------------------------- server
+
+
+_settings_lock = threading.Lock()
+
+
+def make_server(build_model_fn, token, port):
+    """Build the server. The seam is the BUILDER, not the model: handing this a
+    finished model would leave POST /refresh nothing to invoke."""
+    state = State()
+    allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    allowed_origins = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+        # The default is "BaseHTTP/0.6 Python/3.13.14" - a version fingerprint
+        # of both the server and the interpreter, which a security boundary
+        # should not volunteer.
+        server_version = "lotto"
+        sys_version = ""
+
+        def log_message(self, *args):
+            """Silenced. log_request passes self.requestline - a request-derived
+            string - to stderr, which under the tray is inherited and under a
+            unit lands in the journal."""
+
+        # -- helpers ---------------------------------------------------------
+
+        def _send(self, code, body=b"", ctype=None):
+            self.send_response(code)
+            if ctype:
+                self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            for k, v in SECURITY_HEADERS:
+                self.send_header(k, v)
+            self.end_headers()
+            if body and self.command != "HEAD":
+                self.wfile.write(body)
+
+        def _host_ok(self):
+            return (self.headers.get("Host") or "").lower() in allowed_hosts
+
+        def _origin_ok(self):
+            origin = self.headers.get("Origin")
+            # Absent is allowed: a top-level navigation carries none, and the
+            # tray's own urllib POST sends none. The token covers that case.
+            return origin is None or origin in allowed_origins
+
+        def _token_ok(self):
+            got = self.headers.get("X-Lotto-Token") or ""
+            return secrets.compare_digest(got, token)
+
+        def _read_body(self):
+            raw = self.headers.get("Content-Length")
+            try:
+                n = int(raw)
+            except (TypeError, ValueError):
+                return None, 400
+            if n < 0:
+                return None, 400
+            if n > MAX_BODY:
+                return None, 413
+            data = self.rfile.read(n) if n else b"{}"
+            try:
+                obj = json.loads(data or b"{}")
+            except ValueError:
+                return None, 400
+            if not isinstance(obj, dict):
+                return None, 400
+            for k, v in obj.items():
+                if k not in BODY_KEYS or not isinstance(v, bool):
+                    return None, 400
+            return obj, 200
+
+        def _path(self):
+            return self.path.split("?", 1)[0]
+
+        def _route(self, method):
+            """Fixed order; the first failure answers and no later check runs.
+            Host first, or a rebound origin learns which paths exist."""
+            if not self._host_ok():
+                self._send(421)
+                return None
+            path = self._path()
+            if path not in ALLOW:
+                self._send(404)
+                return None
+            if ALLOW[path] != method:
+                self.send_response(405)
+                self.send_header("Allow", ALLOW[path])  # fixed table, not the request
+                self.send_header("Content-Length", "0")
+                for k, v in SECURITY_HEADERS:
+                    self.send_header(k, v)
+                self.end_headers()
+                return None
+            return path
+
+        # -- routes ----------------------------------------------------------
+
+        def do_GET(self):
+            path = self._route("GET")
+            if path is None:
+                return
+            model, building, built, stale, error = state.get()
+            if path == "/status":
+                body = json.dumps(
+                    {"building": building, "built": built, "stale": stale}
+                ).encode()
+                self._send(200, body, "application/json")
+                return
+            view = dict(model or {})
+            view.update(
+                {"built": built, "stale": stale, "error": error, "building": building}
+            )
+            if model is None and not error and not building:
+                view["no_build"] = True
+            self._send(
+                200, page.render(view, token).encode(), "text/html; charset=utf-8"
+            )
+
+        def do_POST(self):
+            path = self._route("POST")
+            if path is None:
+                return
+            if not self._token_ok() or not self._origin_ok():
+                self._send(403)
+                return
+            if path == "/refresh":
+                self._send(202 if refresh(state, build_model_fn) else 409)
+                return
+            changes, code = self._read_body()
+            if changes is None:
+                self._send(code)
+                return
+            try:
+                now = write_settings(changes)
+            except OSError:
+                self._send(500)
+                return
+            self._send(200, json.dumps(now).encode(), "application/json")
+
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server.timeout = 30  # a client declaring 4000 bytes and sending 1 is a hang
+    return server, state
+
+
+def main():
+    port = int(os.environ.get("LOTTO_PORT") or DEFAULT_PORT)
+    token = os.environ.get("LOTTO_TOKEN") or secrets.token_urlsafe(32)
+    no_build = bool(os.environ.get("LOTTO_NO_BUILD"))
+    try:
+        server, state = make_server(build_model, token, port)
+    except OSError as exc:
+        raise SystemExit(f"cannot bind 127.0.0.1:{port} — {exc}")
+    # Bind before the first build, not after: the server answers immediately
+    # with a "building" page rather than leaving the browser to time out.
+    if not no_build:
+        refresh(state, build_model)
+    print(f"serving http://127.0.0.1:{port}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()
