@@ -1,10 +1,10 @@
 # LOTTO-0002 — Local web page for tickets, results and claimable winnings
 
 **Status:** accepted (2026-08-02) — split out of the 1,161-line original, then
-three cold-eyes loops on the post-split bytes; 84 verified findings fixed, 0
-deferred. The third was deferred rather than declined: §13's `3-skipped` row
-records the stop, and the loop `3` row above it is that read, run as the re-gate
-of the amendment implementation forced.
+four cold-eyes loops on the post-split bytes; 103 verified findings fixed, 2
+dismissed on evidence, none outstanding. The third loop was postponed once and then run: §13's `3-skipped`
+row records the postponement, and its loop `3` row is that read, carried out as
+the re-gate the amendment's implementation forced.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0002 (user-request-2026-08-01; three further choices
 taken with the user 2026-08-02, recorded in §3).
@@ -132,7 +132,11 @@ happen in `serve.py`'s builder, not in the renderer.
   # the join silently merges them — report it rather than rendering the merge.
   "tickets":[ {"ref", "game", "cost_cents", "boards": int, "ndraws",
                "resolved": bool, "bought": "YYYY-MM-DD"} ],
-  "uncheckable": {...counts from check.py::uncheckable_report()...},
+  "uncheckable": {                          # from check.py::uncheckable_report()
+    "entries": 1233, "uncheckable": 974,    # totals
+    "too_old": 963, "no_pool": 11,          # the two reasons, kept apart
+    "wholly": 426, "partly": 11,            # TICKET counts, len() of the lists
+  },
   "spend":  {"compared_cents", "lifetime_cents", "unresolved_cents",
              "unresolved_tickets": int},
   "won":    {"compared_cents", "lifetime_cents", "unexpired_cents"},
@@ -164,7 +168,9 @@ INV-18 rests on), so a `stale` key living inside the model could never become
 true: the object that would have to be edited is precisely the one the failure
 path must not edit. Same for `error`, which by definition exists only when there
 is no new model. So `build_model()` returns the data keys, `State` owns the
-five above, and `serve.py` renders
+**first four** — `built`, `stale`, `error`, `building` — `serve.py` derives
+`no_build` at render time from the other three rather than storing it (there is
+nothing to store: it is the absence of all of them), and `serve.py` renders
 `render({**model, "built": …, "stale": …, "error": …, "building": …}, token)`,
 adding `no_build` when that third state holds. `page.py` stays
 pure and sees one flat dict; §7's fixtures set all of them directly.
@@ -212,11 +218,20 @@ rests on.
 entry, never `0` and never `ndraws` — the type carries the cardinal rule so a
 renderer cannot lose it. `draws_covered` needs the same treatment as the others
 and for the same reason: `history.py::covered()` returns `[]` by contract for an
-entry nothing can score, so a bare `int` makes every uncheckable entry read
+entry nothing can score, so a bare `int` makes every unscorable entry read
 "0 draws checked", which is the cardinal failure moved one column left.
 `won_cents` is `None` for an entry nothing could score and an integer (possibly
 `0`) for one that was scored: the same distinction, on the money column INV-15
 asserts against.
+
+**`reason` is set on exactly the entries `scorable()` rejects, and that is a
+coupling rather than a coincidence.** `history.py::scorable()` returns false on
+two grounds and only two — the pool has no rows at all, or the ticket predates
+the first draw any source carries — which are precisely the two branches §4.5
+derives `reason` from. An unscorable entry therefore always has a reason to
+show. If a third rejection ground is ever added to `scorable()`, §4.5 gains a
+branch in the same change, or the page renders "not checkable" with nothing
+after it, which is half of INV-15 lost.
 
 **Every money value in the model is an integer of cents**, and the builder
 **drops `check.py`'s own `amount` key** when it adds `amount_cents`. That
@@ -227,9 +242,12 @@ picking the wrong one is a 100× error on a page whose whole subject is money.
 `tickets[].cost_cents` is `round(Ticket.cost * 100)`, and
 `won.*_cents` / `wins[].amount_cents` are `round(w["amount"] * 100)`.
 `Ticket.cost` and `check.py`'s `amount` are both **rands**, so the conversion
-happens once, at the boundary, and never again. §4.6 and LOTTO-0009 §4.2 both
-record that mixing the two units is a 100× error on a page whose whole subject
-is money; one unit in the model is how this spec avoids re-deriving that.
+happens once, at the boundary, and never again. LOTTO-0009 §4.7 records the same
+rands-against-cents trap, on a spec whose whole subject is money; one unit in the
+model is how this spec avoids re-deriving that. (§4.6 carries a *different* unit
+warning — increments against cumulative totals, which misprices by roughly
+2.25×, not by 100×. The two are worth keeping apart: they fail at different
+magnitudes and neither one catches the other.)
 `spend.unresolved_cents` is `Σ round(Ticket.cost * 100)` over unresolved
 tickets — their raw price, not an apportionment, since apportioning is exactly
 what fails for them (§4.6).
@@ -247,7 +265,7 @@ be redirected for every case.
 
 | Variable | Default | Written by | Read by | Effect |
 |---|---|---|---|---|
-| `LOTTO_PORT` | `4322` | `supervise.py` (LOTTO-0013) | `serve.py`, and `supervise.py` itself (LOTTO-0013 §4.5) | bind port; also builds §4.4's `Host` allowlist |
+| `LOTTO_PORT` | `4322` | `supervise.py` (LOTTO-0013), or the user on the standalone path | `serve.py`, and `supervise.py` itself (LOTTO-0013 §4.5) | bind port; also builds §4.4's `Host` allowlist |
 | `LOTTO_TOKEN` | minted per run | `supervise.py` (LOTTO-0013) | `serve.py` | §4.4's write token; standalone `serve.py` mints its own |
 | `LOTTO_NO_BUILD` | unset | the caller | `serve.py` | bind and serve, build nothing — for LOTTO-0013's INV-20 case and LOTTO-0014's INV-13 child only, never for users; see §6 |
 
@@ -454,8 +472,8 @@ the page with a deadline:
    tickets": a 2019 ticket has no draws still to come, and filing 974 unscorable
    entries under a heading that asserts they do would be the cardinal error
    wearing the section title. The two groups are **draws still to come**, showing
-   draws remaining, and **not checkable**, showing why. Two **scorable
-   tickets** today — the unit here is the ticket, not the entry, because a
+   draws remaining, and **not checkable**, showing why. Two tickets have
+   **draws still to come** today — the unit here is the ticket, not the entry, because a
    ticket is what has draws left to run; the unscorable entries below are also
    listed here and are not counted by this figure:
 
@@ -551,8 +569,9 @@ charged for, including each Multiplay combination. Stating it matters because
 the two readings differ **only** on Multiplay tickets, which is the one place
 the error would not show up in a spot check.
 
-`tier_increments(game, era)` lives in **`serve.py`, in the model builder** — the
-only module that computes, per §4.1 — and writes `cost_cents` onto each entry.
+`tier_increments(game, era)` lives in **`serve.py`**, module level, called by
+`build_model()` — the only module that computes, per §4.1 — and its result
+writes `cost_cents` onto each entry.
 It is **plural and takes two arguments**, returning the whole `{plus_flag:
 increment}` mapping for that game and era; the per-entry value is the
 `[plus_flag]` lookup on it, which is why the formula above indexes rather than
@@ -580,7 +599,13 @@ spend would put a false loss on it.
 and conflating them prices a R10.00 Lotto ticket at R22.50. It is written at
 this call site, as LOTTO-0009 §4.7 says it should be.
 
-**The comparison is drawn over checkable entries only.**
+**The comparison is drawn over the checkable entries of resolved tickets only** —
+both conditions, and the snippet below carries both because it is the only
+executable statement of the figure an implementer will copy. `and t.resolved`
+changes nothing today (`unresolved tickets 0`, measured in the same run), which
+is exactly why it has to be written down rather than left to the numbers: the
+day one price fails to resolve, a snippet missing that clause keeps agreeing
+with itself and stops agreeing with `serve.py`.
 
 ```console
 $ python3 - <<'EOF'
@@ -594,7 +619,7 @@ for t in load():
     for pf, _ in t.pools:
         c = inc[pf] * len(t.boards) * t.ndraws
         life += c
-        if scorable(t, pf):
+        if scorable(t, pf) and t.resolved:
             chk += c
 print(f"lifetime R{life/100:,.2f}, checkable R{chk/100:,.2f}, sums back: {life == cost}")
 EOF
@@ -619,7 +644,8 @@ won lifetime R2,651.60, unexpired R2,418.90, unresolved tickets 0
 | Figure | Value | Shown as |
 |---|---|---|
 | Spend on entries that could be scored | R10,603.50 | the comparison |
-| Winnings on those entries | R2,651.60 lifetime, R2,418.90 unexpired | the comparison |
+| Winnings on those entries (`won.compared_cents`) | R2,651.60 | the comparison |
+| Winnings lifetime and still unexpired | R2,651.60 lifetime, R2,418.90 unexpired | separate, labelled lines — **not** the comparison (below) |
 | Lifetime spend, all 1,233 entries | R28,244.50 | a separate, labelled line |
 
 **The identity holds only where the price resolved, and the display must say so.**
@@ -746,9 +772,10 @@ them unqualified.
   reason, and never as a blank, a dash, a zero, or an omission; a ticket
   checkable in one pool and not another shows both facts.
   *Test:* `tools/verify_page.py`, case `uncheckable_not_a_loss` — renders a
-  fixture of **two** synthetic tickets: one two-pool ticket with one pool
-  scorable and one not (*partly* uncheckable), and one whose every pool is
-  unscorable (*wholly* uncheckable).
+  fixture of **two** synthetic tickets — built by running the *real* builder
+  over them under a doubled `all_draws` (§7), not by handing a finished model to
+  the renderer: one two-pool ticket with one pool scorable and one not (*partly*
+  uncheckable), and one whose every pool is unscorable (*wholly* uncheckable).
   **Both are needed, and the second is the one that matters most.** With only
   the partly-uncheckable ticket, a renderer that iterates tickets which produced
   at least one scorable entry — and then appends their remaining pools — passes
@@ -865,6 +892,14 @@ them unqualified.
   variable and how the tray surfaces the failure. (4322 chosen as free on this
   machine and adjacent to the user's stats dashboard on 4321 — `ss -ltn`,
   2026-08-02.)
+- **The server stops while a page is open and polling.** The tray's Stop, a
+  Quit, a crash, or a logout all leave a tab whose `GET /status` now fails. The
+  poll must treat a failed request as *stop polling and say the connection was
+  lost*, not as "still building": a page that keeps showing the building notice
+  is asserting that work is in progress on a server that no longer exists, which
+  is a false statement about missing data — the cardinal rule arriving through
+  the one part of this page that keeps running after the process behind it has
+  gone. The notice is browser-side, so nothing mechanical checks it (§11).
 - **`LOTTO_PORT` is set to something that is not a port**, on the standalone
   `python3 serve.py` path. This is the one launch path LOTTO-0013 §4.5's
   fallback does **not** cover — that fallback lives in `Supervisor`, and nothing
@@ -894,7 +929,8 @@ failure, whatever produced it.
   failure returns 500 — bodiless, per LOTTO-0014 §4.1 — and leaves the switch
   showing its true state, not the requested one.
 - **A prize expires while the page is open.** Expiry is computed against
-  `datetime.now()` at model-build time, so an open page can show a prize that
+  `datetime.date.today()` at model-build time — day granularity, which is what
+  makes "anything expiring today" coherent — so an open page can show a prize that
   has since lapsed — observed during this session, where the claimable line
   count and total both moved between two runs a few hours apart as a win
   crossed the 365-day boundary. (No amount or date is given for it: a single
@@ -985,12 +1021,25 @@ suite, and all three binding on all ten cases, LOTTO-0013's and LOTTO-0014's inc
   INV-15 and INV-16 recompute what should be rendered rather than importing the
   renderer's own opinion of it.
 
-**Each case is observed failing before the invariant is accepted.** LOTTO-0009
-§7's practice was to red-test against pre-fix code; there is no pre-fix code
-here, because this is greenfield. The equivalent is to break the rule
-deliberately — widen the `Host` comparison to `endswith`, drop the token check,
-clear the model before a rebuild, return the lifetime total from the comparison
-— confirm the case fails, then restore. A case never seen failing is a case
+**Each case is observed failing before the invariant is accepted, and the
+breakage is a flag rather than a hand edit.** LOTTO-0009 §7's practice was to
+red-test against pre-fix code; there is no pre-fix code here, because this is
+greenfield. The equivalent is to break the rule deliberately — clear the model
+before a rebuild, return the lifetime total from the comparison, render an
+unscorable amount as a dash — confirm the named case fails, then restore.
+
+**`tools/verify_page.py --break <name>` is that mechanism, and it is part of the
+contract rather than a debugging aid.** Each break applies exactly one
+deliberate defect and asserts the named case goes **red**; `--list` prints the
+cases and the available breaks. A hand edit proves the same thing once, for the
+person who made it; a named break proves it on every run, which is what "every
+case was observed failing" has to mean on greenfield code where no case can be
+red-tested against its own history. It has already earned this: one break turned
+up a defect in a *case* rather than in the code — an em-dash for an unscorable
+amount did not turn INV-15 red, because the assertion compared raw markup and
+excluded the empty string from its own forbidden set. Adding a case means adding
+its break in the same change; a case with no break is a case nobody has seen
+fail. A case never seen failing is a case
 that proves nothing, and on a greenfield spec that is the *only* way to know it
 can fail at all.
 
@@ -1001,7 +1050,8 @@ can fail at all.
   file on disk holding every ticket is a second copy of the data
   `tools/verify_privacy.py` exists to keep out of the repository.
 - **Settings in the tray menu instead of the page.** Rejected 2026-08-02. It
-  would have kept the HTTP surface read-only and removed §4.4's token entirely;
+  would have kept the HTTP surface read-only and removed the write token
+  entirely (LOTTO-0014 §4.3, which now owns it — §4.4 here is a pointer stub);
   the user chose the panel knowing that.
 - **A `<div role="switch">` toggle.** Rejected: rebuilding focus, keyboard and
   announcement on a div is how toggles become unreachable. Same visual on a real
@@ -1062,11 +1112,12 @@ LOTTO-0014 §8.)
 | §6 the first-build failure rendering "results unavailable" rather than an empty page | **nothing** — reproducing it needs the operator's API to be down, which the suite cannot arrange and must not depend on |
 | §4.7 autostart-off deleting the file rather than rewriting a key | **nothing** — LOTTO-0014's cases assert the file's *bytes* and its presence after a write, not its absence after a toggle-off; a server that rewrote the key to `false` would pass every one of them |
 | §4.1 the model's key set | **nothing** — a builder and a renderer that agree on a wrong shape are consistent with each other, and every fixture is written to the same shape |
+| §4.1 the page's `GET /status` poll — its cadence, its two exit conditions, and that it stops rather than spinning | **nothing** — it is browser-side JavaScript; `failed_refresh_keeps_model` asserts the rendered HTML and the `/status` JSON, neither of which exercises the poll that reads them |
 | §4.2 the 27-request figure staying true | **nothing** — a dated measurement; a larger dump or an API paging change moves it without failing anything |
 | §4.5 the page being *readable* — ordering, filters, marking near-expiry | **nothing** — no check can tell a clear layout from a cluttered one |
 | §4.7 the written `.desktop` file actually autostarting on this desktop | **nothing mechanical** — it depends on the session's XDG implementation; verified by logging out once |
 
-Twelve rows, seven `nothing`.
+Thirteen rows, eight `nothing`.
 
 The parent's table held twenty-two rows and six `nothing`. The three parts now
 hold **44 rows and 23 `nothing` between them** — measured 2026-08-02, twelve and
@@ -1088,9 +1139,10 @@ error budget is the number of them a reader can see.
   autostart switch, and the port. Shared with LOTTO-0013, which writes the tray
   half of the same section and adds PySide6 as a tray-only requirement to the
   "Needs Python 3.8+ and a Linux desktop" line.
-- `CLAUDE.md` — the Commands block gains `python3 serve.py` and the verification
-  list gains `tools/verify_page.py`. Its architecture diagram gains the second
-  consumer of `check.py`.
+- `CLAUDE.md` — **done 2026-08-02**: the Commands block carries `python3
+  serve.py`, the verification list carries `tools/verify_page.py`, and the
+  architecture diagram carries the second consumer of `check.py` (and, since the
+  fold-back, the `serve.py → supervise.py` settings edge).
 - `CHANGELOG.md` — an `Added` entry citing LOTTO-0002.
 - `ROADMAP.md` — LOTTO-0002 flips to shipped; its "Spec:" line already points
   at this file.
@@ -1140,6 +1192,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 4 | 2026-08-02 | 2 | 0 | 4 | 6 | 9 | Second re-gate loop. All 19 verified findings fixed; **2 dismissed on evidence**, 0 deferred. **No CRITICAL, down from one.** Origin split: roughly 5 fix collateral against 14 draft defects — the healthy direction, and the reason this loop was worth running. Dismissed: two "`§13` does not exist" findings, an artefact of the orchestrator's scrubbed review copy dropping the section number from the heading it withholds; the document numbers it §13 and always has. **The most valuable finding is one no reviewer of this document had made in four loops: §4.6's worked snippet — the only executable statement of the compared figure — filtered on `scorable()` and omitted `t.resolved`,** the clause INV-16 exists to protect and which `serve.py` applies. It reproduces R10,603.50 either way *today*, because `unresolved tickets 0`, so nothing about the number could reveal it; the day one price fails to resolve, the snippet an implementer copied keeps agreeing with itself and stops agreeing with the code. Re-run with the clause: identical figures, now for the right reason. **Its neighbour was the same shape:** the summary table labelled the *lifetime* win total as "the comparison" while §4.6's prose two paragraphs down says `won.lifetime_cents` is explicitly not that figure — split into two rows. **One HIGH was loop 3's collateral:** "`State` owns the five above" followed loop 3's addition of `no_build`, which `State` does not own — `serve.py` derives it at render time from the absence of the other three, and an implementer adding a `no_build` attribute to `State` collapses the three empty states at the seam this section calls the one every fixture is built to. Also fixed: the `uncheckable` sub-dict was the one part of the model shape left as an ellipsis, while §4.5's banner needs four of its keys and §11 records the key set as checked by nothing — now enumerated; `reason` was said to be `None` exactly for scorable entries without stating why that biconditional holds (`history.py::scorable()` rejects on exactly the two grounds §4.5 derives `reason` from, so a third ground added there silently renders "not checkable" with nothing after it — half of INV-15); §6 had no failure mode for the server stopping while a page polls `/status`, which leaves a tab asserting a build is in progress on a process that no longer exists; §7 described red-testing as a hand edit when the shipped mechanism is `--break <name>`, undocumented in any spec despite CLAUDE.md carrying it, and §11 gained the row for the browser-side poll that nothing checks — thirteen rows and eight `nothing`. Smaller: a 100× unit warning cited §4.6, whose warning is a different ~2.25× one; "two scorable tickets" where the snippet counts tickets with draws still to come; `datetime.now()` where the builder uses `date.today()`; and §12's CLAUDE.md row left in the future tense after the edit had landed. Doc grew 1,148 -> 1,201 lines. |
 | 3 | 2026-08-02 | 2 | 1 | 4 | 4 | 6 | Re-gate of the `2-impl` amendment, and the third cold read the `3-skipped` row below deferred rather than declined. All 15 verified findings fixed; 0 unverified, 0 deferred. **Both lanes led on the same CRITICAL and it was this session's own collateral:** §4.1 said "nothing in this document's two files imports anything in that one's three", which the settings-reader move made false — `serve.py` imports `supervise.py`, deliberately, and LOTTO-0013 §4.1 requires it. Left standing, the sentence tells an implementer to re-implement the reader inside `serve.py`: the duplicate that shipped in `45e3fc3` and was deleted the same day. Now stated as a one-way edge *toward* LOTTO-0013's files, with the reason pointed at rather than copied. **A second finding was also mine:** the `2-impl` paragraph called a constructed-but-unrun server "building" and said `LOTTO_NO_BUILD` leaves it there. It does not — `model is None` with no error and no build in flight sets `no_build`, and §6 requires a *no build was performed* notice; a page told it is building polls `/status` forever for a build nobody started. Two states one word apart, on the rule this project calls cardinal. **The remaining HIGHs are draft defects the two prior loops walked past, all on the model seam §4.1 calls "the seam every §7 fixture is built to".** Three keys reach `page.py` that the shape block never listed — `building`, `no_build`, and `build_model()`'s entirely separate `{"no_dump": True, "settings": …}` return — and two of the three are the carriers of §6's "an empty page is correct only when it names why". Lifetime spend was defined twice in one section, as `Σ Ticket.cost` in a bullet and as the entry sum in the table two paragraphs above; the builder computes the entry sum, they diverge on any ticket whose price does not resolve, and this is a money figure on a page. And `State.fail(exc, pools)` had no producer for `pools` while §6 promised a failure "naming the pools it could not reach" — resolved by stating what the code honestly does: `pools` is optional, today's caller cannot attribute the failure, and `page.py` renders the empty case as "all pools" rather than as a blank. Also fixed: `tier_increment(game, era, plus_flag)` named at three sites including INV-16's test clause, where the function is `tier_increments(game, era)` returning a dict; §4.7 citing `pathlib` spellings against `os`-based code; no failure mode for a malformed `LOTTO_PORT` on the standalone path, which is the one launch path LOTTO-0013 §4.5's fallback does not cover; §7 and §11 claiming the raising `all_draws` double is installed "in every case" when it lives in `render_pure()` and the two socket-driven cases never see it; the environment table crediting `serve.py` as `LOTTO_PORT`'s only reader; `refresh(state, build_model)` where the parameter is `build_model_fn`; INV-18's clause omitting the "and says so" assertion its case actually makes; and unscorable / uncheckable / not-checkable used for one state at three altitudes, now glossed rather than merged — collapsing them would lose the entry-versus-ticket distinction INV-11 rests on. §11 unchanged at twelve rows and seven `nothing`. Doc grew 1,063 -> 1,148 lines. |
 | 2-impl | 2026-08-02 | — | — | — | — | — | **Implementation row — no reviewer was dispatched, and this is not a review loop.** Origin is building the thing (commit `45e3fc3`), which is the reader the `3-skipped` row below said it was deferring to; this is that mechanism firing rather than a fourth opinion. **Nothing in this document said which function builds the model.** §4.2 required the bind to precede the first build and left the division of labour implicit, so an implementer could read `make_server()` as producing a ready server. It does not: it creates the `State`, binds and returns `(server, state)`, and the opening `refresh()` is `main()`'s. **Two of `tools/verify_page.py`'s cases were written to the other reading and had to run an explicit first refresh** — `failed_refresh_keeps_model`, which needs a previous model for the failure to preserve, and `nothing_in_the_url`, which needs a rendered page to find ticket data absent from. **The reason this is a contract amendment and not a note is that the wrong reading is silent**: both cases still run and still pass, asserting against the empty *building* state instead of against the thing their invariants are about — a case passing for a reason unconnected to what it locks, which is the `3-skipped` row's predicted "a fixture weaker than the one that ships", arriving exactly where it predicted. §4.2 now states the division and both of its consequences, including that `LOTTO_NO_BUILD` leaves a server in that same legitimate no-model state. **§7 carries the case-facing half inside its existing builder-seam constraint rather than as a fourth one**, deliberately: LOTTO-0014 §7 cites "the three constraints that bind all ten cases" by count, and a fourth bullet here would falsify a sibling document's sentence to say something the first bullet already owns. No invariant moved, no case was renumbered, and no shipped behaviour changed — the cases already do the right thing, and the document now says why they must. A sibling amendment landed the same day in `docs/specs/LOTTO-0013-tray-and-supervisor.md` §4.1 (the settings reader), with one real code defect fixed alongside it; that document's `3-impl` row holds the account. |
 | 1-post-split | 2026-08-02 | 2 | 3 | 6 | 10 | 14 | All 33 verified findings fixed; 0 unverified, 0 deferred. First loop on the post-split bytes, and every finding was a draft defect — the split removed the collateral churn but not the document's own gaps. **Both lanes led on the same CRITICAL: §6 promised a degraded startup that nothing in scope can build.** It said the page would serve "from `archive_results.json` alone with a visible notice that live results are missing", but `check.py::paying_combinations()` *raises* when the live feed yields no recent draw — deliberately, so an empty division table cannot score a pool as losses — and `history.py::all_draws()` reaches the API for every pool regardless of what the archive holds. So the whole build fails, and §9 puts changes to scoring out of scope: the implementer would have had to either ship nothing or edit `check.py`. Replaced with the achievable behaviour, plus the case nobody had defined — **a failed FIRST build has no previous model to keep**, so INV-18's "never serves an empty or zeroed page" had no answer for the commonest failure this project sees (four of seven attempts). It now renders a named "results unavailable" state, explicitly not a zero total. **Two further CRITICALs, one per lane.** The settings panel — the feature §1 names in its first paragraph — had no state in the model at all: `page.py` is pure, there is no `GET /settings` route, so both switches would render in an arbitrary state on every load; the model gains a `settings` key. And **INV-15's fixture could not see the bug its own *Breaks when* names.** It held only a *partly* uncheckable ticket, so a renderer iterating tickets that produced at least one scorable entry, then appending their other pools, passes — while silently dropping every *wholly* uncheckable ticket. That is 426 tickets against 11, on the rule this project calls cardinal. The fixture now holds both shapes, and asserts the checkable half renders too, which the second clause of the invariant previously had no assertion for at all. **Three findings came from reading the real source rather than the document:** "Every money value in the model is an integer of cents" was false, because the win dict is spread verbatim and `check.py::amount()` returns **rands** — a 100× error waiting on a money page, now fixed by having the builder drop the key; `draws_covered` was a bare `int` while `history.py::covered()` returns `[]` for an unscorable entry, so every uncheckable row would have read "0 draws checked" — the cardinal failure moved one column left; and the winnings side of §4.6's comparison had no resolved-scoped figure, so an unresolved ticket's wins counted while its cost did not. Also fixed: turning autostart *off* was never stated as deleting the file, while the template ships `X-GNOME-Autostart-enabled=true` and actively invites rewriting the key instead — which breaks the "presence *is* the state" rule the setting is built on; a failed refresh left an open page with no way to learn it failed, since the poll watched `built` and `built` does not change on failure; §11 credited one `all_draws` double with two incompatible jobs; and the "Live tickets" heading asserted draws-still-to-come of 974 entries that by definition have none. §11 grew to twelve rows and six `nothing`. Doc grew 875 -> 980 lines. |

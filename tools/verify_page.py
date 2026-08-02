@@ -832,7 +832,9 @@ def no_orphan_server():
             "the child's exit status was never collected — it was not reaped",
         )
         bound = False
-        for _ in range(50):                # TIME_WAIT can hold it briefly
+        for _ in range(50):                # not TIME_WAIT: SO_REUSEADDR binds
+                                           # over that (measured). This covers
+                                           # the kernel's teardown window.
             s = socket.socket()
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
