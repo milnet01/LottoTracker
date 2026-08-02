@@ -66,26 +66,47 @@ def site_label(game, hits, special):
 
 
 def amount(ticket, plus_flag, pool_id, draw, hits, special):
-    """What this match paid, in rands. 0.0 if it did not win.
+    """What this match paid, in rands. Raises if the price cannot be read.
 
     The pool comes from the entry being scored, never from the ticket's top
     tier: each tier runs its own draw with its own prize pool, so pricing a
     lotto/0 win off a Lotto Plus 2 ticket's pool 102 table is wrong money in
     both directions.
+
+    **There is no "did not win" answer here** (INV-22). check() calls this only
+    after the combination matched a paying division, so every call prices a line
+    already known to have won. A lookup that finds nothing therefore means the
+    source could not be read - not that the prize was zero - and returning 0.0
+    for it is the "no data reads as no win" failure on the money path itself,
+    landing as a figure indistinguishable from a real losing line. A division
+    that genuinely paid nothing is a different thing and still returns its own
+    0.0, because the source stated it.
     """
+    where = f"{ticket.game}/{plus_flag} pool {pool_id} draw {draw['date']}"
     if draw["issue"] is not None:
         want = api_label(ticket.game, hits, special)
-        for lvl in divisions(ticket.game, draw["issue"], pool_id, plus_flag):
+        rows = divisions(ticket.game, draw["issue"], pool_id, plus_flag)
+        for lvl in rows:
             if lvl["matches"].upper().strip() == want:
                 return lvl["winAmount"] / 100
-        return 0.0
+        raise RuntimeError(
+            f"{where}: won {want!r} but the API's division table "
+            f"{'is empty' if not rows else 'does not carry that label'} - "
+            f"cannot price a known win"
+        )
     table = payouts(ticket.game, plus_flag, draw["date"])
     if (exact := site_label(ticket.game, hits, special)) in table:
         return table[exact]
     # Pre-handover draws did not all share one division structure: some list a
     # bottom tier of "2 + Bonus", others a plain "2". When the bonus-qualified
     # label is absent, the plain match is the tier that actually paid.
-    return table.get(str(hits), 0.0)
+    if (plain := str(hits)) in table:
+        return table[plain]
+    raise RuntimeError(
+        f"{where}: won {exact!r} but the payout page "
+        f"{'could not be parsed' if not table else f'carries no {exact!r} or {plain!r} row'}"
+        f" - cannot price a known win"
+    )
 
 
 def check(tickets=None, today=None):

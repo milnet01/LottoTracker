@@ -108,6 +108,24 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A win whose prize cannot be read now raises instead of pricing at R0.00 (INV-22)** (LOTTO-0007)
+  `check.py::amount()` is called only after a combination has matched a paying
+  division, so every call prices a line already known to have won — there is no
+  "did not win" answer for it to give. It nevertheless fell back to `0.0` when
+  the archive payout page could not be parsed, or when neither the exact nor
+  the plain division label appeared in the table, putting a figure on the page
+  and in the terminal that is indistinguishable from a real losing line. That
+  is this project's cardinal failure on the money path itself, and
+  `paying_combinations()` already raised for the identical reason.
+  Both branches now raise with a diagnostic naming the pool, the draw and the
+  label. A division the source *does* carry and states as zero still returns
+  `0.0` — that is an answer, not a gap, and the guard asserts both directions.
+  Measured before the change: 86 wins, 69 archive-era, **0 priced at R0.00**,
+  all 67 archive draws parsing. Figures after are identical (R2,651.60 total,
+  62 claimable lines) — this closes a latent hole rather than repricing
+  anything. `tools/verify_pools.py` gains four blind-lookup probes; red-tested
+  by reverting the archive branch, which mispriced 2 and exited 1.
+
 - **One settings reader, not two that agree today** (LOTTO-0013)
   `serve.py` imported `read_settings()` from `supervise` and then redefined
   it twenty lines below, so the local copy won and the file shipped with two

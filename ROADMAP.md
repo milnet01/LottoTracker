@@ -366,12 +366,20 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   rediscovered by another expensive review.
   Verified but unfixed at the loop cap; each has a §11 row in
   `docs/specs/LOTTO-0001-lottery-ticket-tracker.md`:
-  (a) an unscrapable payout page prices every archive-era win at R0.00
-  instead of raising, unlike `paying_combinations()` which does raise —
-  **do this one first: it is the project's cardinal rule ("no data must never
-  read as did not win") violated by shipped code, on a money path, and every
-  other item in this list is cosmetic beside it. R0.00 is indistinguishable
-  from a real losing line in `check.py`'s output;**
+  (a) ✅ **fixed 2026-08-02.** An unscrapable payout page priced every
+  archive-era win at R0.00 instead of raising, unlike `paying_combinations()`
+  which does raise — the project's cardinal rule violated by shipped code on a
+  money path, and by then visible on the page as well as in the terminal.
+  `check.py::amount()` runs only after a combination matched a paying
+  division, so it has no "did not win" answer to give: both its branches now
+  raise when the price cannot be looked up, while a division the source states
+  as R0.00 still returns 0.0. Holds **INV-22** (LOTTO-0001 §5), checked by four
+  blind-lookup probes in `tools/verify_pools.py` and red-tested by reverting
+  the archive branch (2 mispriced, exit 1). Measured before the change: 86
+  wins, 69 archive-era, 0 at R0.00, all 67 archive draws parsing — so the
+  figures are unchanged (R2,651.60, 62 claimable lines) and this closed a
+  latent hole rather than repricing anything. What remains unchecked is
+  narrower: a page that parses into a *wrong* table;
   (b) `backfill.py::parse_page()` raises `KeyError` on an abbreviated month
   in a href rather than skipping the row;
   (c) INV-5's grep sees only a double-quoted `"MATCH <digit>` literal — it

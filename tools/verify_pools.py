@@ -35,6 +35,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import check  # noqa: E402
 from check import uncheckable_report  # noqa: E402
 from history import all_draws  # noqa: E402
 from tickets import GAME_MAP, load  # noqa: E402
@@ -200,7 +201,54 @@ def main(argv=()):
         f"{len(partly)} partly-uncheckable tickets, {len(wrong)} reported as "
         f"wholly uncheckable, {len(double)} double-counted"
     )
-    return 0 if bad == 0 and not wrong and not double else 1
+
+    # INV-22 (LOTTO-0007a): a known win whose price cannot be looked up must
+    # RAISE, never price as R0.00. check.py::amount() is called only after the
+    # combination matched a paying division, so there is no "did not win"
+    # answer for it to return - an empty or unrecognised division table means
+    # the source could not be read, and R0.00 for that is indistinguishable
+    # from a real losing line in every consumer, the page included.
+    #
+    # Driven with doubles rather than against real data on purpose: today all
+    # 67 archive draws parse and no win prices at R0.00 (measured 2026-08-02),
+    # so real data cannot exercise this at all. That is exactly why it needs a
+    # case - the failure arrives the day a payout page changes shape.
+    unpriceable = 0
+    real_payouts, real_divisions = check.payouts, check.divisions
+
+    class _T:
+        game = "lotto"
+
+    archive = {"date": "2025-03-01", "issue": None, "source": "archive"}
+    api = {"date": "2026-07-01", "issue": 2500, "source": "api"}
+    probes = [
+        ("archive payout page unparseable", lambda: {}, None, archive),
+        ("archive table lacks the won label", lambda: {"6": 1.0}, None, archive),
+        ("API division table empty", None, lambda: [], api),
+        ("API table lacks the won label", None,
+         lambda: [{"matches": "MATCH 6", "winAmount": 100}], api),
+    ]
+    try:
+        for name, pay, div, draw in probes:
+            check.payouts = (lambda *a, **k: pay()) if pay else real_payouts
+            check.divisions = (lambda *a, **k: div()) if div else real_divisions
+            try:
+                got = check.amount(_T(), 0, 100, draw, 5, True)
+                print(f"  PRICED A BLIND WIN at R{got:,.2f}: {name}")
+                unpriceable += 1
+            except RuntimeError:
+                pass
+        # The converse, and it must not be broken by the guard: a division the
+        # source DOES carry and states as zero is a real answer, not a gap.
+        check.payouts, check.divisions = lambda *a, **k: {"5 + Bonus": 0.0}, real_divisions
+        if check.amount(_T(), 0, 100, archive, 5, True) != 0.0:
+            print("  a division the source states as R0.00 no longer prices as 0.0")
+            unpriceable += 1
+    finally:
+        check.payouts, check.divisions = real_payouts, real_divisions
+
+    print(f"unpriceable-win guard: {len(probes)} blind-lookup probes, {unpriceable} mispriced")
+    return 0 if bad == 0 and not wrong and not double and not unpriceable else 1
 
 
 if __name__ == "__main__":

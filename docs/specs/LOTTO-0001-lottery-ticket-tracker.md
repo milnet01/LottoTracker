@@ -291,6 +291,34 @@ entered in from its price - `check.py` is still the only scoring path.
   if over 90% of **entries** are unscorable, which is what a missing
   `archive_results.json` looks like.
 
+- **INV-22** — A win whose prize cannot be looked up **raises**; it is never
+  priced at R0.00. Added 2026-08-02 by LOTTO-0007(a).
+  *Test:* `python3 tools/verify_pools.py` → `unpriceable-win guard: 4
+  blind-lookup probes, 0 mispriced` (repo root, after `backfill.py`)
+  **`check.py::amount()` has no "did not win" answer to give**, and that is the
+  whole basis of this invariant. `check()` calls it only after the combination
+  matched a paying division (`if label not in pays: continue`), so every call
+  prices a line already known to have won. An empty or unrecognised division
+  table therefore means *the source could not be read*, and returning `0.0` for
+  it puts a figure on the page and in the terminal that is indistinguishable
+  from a real losing line — the project's cardinal failure on the money path
+  itself. `paying_combinations()` already raises for exactly this reason; this
+  extends the same rule to the pricing step, on both the API and archive
+  branches.
+  **A division the source *does* carry and states as zero still returns
+  `0.0`**, because that is an answer rather than a gap. The invariant
+  distinguishes the two, and the guard asserts both directions.
+  *Breaks when:* the archive payout page changes markup so `payouts()` parses
+  to `{}`; a feed-side rename of the `MATCH n` grammar makes every label miss
+  (the live form of §11's label-grammar row); or a future edit "simplifies"
+  either branch back to a `.get(..., 0.0)` default.
+  Measured 2026-08-02 before the change: 86 wins, 69 of them archive-era, **0
+  priced at R0.00**, and all 67 distinct archive draws parsed — so real data
+  cannot exercise this and the guard is driven by doubles. Figures after the
+  change are identical (86 wins, R2,651.60, 62 claimable lines), which is the
+  point: it is a latent-defect guard, not a repricing. Red-tested the same day
+  by reverting the archive branch to `return 0.0` → 2 probes mispriced, exit 1.
+
 ## 6. Failure modes
 
 - **The API changes shape or path.** `results.py::_post()` raises on any
@@ -429,7 +457,8 @@ carries the breakdown and the before/after.
 | §4.4 expiry / `CLAIM_DAYS` | **nothing** — no test covers the 365-day boundary, and nothing tracks the gap |
 | §4.4 current-era pay gate | **nothing** — a pre-handover-only division is dropped silently |
 | §4.4 label grammar | **nothing** — a feed-side rename of `MATCH n` drops every win with no error |
-| archive payout scrape | **nothing** — an unscrapable payout page prices every archive win at R0.00 |
+| INV-22 unpriceable win raises | `tools/verify_pools.py` — four blind-lookup probes (empty and unrecognised division tables, both branches), plus the converse that a source-stated R0.00 still prices as 0.0 |
+| archive payout scrape | `tools/verify_pools.py` (INV-22) — an unscrapable payout page now raises instead of pricing an archive win at R0.00. What remains unchecked is narrower: a page that parses into a **wrong** table, which is well-formed and not detectably wrong from inside |
 | `backfill.py` date parsing | **nothing** — an abbreviated month in a href raises `KeyError`, not an empty result |
 | Multiplay on non-Lotto games | `tools/verify_pools.py` (LOTTO-0009 INV-7) — the PowerBall branch is tested first, so a >6-number PowerBall board still becomes one line, but the price paid for more, so it resolves to no tier and exits non-zero. The wrong line *count* itself is still unchecked |
 | §4.2 pools derived from price, not from the game name | `tools/verify_pools.py` (LOTTO-0009 INV-7, INV-8) |
