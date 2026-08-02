@@ -286,8 +286,9 @@ comes and the user is never told the fetch failed. When the poll sees
 `building: false` with `built` unchanged and `stale: true`, it stops and shows
 the stale notice INV-18 requires the page to carry. Without the fourth job the
 opening *building* page never leaves that state. (The route has a second
-consumer since LOTTO-0018: the tray waits on the same two keys for the same
-reason — LOTTO-0013 §4.6.) It is inline rather than a served asset
+consumer since LOTTO-0018: the tray waits on `building`, then reads `stale`,
+for the same reason the poll above does not watch `built` alone —
+LOTTO-0013 §4.6.) It is inline rather than a served asset
 because a fifth route serving files is the thing LOTTO-0014 §4.1 exists to
 avoid.
 
@@ -767,7 +768,8 @@ its INV-19 observable).
 
 This document holds **INV-15 to INV-18** — the honesty rules on the data the
 page renders. LOTTO-0001 holds INV-1 to INV-6, LOTTO-0009 INV-7 to INV-11,
-LOTTO-0014 INV-12 to INV-14 and INV-21, and LOTTO-0013 INV-19 and INV-20. No
+LOTTO-0014 INV-12 to INV-14 and INV-21, and LOTTO-0013 INV-19, INV-20 and
+INV-23. No
 number moved in either 2026-08-02 split — CHANGELOG.md and sibling specs cite
 them unqualified.
 

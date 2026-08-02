@@ -5,13 +5,15 @@ implemented** — added for ROADMAP LOTTO-0018 (the tray reporting a refresh
 before it has happened, and reporting a failure as a success). Until that lands,
 `supervise.py` has no `refresh()`, `status()` or `REFRESH_MESSAGE`,
 `tray.py::refresh()` still notifies when the POST returns, and
-`tools/verify_page.py` holds ten cases rather than eleven: §4.6, INV-23 and §7's
-counts describe what is to be built. The amendment is §13's `5-amend` row and
-its gate is loop 6. Everything else here is accepted (2026-08-02) and shipped.
+`tools/verify_page.py` holds ten cases rather than eleven. **Everything about
+the four refresh outcomes describes what is to be built** — §4.6 entire, INV-23,
+§4.1's two new methods, §6's four refresh bullets, §10's poll ceiling, §7's case
+and counts, and §11's four new rows. Everything else here is accepted
+(2026-08-02) and shipped.
 
-**Six cold-eyes loops in all** — three before implementation (converged by cap
+**Seven cold-eyes loops in all** — three before implementation (converged by cap
 and by the collateral trigger), two re-gate loops that the settings-reader
-amendment's implementation forced, and loop 6 gating this one. 124 verified
+amendment's implementation forced, and loops 6 and 7 gating this one. 137 verified
 findings fixed, 2 dismissed on evidence, 0 deferred; 1 code gap filed as
 LOTTO-0017 rather than fixed in a documentation pass. The gate stopped after the
 second re-gate loop by the user's decision rather than at the 3-loop cap: no
@@ -159,6 +161,8 @@ class Supervisor:
     """Owns the token, the port and the child process. No Qt anywhere."""
 
     def __init__(self, port=None)   # port or $LOTTO_PORT or 4322 (§4.5)
+    port: int                       # the resolved port (§4.5); also what start()
+                                    # puts in the child's LOTTO_PORT
     url: str                        # "http://127.0.0.1:<port>" — what the tray opens
     token: Optional[str]            # minted by start(); None while stopped
     child: Optional[Popen]          # the server process; survives stop() (INV-20)
@@ -245,9 +249,8 @@ socket timeout, so 100 ms is the gap between attempts rather than a guaranteed
 cadence. **It also returns `False` the moment `is_running()` goes false**, so a
 child that dies on an import error fails in milliseconds instead of consuming
 the whole budget — which is why §6 splits *died* from *hung*. That is at most
-100 requests per start. §10 holds the whole inventory this half of the split
-makes — those, the Refresh POST, and the `GET /status` poll §4.6 adds behind it
-— rather than a second enumeration here.
+100 requests per start; §10 holds the rest of what this half sends — the
+Refresh POST and the `GET /status` poll §4.6 adds behind it.
 Anything that shows the user the page — left-click, the `open_on_start` open at
 startup, the Open page menu item — waits on `is_ready()`; only the icon state
 reads `is_running()`.
@@ -263,7 +266,8 @@ than left for an implementer to discover from the symptom.
 matters more than the rule.** `start()`, `is_ready()` and `refresh()` are
 dispatched through §4.3's `run_async()`, because a ten-second
 `is_ready()` on the GUI thread freezes the menu on the application's most-used
-interaction. `refresh()` is now the longest of them by two orders of magnitude —
+interaction. `refresh()` is now the longest of them by an order of magnitude — 300 s
+against `is_ready()`'s 10 s —
 it waits out the build rather than the POST (§4.6) — so it is the one this rule
 matters most for, and it is the only caller of `post()` the tray has. **The first exception is startup**: `main()`'s own `start()` runs
 inline, before `app.exec()`, because there is no event loop yet to freeze and
@@ -375,9 +379,9 @@ browser never lands on a port that is not answering yet; if `is_ready()` times
 out, the tray says so in a notification instead of opening a tab on a refused
 connection.
 
-**The Refresh item calls `Supervisor.refresh()` and shows the sentence it is
-handed** — for each of the four outcomes it composes no message of its own and
-reads no HTTP status. §4.6 owns the outcomes, their wording and why the wait is
+**The Refresh item calls `Supervisor.refresh()` and shows
+`REFRESH_MESSAGE[outcome]`** — for each of the four outcomes it composes no
+message of its own and reads no HTTP status. §4.6 owns the outcomes, their wording and why the wait is
 not written here. **The one message the tray does build is the raise path**: a
 403, a 500, a socket timeout or a dead child leaves `refresh()` with no outcome
 to return, and the exception's text becomes `Refresh failed: <msg>` through the
@@ -544,14 +548,25 @@ LOTTO-0002 §4.1 already has the page polling.
 
 **The wait lives in `supervise.py` and the tray reports what it returns.**
 `Supervisor.refresh()` POSTs, then polls `GET /status` until `building` goes
-false, and returns one of four outcomes:
+false, and returns one of four outcomes. **A 409 returns `REFRESH_BUSY` at once
+and polls nothing** — the build it names is not this call's, and waiting on it
+would report someone else's build as the answer to a request that was declined:
 
 | Outcome | Reached when | What the tray shows |
 |---|---|---|
 | `REFRESH_DONE` | `building` false, `stale` false | Results refreshed. |
-| `REFRESH_FAILED` | `building` false, `stale` true | The refresh failed. The page still shows the previous results, marked out of date. |
+| `REFRESH_FAILED` | `building` false, `stale` true | The refresh failed. The page still shows what it had before, and says so. |
 | `REFRESH_RUNNING` | the budget expired, `building` still true | Still refreshing. The page shows the result when it finishes. |
 | `REFRESH_BUSY` | the POST answered 409 | A refresh is already running. The page shows the result when it finishes. |
+
+**`REFRESH_FAILED`'s sentence must not name a previous *model***, and that is
+why it says *what it had before* rather than *the previous results*. A first
+build that failed leaves `model is None` with `stale` true (LOTTO-0002 §6's
+results-unavailable state), and a user Refresh that also fails reaches this same
+outcome — so a sentence promising previous results would describe data the page
+does not have, on the commonest failure path this project measures. The page is
+unchanged and says why, in both states, which is what the wording claims and all
+it claims.
 
 Putting the wait here rather than in `tray.py` is §4.1's argument for the module
 applied to the one piece of it that can silently lie: a wait written into the
@@ -568,14 +583,29 @@ the whole call**, not one for the POST and another for the poll — `refresh()`
 starts its clock before the POST, issues that POST with the smaller of 30 s and
 the budget remaining, and polls until the same deadline. Two independent 300 s
 budgets would put the worst case at ten minutes with the tray's `busy` flag held
-throughout, which is the wedge this bounded wait exists to prevent. The flag
-clears when it returns, so the item comes back and a second click is answered by
-the 409 path below rather than by a second build.
+throughout, which is the wedge this bounded wait exists to prevent. **The 30 s
+on the POST is a socket budget, not a build budget**: the handler answers
+without touching the build — `serve.py::refresh()` starts the thread and returns
+— so a POST unanswered after 30 s means the server is not answering at all, and
+waiting the remaining 270 s would only delay saying so. It raises like any other
+POST failure and is reported as a failure; the build may nonetheless have
+started, which the page will show, and reporting a failure the tray cannot
+disprove is the one direction §4.6 permits — it is claiming success that is
+forbidden. The flag
+clears when `refresh()` returns, so the item comes back and a second click is
+answered by the 409 path below rather than by a second build.
+
+**The deadline is tested after a poll, never before.** `REFRESH_RUNNING`
+therefore means `building` was observed true at least once, not merely that the
+clock ran out — a `refresh()` that checked the clock first could return it
+having observed nothing, which is a report about a build nobody looked at. It
+also means a build that finishes in under one interval is reported as `DONE` on
+the first poll rather than waited on.
 
 **The poll cadence is 2 s, which is the page's** (LOTTO-0002 §4.1). One number
 for one behaviour: `/status` is a constant-size JSON answer that builds nothing,
 the notification's latency against a thirty-second build is irrelevant, and the
-ceiling is 150 loopback requests in the 300 s worst case (§10). It is a gap
+ceiling is §10's, not restated here. It is a gap
 between attempts rather than a guaranteed cadence, each carrying `status()`'s
 own **5 s** socket timeout — the same shape as `is_ready()`, whose gap is
 100 ms and whose per-attempt timeout is 1 s. Two different budgets for two
@@ -583,15 +613,22 @@ different questions: readiness asks whether anything is listening at all and
 wants to fail fast, the refresh poll is talking to a server it already knows is
 up.
 
-**A child that dies mid-build is reported as a failure, not waited out.** If a
-poll cannot reach the server and this `Supervisor` owns a child that is no
-longer running, `refresh()` raises rather than spending the remaining budget —
-the *died* against *hung* split §6 already draws for `is_ready()`. The
-exception's text becomes the notification through §4.3's `finished(ok, msg)`,
-which is the existing path for everything that raises. A `Supervisor` with no
-child of its own (a script driving a server it did not spawn — INV-23's case is
-one) cannot ask the question, so it keeps polling to the deadline and reports
-*still running*, which is the honest answer when nothing has been observed.
+**A poll that fails is not by itself an answer — three cases, and only one of
+them stops the wait.** A `status()` call can fail by being unreachable or by
+returning a body that will not parse, and neither says anything about the build:
+
+1. **The `Supervisor` owns a child that is no longer running** → `refresh()`
+   raises at once rather than spending the remaining budget. The *died* against
+   *hung* split §6 already draws for `is_ready()`, and the exception's text
+   becomes the notification through §4.3's `finished(ok, msg)`.
+2. **The child is alive** → keep polling to the deadline. One dropped loopback
+   response, or one malformed body, is not evidence that a thirty-second build
+   failed, and turning it into *Refresh failed* would report a verdict nobody
+   observed.
+3. **This `Supervisor` owns no child at all** (a script driving a server it did
+   not spawn — INV-23's case is one) → it cannot ask question 1, so it behaves
+   as case 2 and reports *still running* if the deadline arrives. That is the
+   honest answer when nothing has been observed.
 
 **409 is an outcome, not an error.** `post()` raises on anything but a 2xx
 (§4.1), so a refresh requested while one is in flight surfaces today as the
@@ -744,27 +781,32 @@ numbers do not move on a split.
   serve assertions 1, 2, 4 and 5. It asserts five things about the wait and two
   about the wording:
   1. with the builder still blocked, a `refresh()` running on its own thread
-     **has not returned** after three poll intervals;
+     **has not returned** after three poll intervals — the case passes
+     `interval=0.2`, so this costs 0.6 s rather than the 2 s cadence §4.6 pins
+     for the tray;
   2. once the builder is released it returns `REFRESH_DONE`;
-  3. against a builder that raises it returns `REFRESH_FAILED`, and the model
-     the server still serves is the previous one (INV-18's guarantee is what
-     makes `stale` mean *the last attempt failed* rather than *there is nothing*);
+  3. against the raising builder it returns `REFRESH_FAILED` — the outcome only,
+     since INV-18 and `failed_refresh_keeps_model` already own the claim that
+     the previous model survives, and a server whose bound builder raises on
+     every call has no previous model to survive;
   4. against a builder still blocked when a deliberately short `timeout`
+     (0.5 s, against the same 0.2 s interval, so at least one poll happens)
      expires it returns `REFRESH_RUNNING` — neither DONE nor FAILED;
   5. a second `refresh()` issued while that build is in flight returns
-     `REFRESH_BUSY` rather than raising `HTTPError`.
+     `REFRESH_BUSY` rather than raising `HTTPError`, and returns it without
+     waiting for the build it was refused behind.
   Then, with no server at all: every outcome has a non-empty sentence in
   `REFRESH_MESSAGE`, and no sentence but `REFRESH_DONE`'s contains any of
   `refreshed`, `updated`, `up to date` or `success` — **case-folded**, or a
   sentence opening *Refreshed…* passes a check written against the lower-case
   form.
-  **The first assertion is the load-bearing one**, because it is the only one
-  the behaviour this fixes actually fails: `POST /refresh` answers 202 in
-  milliseconds, so a tray reporting on the POST's return satisfies assertions 2
-  and 3 by accident — it reports *Results refreshed.* and the build does
-  eventually finish, and a failing build's 202 is a 202 like any other. A case
-  written without it would go green against exactly the defect LOTTO-0018
-  describes.
+  **The first assertion is the one that states the property**; the others catch
+  the same defect through its consequences. Against the shipped behaviour —
+  `REFRESH_DONE` the moment the 202 arrives — assertions 2 and 5 pass (the build
+  does eventually finish, and a 409 is still a 409), while 1, 3 and 4 all fail.
+  So the case would go red without assertion 1, and it is kept anyway because it
+  is the only one that observes *reported* against *finished* directly rather
+  than by way of an outcome the wait happens to get wrong.
   **The wording half is not decoration.** The timing half guarantees only that
   the notification arrives at the right moment; nothing in it stops all four
   outcomes from being phrased as success, which is the same cardinal breach one
@@ -820,7 +862,9 @@ numbers do not move on a split.
   that failed four of seven attempts on 2026-08-02 (LOTTO-0002 §4.2, §6) — and
   `GET /status` reports `building: false` with `stale: true`. `refresh()`
   returns `REFRESH_FAILED` and the tray says so, naming that the page still
-  shows the previous results (§4.6). This is the failure mode the item exists
+  shows what it had before — which is the previous model, or LOTTO-0002 §6's
+  results-unavailable state if the first build was the one that failed, and the
+  sentence is worded to be true of both (§4.6). This is the failure mode the item exists
   for: it is silent by construction, because the user was already told it
   worked.
 - **A refresh is still running when the wait runs out.** `refresh()` returns
@@ -943,11 +987,12 @@ without shipping a second `serve.py`.
 - **`--break notify_on_202` is the shipped defect itself**, and it is the only
   break in this script that reproduces behaviour that actually went out:
   `refresh()` returns `REFRESH_DONE` the moment the POST is answered, and
-  `refresh_reports_the_build` must fail on assertion 1 — the call returning
-  while the builder is still blocked. It must fail there and not later: it is
-  the assertion that separates *reported* from *finished*, and the four that
-  follow it all go green against this break, which is precisely why the case
-  needs it.
+  `refresh_reports_the_build` must fail. **It fails first on assertion 1** — the
+  call returning while the builder is still blocked — and would also fail
+  assertions 3 and 4 if it reached them, since both expect an outcome the
+  202 cannot know. Assertions 2 and 5 pass under it. Naming the wrong one here
+  would send an implementer hunting a broken harness, which is the trap §7's
+  `terminate_only` bullet already records.
 - **`--break stale_is_success` keeps the wait and drops the `stale` read**, so
   every finished build returns `REFRESH_DONE`, and assertion 3 must fail. The
   wait alone is not the fix; a patient lie is still a lie.
@@ -1043,13 +1088,18 @@ token's, and a rule tabulated twice becomes two rules that disagree.)
 That ratio is high, and it is honest rather than alarming: this part of the
 split is the one needing a display and a desktop session, and its mechanically
 checkable contracts — the headless imports, the reaped child and now the
-refresh's outcome — are exactly the ones that fail silently. **Ten of the
+refresh's outcome — are exactly the ones that fail silently. **Nine of the
 thirteen `nothing` rows are loud at run time**, and
-the three that are not are the ones worth knowing about, all code-review only:
+the four that are not are the ones worth knowing about, all code-review only
+(the count is of items, not rows: the bundled Qt-details row holds three loud
+details and one silent one):
 
 - the **per-`start()` token**, whose breach is silent by construction — a
   supervisor reusing one token across restarts leaves a stale page authorised
   against a server that never issued it one;
+- the **tray showing the sentence it is handed**, since a tray that composed its
+  own *Results refreshed.* over any outcome is the exact breach §4.6 exists to
+  close, and the user is told the thing they wanted to hear;
 - the **runnable-wrapper lifetime**, which is a crash a short run does not
   reproduce rather than an error anyone sees;
 - the **single reader**, whose breach is silent for exactly as long as the two
@@ -1097,6 +1147,7 @@ INV-23:**
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
 | 6 | 2026-08-02 | 2 | 0 | 4 | 6 | 9 | Gate for the `5-amend` LOTTO-0018 amendment. All 19 verified findings fixed; 0 unverified, 0 deferred. **No CRITICAL.** Origin split: roughly 12 draft defects against 7 fix collateral — the healthy direction, and both lanes led on the same three HIGHs. **The sharpest was §4.3's new rule eating the failure path it was written to protect.** "It composes no message of its own and reads no HTTP status" is true of the four outcomes and false of everything that raises — a 403, a 500, a dead child — and an implementer obeying it literally deletes the `Refresh failed: <msg>` composition, leaving the raise path silent. The cardinal failure arriving through the fix for the cardinal failure, which is why both lanes ranked it top three. **The second was doc-versus-code and predates the amendment:** §4.1 has put the Stop *menu item*'s `stop()` through `run_async()` since loop 3, while `tray.py::toggle()` calls it inline and says so in a comment; the paragraph now states that **every** `stop()` is synchronous and gives the Stop item's own reason — `sync()` and the *Server stopped.* notification describe a reap that must already have happened. **Two contract gaps in the new material, both of which would have stopped an implementer.** INV-23's case needs a `Supervisor` pointed at a server it did not spawn, and §4.1's surface mints the token only inside `start()`, so the case as written was unbuildable — `token` is now stated to be a plain attribute a driver may assign, chosen over widening the constructor for one caller. And `refresh(timeout=300.0)` sat beside "the budget is `post()`'s existing 300 s" without saying whether that is one deadline or two: read as two, the worst case is ten minutes with the busy flag held, which is the wedge the bounded wait exists to prevent. It is now explicitly one deadline, with the POST issued on the smaller of 30 s and the remainder. **One finding was the case being unrunnable as specified:** `make_server()` binds its builder at construction, so a single `serve_on()` server cannot both block and raise — the case now stands up two. Also fixed: §5's INV-23 headline said a refresh "is reported only after the build has finished" while three of its four outcomes are reports issued mid-build, which read literally makes `REFRESH_BUSY` wait; §6 promised a notification on the state poll that no section specifies and `tray.py::sync()` does not raise; §11 had no row for §4.6's dying-child branch, which INV-23's childless case provably cannot reach (eighteen rows, thirteen `nothing`); §4.1's "at most 100 requests … the only requests this half makes" was left closed against §10's new 150-per-refresh poll; §7's "the last three" pointed at three bullets the amendment had displaced; the wording assertion did not say it is case-folded, so *Refreshed…* would pass it; and the header now says outright that §4.6 and INV-23 are **specified and not yet implemented**, a lane having had to ask whether there was work to do. Doc grew 1,043 -> 1,106 lines. |
+| 7 | 2026-08-02 | 2 | 0 | 2 | 6 | 5 | Second gate loop on the amendment. All 13 verified findings fixed; 0 unverified, 0 deferred. **No CRITICAL for the second loop running, and both HIGHs were in the new material rather than collateral** — draft defects roughly 10 against 3, so the sweep is keeping up. **Both lanes led on the same one: INV-23's case could not assert what it claimed.** Assertion 3 said the failed refresh leaves "the model the server still serves is the previous one", but `make_server()` binds its builder at construction and the raising server's builder raises on *every* call, so that server never has a model to preserve. The clause is now deleted rather than repaired: INV-18 and `failed_refresh_keeps_model` already own it, and INV-23 is about the report. **The second HIGH was the cardinal rule inside the fix for the cardinal rule.** `REFRESH_FAILED`'s sentence promised "the page still shows the previous results" — false whenever the *first* build is the one that failed, which is the commonest failure this project measures (four of seven): there is no previous model, the page is in LOTTO-0002 §6's results-unavailable state, and the notification would describe data that does not exist. Reworded to be true of both states, and §6 now says which two states those are. **The MEDIUMs were all unstated behaviour an implementer would have had to invent:** whether a 409 polls before returning `REFRESH_BUSY` (it must not — the build it names is not this call's); what a poll failure means while the child is still alive (three cases now, and only a dead child stops the wait — one dropped loopback response is not evidence a build failed); why the POST carries 30 s inside a 300 s budget, and what a POST timeout reports; whether `REFRESH_RUNNING` requires an observation (the deadline is now tested *after* a poll, never before, so it cannot report on a build nobody looked at); and LOTTO-0002 §5's invariant-ownership sentence, which the new INV-23 made stale. **One finding was this document overclaiming its own red test:** §5 and §7 both said the four assertions after the first "go green" under `--break notify_on_202`. Two of them do; 3 and 4 fail, because a 202 cannot know an outcome. Corrected in both places, and assertion 1 is now justified as the one that observes the property directly rather than as the only one that catches the defect. Also fixed: §4.1's surface block omitted the `port` attribute §4.2 and §4.5 both use; "two orders of magnitude" for a 30× difference; the ceiling §4.6 restated after §4.1 had just pointed at §10 as the inventory; §4.3 saying the tray shows "the sentence it is handed" where `refresh()` returns an outcome constant; §11's loud/silent split counting rows where one row bundles four items, and missing the tray-wording row from the silent list (nine loud, four silent, thirteen `nothing`); and the Status header now enumerates every part of the document describing unbuilt behaviour rather than three of them. Doc grew 1,106 -> 1,141 lines. |
 | 5-amend | 2026-08-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin is ROADMAP LOTTO-0018, filed by the session that verified the path end to end: `POST /refresh` answers **202 = accepted**, `serve.py::refresh()` having only started a daemon thread, and `tray.py::refresh()` treated that 202 as completion — so the tray said *Results refreshed.* about a second into a thirty-second build, and said the same thing when the build raised, which four of seven measured attempts did. **This is the cardinal rule in notification form**, and unlike the page half (INV-18, which the page already honours by polling `GET /status`) nothing in this document said what the tray must wait for. The amendment adds **§4.6** — the four outcomes, the 2-second cadence borrowed from the page's own poll, the 300-second budget that must report *still running* rather than either verdict, the 409 that is an outcome and not an `HTTP Error 409: Conflict` shown to a user, and the rule that only `REFRESH_DONE` may read as success — plus **INV-23**, its case `refresh_reports_the_build` and three breaks. **Two design calls worth naming.** The wait lives in `supervise.py` and not in `tray.py`, by §4.1's own argument: a wait written into the tray needs a display to check and would have joined §11's `nothing` rows, and this is the half that can silently lie. And `REFRESH_MESSAGE` lives there too, following the precedent `port_fallback` set (§4.5) — a Qt-free module already carries one user-facing string because it has no notification channel of its own — which is what lets a headless case assert the wording half at all. §11 gains three rows (seventeen, twelve `nothing`) and **loses one of its four silent breaches**: the busy guard's *reporting* of a 409 is now defined and checked, leaving the guard itself, whose breach is benign. Written before implementation, per rule 14's cold-eyes-then-implement ordering; loop 6 below is the gate. |
 | 5 | 2026-08-02 | 2 | 0 | 2 | 6 | 7 | Second re-gate loop. All 15 verified findings fixed; **2 dismissed on evidence**, 0 deferred. **No CRITICAL, down from one** — the trend the loop is watching. Origin split: roughly 7 fix collateral against 8 draft defects, so the collateral trigger did not fire. **Both lanes reported the same false finding, and it was the review harness rather than the document:** three "`§13` resolves to nothing" findings, because the orchestrator's scrubbed copy — which withholds this log from a cold reader — replaced the heading with an *unnumbered* `## Cold-eyes loop log`. The document has always numbered it §13. Dismissed, and the packet builder was fixed so the artefact cannot recur; recording it because a lane finding that contradicts the brief is evidence against the brief first. **Two HIGHs, both about a rule whose stated exception list was short by one.** §4.1 said blocking calls run off the GUI thread "with one exception"; `tray.py::main()` calls `start()` inline before `app.exec()`, correctly — there is no event loop yet, and the icon sync and the `open_on_start` open must follow it in order — so an implementer obeying the text asynchronously would race the tray's own first `sync()`. And §7's `terminate_only` breakage named the wrong failing assertion: an unreaped child is a **zombie**, `os.kill(pid, 0)` succeeds against one (this document's own §5 says so), so the case fails on the process-table assertion and never reaches the returncode line the text promised. An implementer reproducing it would have doubted the harness. **The §11 table carried the same rule twice, twice** — INV-19's row and a §4.4 row naming one checker for one rule, and the GUI-thread row against the thread pool bundled into §4.3's detail row — against the table's own footnote that a rule tabulated twice becomes two rules that disagree. Deleted rather than reconciled; the table is now fourteen rows and eleven `nothing`. Also fixed: §4.4 still said §4.2's sketch defines "only `HERE`" at module scope after loop 4 added the port constants to it — loop 4's own collateral, in the sentence justifying the no-side-effects-on-import contract; §11's INV-19 row claimed unqualified coverage while §5 documents the PyQt blind spot, now cross-referenced and filed as LOTTO-0017 so the header's "0 deferred" stays honest; §7 described its breakages as hand edits when the shipped mechanism is `--break <name>`, which no spec mentioned at all though CLAUDE.md does; §4.5's "an unusable `LOTTO_PORT` never raises" read project-wide when it governs `Supervisor` only; §10 restated the 100-requests-per-start ceiling without §4.1's per-attempt-timeout qualifier; and the `TIME_WAIT` comment in `tools/verify_page.py`'s bind loop was corrected to match loop 4's measurement, the code having been left asserting the rationale the spec had just disproved. Doc grew 785 -> 812 lines. |
 | 4 | 2026-08-02 | 2 | 1 | 2 | 5 | 8 | Re-gate of the `3-impl` amendment. All 16 verified findings fixed; 0 unverified, 0 deferred. **The CRITICAL was the amendment's own collateral, and both lanes reached it from opposite ends.** `3-impl` moved the settings reader here and never recorded the edge that makes the move work: §4.1's "the arrow runs one way — `tray.py → supervise.py` — and never back" reads as forbidding `serve.py → supervise.py`, which is exactly the import the amendment depends on. An implementer obeying the section as written writes the second reader the same amendment had just deleted. §4.1 now names the edge and says the graph is still acyclic; §4.4's reason for INV-19 covering this module was restated from it (it had cited `tools/verify_page.py` importing the module — how the breach is observed, not why it matters). **Two HIGHs, both numbers the document asserted and the code contradicts.** `is_ready()` polls `<url>/status`, not `url`: against `/` it would build up to a hundred full page renders per start to answer a question about a socket. And the shutdown freeze is up to **ten** seconds, not five — `stop()` waits its timeout after `terminate()` and again after `kill()` — understated in §4.1 and §6 alike, on the one path where the user is watching. **Two findings came from running things rather than reading them.** The `TIME_WAIT` rationale for INV-20's bind retry is false: measured, a bind with `SO_REUSEADDR` over a socket `ss -tan` confirms in `TIME_WAIT` **succeeds**, so the retry was justified by the wrong mechanism and now names the real one. And checking INV-19's `PySide|Qt` description against the predicate turned up a live gap rather than a wording slip — the case tests `PySide` as a substring **or** a top-level package named exactly `Qt`, so `PyQt6.QtCore` passes it, and PyQt6 is importable on this machine (verified). Stated as a gap with the fix named, not papered over; the predicate change is code and belongs to a code pass — filed as ROADMAP LOTTO-0017. Also fixed: §4.1 claimed to hold the supervisor's whole surface and omitted `free_port()`, which INV-20's own case calls; §4.3 said "five details" above six bullets, leaving Open-page-disabled-while-stopped in no §11 row (the row now reads five of six, table unchanged at fifteen rows and eleven `nothing`); §5 said the free port is passed "as `LOTTO_PORT`" where the case passes `Supervisor(port=…)`; §6 presented every not-answering child as a timeout when `is_ready()` returns `False` at once on a dead one, so *died* and *hung* are now separate bullets with different waits; `post()`'s "raises the same way" invited `HTTPError` where the code raises `RuntimeError`; the `Optional[str]` rule read as a requirement on a module that carries no annotations at all; empty and unset `LOTTO_PORT` were folded in with unusable ones though they fall back silently by design; and §4.2's restatement of `stop()` clearing the token was deleted rather than reconciled, against §4.1's own promise not to restate. Doc grew 724 -> 785 lines. |
