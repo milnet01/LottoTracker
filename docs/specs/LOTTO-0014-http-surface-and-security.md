@@ -1,6 +1,7 @@
 # LOTTO-0014 — HTTP surface and security boundary for the local page
 
-**Status:** spec draft (2026-08-02).
+**Status:** accepted (2026-08-02) — three cold-eyes loops, converged by cap
+and by the collateral trigger; 78 verified findings fixed, 0 deferred. See §13.
 **Kind:** security.
 **Source:** ROADMAP LOTTO-0014 — split out of LOTTO-0002 on 2026-08-02, second
 cut. The security constraints were researched with the user on 2026-08-01 and
@@ -99,14 +100,55 @@ token channel exists to prevent, arriving through validation instead.
 **`POST /settings`'s body is read bounded, never `rfile.read()` to EOF.** At
 most `Content-Length` bytes and at most **4 KiB**; a declared length above that
 is **413** and nothing is read past the cap, and a missing, non-numeric or
-negative `Content-Length` is **400**. The two settings are two booleans, so 4 KiB is
+negative `Content-Length` is **400**. **The socket carries a read timeout**
+(`timeout` on the handler), because reading exactly `Content-Length` bytes hangs
+just as completely when a client declares 4000 and sends 1 — a cap on size is
+not a cap on time. A body that under-delivers against its declared length is
+closed rather than waited on. The two settings are two booleans, so 4 KiB is
 generous by three orders of magnitude — the cap exists because an unbounded read
 on a local socket is a hang, and because the obvious implementation
 (`self.rfile.read()`) is the one that has it.
 
-Every response body that has one is `text/html; charset=utf-8` for `GET /` and
-`application/json` for `GET /status` and the two POSTs; the 421, 404 and 405
-responses have no body and no `Content-Type`.
+**Every response's exact header set is fixed by its shape**, which is what
+INV-14's name-set assertion is written against. `Server` and `Date` are emitted
+by `BaseHTTPRequestHandler.send_response()` whether or not the handler asks for
+them — measured — so they are named here rather than discovered by a failing
+test. **`Server` is overridden to the constant `lotto`**: the default is
+`BaseHTTP/0.6 Python/3.13.14`, a version fingerprint of both the server and the
+interpreter, which is not something a security boundary should volunteer.
+
+| Response | Header set |
+|---|---|
+| `200` on `GET /` | `Server`, `Date`, `Content-Type: text/html; charset=utf-8`, `Content-Length`, + the three below |
+| `200` on `GET /status`, `POST /settings` | `Server`, `Date`, `Content-Type: application/json`, `Content-Length`, + the three below |
+| `202` / `409` on `POST /refresh` | `Server`, `Date`, `Content-Length: 0`, + the three below |
+| `400` / `403` / `413` / `500` | `Server`, `Date`, `Content-Length: 0`, + the three below |
+| `404` | `Server`, `Date`, `Content-Length: 0`, + the three below |
+| `405` | as `404`, plus `Allow` from the fixed per-path table |
+| `421` | `Server`, `Date`, `Content-Length: 0`, + the three below |
+
+"the three below" is `X-Frame-Options: DENY`,
+`Content-Security-Policy: frame-ancestors 'none'` and `Cache-Control: no-store`,
+which §4.4 puts on **every** response without exception. No response carries any
+header outside its row.
+
+**Checks run in a fixed order, and the first failure answers.** No later check
+runs, and no earlier one is skipped:
+
+```text
+1. Host allowlist        -> 421   (§4.2)
+2. path + method         -> 404 / 405
+3. token, on POSTs       -> 403   (§4.3)
+4. Origin, on POSTs      -> 403   (§4.2)
+5. Content-Length + body -> 400 / 413
+```
+
+The order is load-bearing rather than arbitrary, and it was previously stated
+only inside a test note. INV-12 fires poisoned hosts at both POST routes and
+expects 421; an implementer who checked the token first would answer 403 to
+every one of them and fail a case written against a correct server. Host-first
+is also what keeps a rebound origin from learning anything about which paths
+exist.
 
 **Routing matches the path component only**, with the query string split off and
 discarded — `/?game=lotto` routes to `/`, not to 404. Saying so matters for
@@ -124,6 +166,14 @@ joined to a filesystem path; the handler subclasses `BaseHTTPRequestHandler`
 and every response body is built in memory. That removes path traversal as a
 class rather than defending against it. `ThreadingHTTPServer`, because browsers
 pre-open sockets they do not send on and a single-threaded server hangs on them.
+
+**`POST /settings` therefore holds a lock across its write and its re-read.**
+The server is threaded, the route writes two files and then re-reads them to
+build its response (§4.1), and two concurrent toggles without a lock can each
+return the other's result — a switch that snaps to a value the user did not
+choose, which is the exact failure the re-read was introduced to prevent.
+LOTTO-0002 §4.2 puts the model behind one lock for the same reason; this is the
+file half of it.
 
 ### 4.2 Host allowlist, and why `Origin` is not a substitute
 
@@ -151,9 +201,8 @@ is used here because it is the status that means "this host is not one I serve",
 a distinction that matters when reading a log.
 
 The port in that allowlist is the one `serve.py` bound, read once from
-`LOTTO_PORT` (LOTTO-0013 §4.5 owns the variable). A server and a caller
-disagreeing about the port fail as a 421 on every request — the allowlist
-rejecting the very URL that was just opened.
+`LOTTO_PORT`. LOTTO-0013 §4.5 owns that variable and states what a disagreement
+about it costs.
 
 `localhost:<port>` is allowlisted alongside the numeric form because that is
 what a user types, even though the socket binds `127.0.0.1` only; on a host
@@ -227,10 +276,13 @@ while every other case still passes.
 **Every response carries `X-Frame-Options: DENY` and
 `Content-Security-Policy: frame-ancestors 'none'`.** Without them the token
 defends against a *forged* request and not against a real one: a hostile page
-can `<iframe src="http://127.0.0.1:4322">`, the `Host` header is the allowlisted
-value so the frame renders, and the framed page carries the token in its own
-DOM. Every defence above survives that, and the user still clicks the autostart
-switch of LOTTO-0002 §4.7 through an invisible overlay. Framing is the hole a `Host`
+can `<iframe src="http://127.0.0.1:<port>">`, the `Host` header is the
+allowlisted value so the frame renders as a fully authorised page. The hostile
+page **cannot read** that frame — it is cross-origin to it — and that is not the
+attack: it can position it invisibly and let the user click the autostart switch
+of LOTTO-0002 §4.7 through an overlay. Every defence above survives, because
+every request the frame makes is genuine. Clickjacking is the hole a `Host`
+allowlist and a token cannot see. Framing is the hole a `Host`
 allowlist and a token cannot see, so it is closed here rather than left to the
 implementer to notice. INV-12.
 
@@ -258,8 +310,12 @@ anything derived from the request, which removes header injection (Python's
 path derived from the server's own location; the only thing a request can
 influence **about that file** is whether it exists, never its contents.
 (`settings.json` is the other file, and a request does influence its contents —
-to exactly two validated booleans, which is why INV-14 is scoped to request-derived
-*strings*.) The only request-derived
+to exactly **one** validated boolean, `open_on_start`. The autostart setting has
+no key at all: LOTTO-0002 §4.7 stores it as the *presence* of the `.desktop`
+file, precisely so the switch cannot drift from what the desktop actually does.
+Writing an `autostart` key into `settings.json` would create the duplicated
+state that decision exists to prevent. This is why INV-14 is scoped to
+request-derived *strings*.) The only request-derived
 values ever written are §4.1's two validated booleans. INV-14.
 
 **That file names `tray.py`, not the module that writes it.** The writer is
@@ -302,12 +358,17 @@ CHANGELOG.md and sibling specs cite them unqualified.
   because §11 assigns them to its case and an implementer building from §5 alone
   would otherwise ship neither.
   *Test:* `tools/verify_page.py`, case `host_allowlist` — **five** `Host`
-  values, every one of them built from **the port the case actually bound**,
-  never the literal 4322. The case binds an ephemeral free port like every other
+  values — seven, once the good ones below are counted — with every host string
+  built from **the port the case actually bound**, never the literal 4322. The case binds an ephemeral free port like every other
   case, so hard-coded values would silently stop being poison: against a server
   on port 5000, `evil.example.127.0.0.1:4322` does not satisfy
   `endswith("127.0.0.1:5000")`, the prescribed §7 breakage stays green, and the
-  case proves nothing. The five are a good one, and four that must each draw
+  case proves nothing. **Three of the values are good ones, not one** —
+  `127.0.0.1:<port>`, `localhost:<port>` and `LOCALHOST:<port>`. The allowlist
+  has two entries and §4.2 requires a lowercased comparison, so a case carrying
+  only the numeric lowercase form passes against a server that allowlists
+  `127.0.0.1` alone, case-sensitively — which 421s the URL a user actually
+  types. That makes seven values in all. The four poisons must each draw
   421 — `evil.example:<port>` (defeats a port-only check),
   `127.0.0.1.evil.example:<port>` (defeats `startswith`),
   `evil.example.127.0.0.1:<port>` (defeats `endswith`), and **no `Host` header at
@@ -367,20 +428,25 @@ CHANGELOG.md and sibling specs cite them unqualified.
   directory and its own server instance, so no case inherits another's file or
   another's in-flight build.
   For `/refresh`, "changes nothing" is the stub builder's call count being
-  unchanged; the two *accepted* refreshes call `wait_idle(5)` between them, or
-  the second draws §4.1's 409 for concurrency rather than for anything this
+  unchanged; the case calls `wait_idle(5)` **before the first** accepted refresh and again
+  between the two — the opening build is a refresh like any other, so without the
+  first wait even the first accepted POST can draw §4.1's 409 for concurrency
+  rather than for anything this
   invariant is about, and the case flakes on timing.
   The valid `Host` is what isolates this rule: with a bad one INV-12 answers 421
   first and the case passes without the token check existing at all.
   The same case spawns a child with `LOTTO_TOKEN` in its environment and
   asserts that token is accepted — the §4.3 channel the tray depends on, which
-  would otherwise be the one link in the chain nothing exercises. **That child
-  is spawned with `LOTTO_NO_BUILD` set, its own free `LOTTO_PORT`, and `cwd` at
-  the repository root**, and all three are load-bearing: a plain
+  would otherwise be the one link in the chain nothing exercises. **The child is POSTed at
+  `/refresh`**, which under `LOTTO_NO_BUILD` answers **202 and rebuilds
+  nothing** — the flag suppresses every build, not merely the opening one, or
+  this case would trigger the real builder through the very request it is making.
+  **The child is spawned with `LOTTO_NO_BUILD` set, its own free `LOTTO_PORT`,
+  and `cwd` at the repository root**, and all three are load-bearing: a plain
   `python3 serve.py` runs the *real* builder, which is 27 requests against a
-  third-party API and roughly forty seconds — pulling the network into a suite
-  whose first constraint (LOTTO-0002 §7) is that it needs none, and doing it
-  inside the case that is supposed to be the cheapest. The second port keeps it
+  third-party API (LOTTO-0002 §4.2) — pulling the network into a suite whose
+  first constraint (LOTTO-0002 §7) is that it needs none, and reading the real
+  `lotto_sms_raw.txt` from that `cwd`, which its second constraint forbids. The second port keeps it
   off the one the rest of the case is using. LOTTO-0002 §4.1's environment table names
   this case alongside LOTTO-0013's INV-20 as the only two callers of
   `LOTTO_NO_BUILD`.
@@ -424,7 +490,9 @@ CHANGELOG.md and sibling specs cite them unqualified.
   validated booleans" true: a body with a non-boolean value, a body with an
   unknown key, and a body that is not an object each return **400**; a declared
   `Content-Length` over 4 KiB returns **413**; and after all of them
-  `settings.json` still parses to exactly the two boolean keys it held before.
+  `settings.json` still parses to exactly the single boolean key
+  (`open_on_start`) it held before, with the `.desktop` file's presence
+  unchanged. **One key, not two** — §4.4 explains why `autostart` has no key.
   It asserts the `.desktop` file's content outright
   against LOTTO-0002 §4.7's listing, not merely that it did not change: the
   `Exec` line must name `tray.py`. Byte-equality alone passes a file that has
@@ -464,7 +532,8 @@ The gap between INV-14 and INV-21 is the split, not an omission:
   the `<title>` is exactly `<title>Lotto Tracker</title>`, that `no-store` is on
   all four responses, and — over the **whole rendered page, not just its inline
   script** — that it contains no `pushState`, no `replaceState`, no assignment to
-  `location.hash`, `location.search`, `location.href` or `location.assign`, no
+  `location.hash`, `location.search` or `location.href`, no call to
+  `location.assign`, no
   `href="?`, no `href="#` and no `<form` element.
   **The script-only version of this assertion cannot see the breach the
   invariant names.** *Breaks when* below calls `/?game=lotto&ref=…` "the natural
@@ -481,7 +550,7 @@ The gap between INV-14 and INV-21 is the split, not an omission:
 ## 6. Failure modes
 
 - **A tab left open across a server restart holds a stale token.** The token is
-  per process, not per page — so every tab of one run shares one token, and a
+  per server run, not per page — so every tab of one run shares one token, and a
   tab that outlives the run holds one nothing will accept. Its next toggle gets
   a 403, which renders as "this page is from an earlier session — reload it",
   not as a failure of the setting. LOTTO-0013 §4.1 mints a fresh token per
@@ -532,8 +601,8 @@ breakages, each stated precisely enough to actually go red:
 
 - **Replace the `Host` check with `host.endswith(allowlisted_value)`** and
   confirm `host_allowlist` fails on `evil.example.<port-suffixed allowlist
-  value>` — verified: that host satisfies `endswith` while the other two poisons
-  do not, which is why §4.2's table pairs one host with each weaker comparison.
+  value>` — verified: that host satisfies `endswith` while the other three
+  poison values do not, which is why §4.2's table pairs one host with each weaker comparison.
   Also try the port-only form, `host.endswith(":" + str(port))`, which
   `evil.example:<port>` defeats.
 - **Drop the token check on `/refresh` alone**, leaving `/settings` guarded, and
@@ -562,8 +631,10 @@ breakages, each stated precisely enough to actually go red:
   unnecessary.
 - **A token in a query string or a cookie** rather than a custom header.
   Rejected: a query string lands in browser history, which INV-21 forbids; a
-  cookie is sent automatically by the browser on a cross-origin form post, which
-  is exactly the property the custom header is chosen for.
+  cookie was historically sent automatically on a cross-origin form post, and
+  still is wherever `SameSite` is not enforced — which is exactly the property
+  the custom header is chosen for, and it does not depend on a browser default
+  staying where it is.
 
 ## 9. Out of scope
 
@@ -611,13 +682,16 @@ breakages, each stated precisely enough to actually go red:
 | §4.1 body validation — 400 on a bad body, 413 over 4 KiB, nothing written | `tools/verify_page.py::no_reflected_headers` |
 | §4.2 the lowercased, whole-string `Host` comparison | `tools/verify_page.py::host_allowlist` — one poison per weaker comparison (§4.2's table) |
 | §4.4 the access log silenced, so no request line reaches stderr | **nothing** — no case reads the server's stderr. The exposure is bounded by INV-21 anyway, since a request line can carry no ticket data; code review only |
+| §4.1 the fixed check order (Host before token before body) | `tools/verify_page.py::host_allowlist` — its poisoned POSTs expect 421, which only a Host-first implementation returns |
+| §4.1 the write lock on `POST /settings` | **nothing** — two concurrent toggles need two clients racing; observable only as a switch snapping to a value nobody chose |
+| §4.1 no request path ever joined to a filesystem path | **nothing** — the class is removed by construction (`BaseHTTPRequestHandler`, bodies built in memory) rather than defended, so there is nothing to probe; code review only |
 | §4.1 the per-route `Content-Type` | **nothing** — no case asserts it; a wrong one is visible immediately in a browser rather than silent |
 | §4.4 anti-framing headers on every response | `tools/verify_page.py::host_allowlist` |
 | §4.4 the `.desktop` `Exec` naming `tray.py`, not the writing module | `tools/verify_page.py::no_reflected_headers` — LOTTO-0002 §4.7's body is asserted byte-for-byte |
 | §4.3 `secrets.compare_digest` rather than `==` | **nothing** — the two agree on every input and differ only in timing, so no black-box case can tell them apart; code review only |
 | §4.3 the token surviving a browser that strips custom headers | **nothing** — no such browser is known, and the failure is visible (403 on every toggle) rather than silent |
 
-Fifteen rows, four `nothing`.
+Eighteen rows, six `nothing`.
 
 ## 12. Cross-doc impact
 
@@ -646,4 +720,5 @@ Fifteen rows, four `nothing`.
 |------|------|-------|------|------|-----|-----|---------|
 | 1 | 2026-08-02 | 2 | 4 | 5 | 6 | 10 | All 25 verified findings fixed; 0 unverified, 0 deferred. **Two CRITICALs were security cases that pass against a server with no defence at all** — the shape this document's own §2 says it was written to avoid. `no_reflected_headers` asserted only that no header named `X-Injected` appeared, so a handler reflecting `self.path` **raw** into a header — the likelier defect, involving no decoding — emits a header whose value is the literal poison, no `X-Injected` exists, and the case goes green. §7's own prescribed breakage would not have turned it red. It now compares the whole response header **name set** against a fixed list and asserts no header value contains any substring of the request path. And INV-13's token-channel clause spawned `python3 serve.py` to prove the tray's `LOTTO_TOKEN` is accepted — which runs the real builder, dragging 27 network requests and ~40 s into a suite whose first stated constraint is that it needs none; the child now gets `LOTTO_NO_BUILD`, its own free port and an explicit `cwd`. **A third CRITICAL made a case unbuildable:** INV-12 fired four `Host` values at three routes expecting 200, while §4.1 answers 202 on `POST /refresh` and §4.3 answers 403 without a token, so the case fails against a correct server and the obvious repair — "anything but 421" — deletes the positive control. Expectations are now per route. **The fourth: §4.2 specified a 421 as "the bare status line with no body" while §4.4 required every response to carry the anti-framing headers and INV-12 asserted them on all four responses, three of which are 421s.** Two sections specifying opposite implementations of the most-served response in the document. **One HIGH was arithmetic, and measured rather than argued:** §4.2 claimed its two poison hosts defeat "a prefix, suffix or substring test", but `evil.example:4322` defeats none of them and `127.0.0.1.evil.example:4322` defeats only `startswith` — neither has `endswith(allowlist)` true, so §7's red-test ("widen the comparison to `endswith`") left the case green. §4.2 now carries a table mapping each weaker comparison to the one host that defeats it, and the case fires a fifth value, `evil.example.127.0.0.1:4322`. INV-21's assertion could not see the breach its own *Breaks when* calls the natural first implementation: it grepped the inline script for `pushState`, while a `href="?game=…"` link or a GET form is markup. Also fixed: two paragraphs stated verbatim in both this document and LOTTO-0002 after the split (the stale-token failure mode and the client-side-filtering rule) — stated here, pointed at there, deleting the copies rather than reconciling them; `POST /settings` had no body cap, so the obvious `rfile.read()` is an unbounded read on a local socket (now 4 KiB, 413 above, 400 on a missing or non-numeric `Content-Length`); `BaseHTTPRequestHandler` writes the request line to stderr via `log_request`, which is a request-derived string leaving the process, so the access log is silenced and INV-14's scope is stated rather than left as an omission; and §4.2's justification for writing `421` as an integer was simply false — `HTTPStatus.MISDIRECTED_REQUEST` has existed since Python 3.5, well below the asserted 3.8 floor. §11 grew from eleven rows and two `nothing` to fifteen and four. Doc grew 475 -> 603 lines. |
 | 2 | 2026-08-02 | 2 | 1 | 8 | 11 | 12 | All 32 verified findings fixed; 0 unverified, 0 deferred. **Origin split: roughly 12 fix collateral against 4 draft defects**, so the batch was answered by re-sweeping wholesale. Loop 1 fixed four security cases that could pass against an undefended server; loop 2 found that three of those fixes were themselves wrong. **The CRITICAL was loop 1's own poison list.** It specified five `Host` values hard-coded to port 4322, while every case binds an ephemeral port — so against a server on any other port `evil.example.127.0.0.1:4322` stops satisfying `endswith("127.0.0.1:<bound port>")`, the prescribed §7 breakage stays green, and the case proves nothing. The values are now built from the port the case actually bound. **Loop 1's header-injection fix was literally unsatisfiable:** it required that no response header value contain "any substring of the requested path", and the path shares single characters with `application/json` and `no-store` — computed, 7 and 5 shared substrings respectively — so the assertion could never pass. Restated as the whole path or a percent-decoded form of it. Its companion clause, a "fixed expected list" of header names on every response, could not hold either: §4.1 gives 421/404/405 no `Content-Type` and gives 405 an `Allow` the others lack, so the expected set is now per response shape. **And loop 1's own red-test disclaimer was wrong** — it warned that `host.endswith(allowlisted_value)` might leave the case green, when that string IS the allowlisted value and `evil.example.127.0.0.1:4322` does satisfy it; verified, and the disclaimer deleted. One collateral finding was a genuine functional risk: loop 1 added "a missing, non-numeric or negative `Content-Length` is 400" without scoping it, and a bodiless `urllib` POST — which is exactly what LOTTO-0013's `post()` sends to `/refresh` — omits that header, so the rule as written 400s the tray's Refresh item. The body rules are now scoped to `/settings`. Genuine draft defects: §1 promised a "bare 421" and "nothing a caller sends is ever echoed into a written file", contradicting §4.2's headers-on-every-response and §4.4's two validated booleans in `settings.json`; §4.1 never said routing matches the path component only, under which reading INV-21's `GET /?x=1` comparison would 404 twice and pass vacuously against a server that renders nothing; and §10 claimed the browser's six-connection limit as a bound while §2's threat model is a hostile page that can open tabs and workers — now an explicit acceptance with its reasoning rather than a false bound. Two duplicated words and two review-history asides in the contract body were removed, and the CORS-while-debugging rationale went from three statements to one. Doc grew 603 -> 648 lines. |
+| 3 | 2026-08-02 | 2 | 1 | 4 | 8 | 8 | **Converged by cap, and by the collateral trigger — both fired together.** All 21 verified findings fixed; 0 unverified, 0 deferred. Origin split: roughly 8 fix collateral against 4 draft defects, after loop 2's 12-against-4 — two loops running, which is the stop-and-consolidate signal, reached on the same pass as the cap. **Both lanes led on the same CRITICAL, and loop 1 had created it.** Loop 1 wrote that `POST /settings` writes "exactly two validated booleans" into `settings.json`. It writes **one**: LOTTO-0002 §4.7 stores autostart as the *presence* of the `.desktop` file and says so explicitly — "The autostart setting has no separate record — the file *is* the state, so the switch cannot drift". An implementer satisfying INV-14 as written would have added an `autostart` key and built exactly the duplicated state that decision exists to forbid. Corrected in both places, with the reason stated so it is not reintroduced. **A HIGH that only an implementer would have hit:** INV-14's central assertion — the response header name set is "exactly the set that response shape is supposed to carry" — had no referent anywhere in the document, and `BaseHTTPRequestHandler.send_response()` emits `Server` and `Date` whether or not the handler asks for them (measured: a minimal handler returns `Server: BaseHTTP/0.6 Python/3.13.14`, `Date`, `Content-Type`). §4.1 now carries a per-shape header table naming every header on every status, and `Server` is overridden to a constant — the default volunteers both the server and the interpreter version from a security boundary. **The check order was load-bearing and lived only in a test note**: INV-12 fires poisoned hosts at both POST routes expecting 421, which only a Host-before-token implementation returns, so an implementer ordering them the other way fails a case written against a correct server. §4.1 now states the ladder. And `host_allowlist` never exercised `localhost` or case-folding at all, while §11 claimed it covered "the lowercased, whole-string comparison" — the allowlist's second entry was shipping untested; the case now carries three good hosts including a mixed-case one. Genuine draft defects: `ThreadingHTTPServer` plus two files and a read-back with no lock, so concurrent toggles can each return the other's result — the exact failure the read-back was added to prevent; no socket read timeout, so a client declaring 4000 bytes and sending 1 hangs a thread just as completely as an unbounded read; and §4.4's anti-framing rationale claimed the framing page obtains the token, which it cannot — the attack is clickjacking, and a wrong mechanism in a security rationale invites wrong reasoning elsewhere. §11 grew to eighteen rows and six `nothing`. Doc grew 648 -> 722 lines. |
 | 0-split | 2026-08-02 | — | — | — | — | — | **Provenance row — no reviewer was dispatched, and this is not a review loop.** Second cut of `docs/specs/LOTTO-0002-local-web-page.md`, taken by the user on 2026-08-02 after the first cut (LOTTO-0013, the tray) removed only 66 of 1,161 lines and left the page half at 1,095. The seam here is subject rather than invariant count: this document is the web-security boundary — the routes, the `Host` allowlist, the token and the response-header rules — and what remains in LOTTO-0002 is the lottery-data honesty rules. They need different expertise to review, which is the argument for the cut. Carried over unchanged in substance: the parent's §4.3 (now §4.1) and §4.4 (now §4.2–§4.4), and INV-12, INV-13, INV-14 and INV-21 with their test clauses. **The parent's three cold-eyes loops confer nothing on this document** — they were run against 1,161 lines that no longer exist, and this file starts at loop 1 on its own bytes. Their record is archived at `docs/specs/LOTTO-0002-pre-split-review-log.md`. Two edits were made rather than copied: INV-13's test clause said "four POSTs" while listing five, corrected here to five; and the parent's §4.4 carried three bare references to "§4.7", a section that now lives in another document, all three of which are qualified here. The last of them survived the first qualifying pass and was caught by a mechanical cross-reference sweep rather than by reading. |
