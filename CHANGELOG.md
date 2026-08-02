@@ -108,6 +108,16 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The cold-eyes gate INV-22 was owed, run to acceptance in two loops** (LOTTO-0022)
+  LOTTO-0001 §13 loops 5 and 6. 23 verified findings fixed, 2 dismissed,
+  1 filed as LOTTO-0023. §6 still described the pre-INV-22 behaviour, so
+  the failure-modes section licensed the R0.00 default the invariant
+  forbids; and INV-5's recorded test was red against correct code, its
+  glob sweeping the `tools/` doubles — one of which is INV-22's own probe,
+  so the obvious repair would have deleted a guard on the money path.
+  §4.4 now carries `check()`'s win-record shape, which no document stated
+  although `serve.py` spreads it into the page model.
+
 - **A win whose prize cannot be read now raises instead of pricing at R0.00 (INV-22)** (LOTTO-0007)
   `check.py::amount()` is called only after a combination has matched a paying
   division, so every call prices a line already known to have won — there is no

@@ -520,7 +520,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   rather than papering over it — so this item closes a stated gap, not a
   silent one.
 
-- 📋 **LOTTO-0022** LOTTO-0001 owes a cold-eyes loop for INV-22.
+- ✅ **LOTTO-0022** LOTTO-0001 owes a cold-eyes loop for INV-22.
   Kind: doc. Source: in-session-2026-08-02 (LOTTO-0007a).
   Layman: A safety review that is due on the spec we just changed, so it does not quietly go unread.
   LOTTO-0007(a) added **INV-22** to
@@ -537,6 +537,19 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   read of the contract describing it.
   Worth folding in with LOTTO-0001's next amendment rather than running alone,
   if one is coming soon.
+  Resolved 2026-08-02: two loops, recorded as LOTTO-0001 §13 loops 5 and 6.
+  23 verified findings fixed, 2 dismissed on evidence, 1 filed as LOTTO-0023,
+  1 surfaced code-side. Accepted at two loops, not stopped by the cap.
+  "One loop should settle it" was wrong, and the reason is worth keeping: the
+  amendment itself was sound, but it had left **§6 still describing the
+  pre-INV-22 behaviour** — so the failure-modes section an implementer reads
+  for the unhappy path licensed exactly the R0.00 default INV-22 forbids. The
+  contradiction sat five sections from the new invariant, which is the distance
+  the author cannot see and a cold reader can. Second: **INV-5's recorded test
+  was red against correct code**, because its glob swept the `tools/` doubles
+  and one of those doubles is INV-22's own probe — so the obvious repair
+  deletes a guard on the cardinal money rule. Both were found independently by
+  both lanes. Loop 6 found no CRITICAL, confirming the fixes held.
 
 - 📋 [LOTTO-0023] **A win in a retired prize division is dropped silently, with no count.**
   Found by a cold-eyes lane on LOTTO-0001 during the LOTTO-0022 gate, and
