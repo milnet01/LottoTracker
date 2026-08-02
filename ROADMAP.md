@@ -265,7 +265,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   (INV-10) — and the same price is what derives the entered pools. The display
   itself is LOTTO-0002; the checkable-entries-only rule is spec §4.7.
 
-- 📋 [LOTTO-0015] **Ship a Linux AppImage and a Windows executable, both build-tested locally first.**
+- 📋 **LOTTO-0015** Ship a Linux AppImage and a Windows executable, both build-tested locally first.
+  Kind: package. Source: user-request-2026-08-02.
+  Layman: One file you can double-click, instead of needing Python and PySide6 installed.
   Verified 2026-08-02: the project has no packaging manifest and no `.github/`
   at all, so this item adds the first of both.
   **Two entry points are platform-bound and one of them cannot cross.**
@@ -288,11 +290,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Publishing from CI would add the first workflow to a repo that has none. The
   repo is public, so runner minutes are free, but say so when it lands — the
   project's push cadence currently assumes no workflows exist.
-  **Layman:** One file you can double-click, instead of needing Python and PySide6 installed.
-  Kind: package.
-  Source: user-request-2026-08-02.
 
-- 📋 [LOTTO-0016] **Run the CI locally before pushing, from the same script CI runs.**
+- 📋 **LOTTO-0016** Run the CI locally before pushing, from the same script CI runs.
+  Kind: chore. Source: user-request-2026-08-02.
+  Layman: Catch the breakage on your own machine instead of finding it on GitHub.
   Pairs with LOTTO-0015, which adds the first workflow this repo has ever had.
   **"Exactly replicates" is only achievable one way, and it is not by writing
   the steps twice.** Two files listing the same commands drift on the first
@@ -313,9 +314,101 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   gitignored real data — so CI can run a subset the local script cannot, and
   vice versa. Decide that split explicitly; a check skipped for missing data
   must say so, not pass quietly.
-  **Layman:** Catch the breakage on your own machine instead of finding it on GitHub.
-  Kind: chore.
-  Source: user-request-2026-08-02.
+
+- 📋 **LOTTO-0018** The tray says "Results refreshed." before the refresh has happened, and even when it fails.
+  Kind: fix. Source: in-session-2026-08-02.
+  Layman: The icon tells you it is done about a second in, while it is still working — and it says the same thing when the update actually failed.
+  Verified 2026-08-02 by reading the path end to end.
+  `serve.py::refresh()` starts a daemon thread and returns `True` at once, so
+  `POST /refresh` answers **202 = accepted**, not *finished*. `tray.py::refresh()`
+  treats the 202 as success and calls `note("Results refreshed.")` — roughly a
+  second in, while the 27 requests behind it still have thirty-odd seconds to
+  run. If that build then raises (four of seven attempts failed when LOTTO-0002
+  was measured — see LOTTO-0012), the user has already been told it succeeded and
+  is never told otherwise.
+  **This is the cardinal rule in notification form**: a failure reported as a
+  success is worse than a blank, because it actively stops the user looking.
+  The page half is already honest — it polls `GET /status` and shows the stale
+  notice on failure (INV-18) — so the defect is that the tray does not use the
+  same signal it already has. Fix shape: after a 202, poll `/status` the way the
+  page does and notify on the *transition*, reporting failure as failure.
+  Pairs with LOTTO-0019, which is what the notification should say once it fires
+  at the right time; do this one first, since a well-worded lie is still a lie.
+
+- 📋 **LOTTO-0019** Tell the user they won, instead of waiting for them to come and look.
+  Kind: feature. Source: in-session-2026-08-02.
+  Layman: The icon pops up "2 new winning lines, R240" — the whole point of the app, delivered without you opening anything.
+  The project exists to surface a win before it is discovered by accident, and
+  today it still waits to be asked: the tray's only notification is the generic
+  `note("Results refreshed.")` in `tray.py::refresh()`, and finding out what
+  changed means opening the page and reading it.
+  `POST /refresh` currently answers with an **empty body** (`self._send(202)`),
+  so the tray has nothing to report even if it wanted to. Two ways to close
+  that, and the choice is a real one:
+    (a) the refresh response — or a new field on `GET /status` — carries a small
+        summary of the completed build (new winning lines, their total);
+    (b) the tray diffs nothing and simply links to the page.
+  (a) is the feature; (b) is not worth building.
+  **Two constraints, both already established, and both easy to breach here.**
+  A desktop notification is *outside* the security boundary that LOTTO-0014
+  draws around the page, so it must carry no ticket reference and no line
+  numbers — a count and a total only; the same reasoning that keeps ticket data
+  out of the URL (INV-21) applies to a notification body, which the desktop may
+  log and sync. And "no new wins" must never render the same as "the build
+  failed" or "nothing could be checked" — LOTTO-0018 owns the timing half of
+  that, and this item must not undo it by summarising a build that did not
+  finish.
+  Blocked in practice on LOTTO-0018: a summary that arrives at the wrong moment
+  is a more convincing wrong answer than the generic string it replaces.
+
+- 📋 **LOTTO-0020** Show what the first build is actually doing instead of "building" for half a minute.
+  Kind: enhancement. Source: in-session-2026-08-02.
+  Layman: A page that says "checking draw 9 of 27" instead of sitting there looking broken for thirty seconds.
+  `serve.py` binds before it builds (LOTTO-0002 §4.2), so the first page answers
+  immediately and then says *building* for the thirty-odd seconds the 27
+  requests take. `GET /status` returns `{building, built, stale}` — enough to
+  know that work is happening, nothing about how much is left — and the page's
+  poll runs every 2 s with nothing new to show each time. A progress figure is
+  the difference between a page that looks busy and one that looks broken,
+  and this is the first thing a new user sees.
+  The count already exists in the design: LOTTO-0002 §4.2 measures the build at
+  **27 requests** and INV-17 counts them, so the denominator is known and
+  asserted rather than guessed. `results.py::_post()` is the single funnel every
+  API request passes through (which is also why LOTTO-0012 fixes retries there
+  once for every caller), so a counter belongs in it, read out on `/status`.
+  `backfill.py` caches to `archive_cache/` on disk and mostly makes no requests
+  at all, so the figure is honest only if it counts what is actually fetched.
+  **The denominator moves and must not be presented as fixed**: 27 is a dated
+  measurement against today's dump, and LOTTO-0006 would change it. Show
+  "fetched N" over a total only where the total is known for *this* build, and
+  never let a stalled counter read as completion — the same rule that stops a
+  blank cell reading as R0.00.
+  Small, self-contained, and touches no scoring. Worth doing alongside
+  LOTTO-0012, whose retries make the wait longer and therefore worth narrating.
+
+- 📋 **LOTTO-0021** Extend the page's filter beyond game, reusing the pattern already there.
+  Kind: enhancement. Source: in-session-2026-08-02.
+  Layman: Narrow 1,233 rows down to the year, or to just the ones that could be checked — not only by which game.
+  **Not a new feature — an extension, and the existing one sets the pattern.**
+  `page.py` already ships a client-side `#gamefilter` that shows and hides
+  `#entries tbody tr` by `data-game`, and its comment already records the rule
+  that makes it safe: *"It must not add a query parameter, a fragment or a
+  history entry: all three put ticket data where the browser syncs it
+  (INV-21)."* Any new filter obeys the same rule or it breaks a shipped
+  security invariant.
+  Worth adding, in rough order of use: by **year**, since 1,233 entries span
+  2022 to now and the interesting ones are recent; and by **checkable state**,
+  which is the split the whole project is built around.
+  **The second one carries the trap.** A filter that hides uncheckable entries
+  makes the page assert a smaller, tidier reality — 259 checkable entries of
+  1,233 — and a user who forgets a filter is active reads the remainder as the
+  whole truth. That is the cardinal rule arriving through the UI rather than
+  through the data: filtering must never make "not checkable" *disappear*
+  silently. Whatever is hidden gets a visible, persistent count of what the
+  filter is holding back, and the default state stays unfiltered.
+  Free-text search over ticket references is deliberately **excluded**: a
+  reference identifies a real ticket, and putting one in a search box invites it
+  into the places INV-21 exists to keep it out of.
 
 ## Hardening
 
@@ -406,7 +499,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   parsing, pool derivation, matching and pricing this project can have.
   Do LOTTO-0010 first: without the reconciliation script the oracle is unread.
 
-- 📋 [LOTTO-0017] **INV-19 says "no Qt" but cannot see a PyQt import.**
+- 📋 **LOTTO-0017** INV-19 says "no Qt" but cannot see a PyQt import.
+  Kind: fix. Source: cold-eyes-2026-08-02 (LOTTO-0013 re-gate, loop 4).
+  Layman: A safety check has a blind spot: it would miss one of the two ways of importing the graphics library.
   `tools/verify_page.py::serve_is_headless` collects the child interpreter's
   `sys.modules` and flags a name containing `PySide`, or a module whose
   top-level package is exactly `Qt`. `PyQt6.QtCore` is neither — so an import
@@ -424,6 +519,21 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Documented meanwhile in LOTTO-0013's INV-19 clause, which names the gap
   rather than papering over it — so this item closes a stated gap, not a
   silent one.
-  **Layman:** A safety check has a blind spot: it would miss one of the two ways of importing the graphics library.
-  Kind: fix.
-  Source: cold-eyes-2026-08-02 (LOTTO-0013 re-gate, loop 4).
+
+- 📋 **LOTTO-0022** LOTTO-0001 owes a cold-eyes loop for INV-22.
+  Kind: doc. Source: in-session-2026-08-02 (LOTTO-0007a).
+  Layman: A safety review that is due on the spec we just changed, so it does not quietly go unread.
+  LOTTO-0007(a) added **INV-22** to
+  `docs/specs/LOTTO-0001-lottery-ticket-tracker.md` §5 and rewrote two §11
+  rows. The amendment has not been through the gate: it was written, checked
+  against the code and red-tested, but no independent reader has seen it.
+  Small and self-contained — one invariant, its test clause and two table rows
+  — so one loop should settle it, the same shape as the LOTTO-0002 and
+  LOTTO-0013 re-gates on 2026-08-02.
+  Filed rather than run because that session had just stopped a gate by
+  decision, and spending four more reviewers without asking would have been
+  the wrong call. It is recorded here so the obligation outlives the
+  transcript: the fix is shipped and checked, what is outstanding is the cold
+  read of the contract describing it.
+  Worth folding in with LOTTO-0001's next amendment rather than running alone,
+  if one is coming soon.
