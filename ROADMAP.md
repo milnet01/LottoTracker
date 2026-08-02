@@ -315,7 +315,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   vice versa. Decide that split explicitly; a check skipped for missing data
   must say so, not pass quietly.
 
-- 📋 **LOTTO-0018** The tray says "Results refreshed." before the refresh has happened, and even when it fails.
+- ✅ **LOTTO-0018** The tray says "Results refreshed." before the refresh has happened, and even when it fails.
   Kind: fix. Source: in-session-2026-08-02.
   Layman: The icon tells you it is done about a second in, while it is still working — and it says the same thing when the update actually failed.
   Verified 2026-08-02 by reading the path end to end.
@@ -334,6 +334,28 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   page does and notify on the *transition*, reporting failure as failure.
   Pairs with LOTTO-0019, which is what the notification should say once it fires
   at the right time; do this one first, since a well-worded lie is still a lie.
+  Resolved 2026-08-02. The wait lives in `supervise.Supervisor.refresh()`,
+  which is Qt-free so `tools/verify_page.py` can drive it headlessly: POST,
+  then poll `GET /status` every 2 s — the page's own cadence — until
+  `building` clears, then report one of four outcomes. Only *done* reads as
+  success. *Failed*, *still running* (the 300 s budget expired) and *already
+  running* (the 409, which used to reach the user as `Refresh failed: HTTP
+  Error 409: Conflict`) each name what is **not** known instead. The four
+  sentences live in `supervise.REFRESH_MESSAGE` rather than in `tray.py`,
+  following the precedent `port_fallback` set, and that is what lets a
+  headless case assert that only one of them reads as success.
+  Contract is LOTTO-0013 §4.6 and INV-23, written **before** implementation
+  and gated over three cold-eyes loops (§13 loops 6, 7 and 8): 43 verified
+  findings fixed, 0 deferred, no CRITICAL after the first loop, converged at
+  the cap with nothing outstanding. Two of those loops caught this project's
+  cardinal rule inside the fix for it — `REFRESH_FAILED` first promised "the
+  previous results" on the path where a first build failed and there is no
+  previous model, and §4.3's new composes-no-message rule would have silenced
+  the raise path entirely.
+  Checked by `tools/verify_page.py::refresh_reports_the_build`, with three
+  breaks observed red: `notify_on_202` (the shipped defect itself),
+  `stale_is_success` (a patient lie is still a lie) and `success_wording`.
+  This unblocks LOTTO-0019.
 
 - 📋 **LOTTO-0019** Tell the user they won, instead of waiting for them to come and look.
   Kind: feature. Source: in-session-2026-08-02.

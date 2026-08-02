@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Ten cases, one per invariant INV-12 to INV-21, for the local page.
+"""Eleven cases, one per invariant INV-12 to INV-21 and INV-23, for the local
+page and the tray that drives it.
 
 Joins tools/verify_privacy.py, verify_sources.py, verify_coverage.py and
 verify_pools.py. Exit code is the signal, as with the other four.
 
-    python3 tools/verify_page.py            # all ten
+    python3 tools/verify_page.py            # all eleven
     python3 tools/verify_page.py --list
     python3 tools/verify_page.py --break host_endswith   # RED-TEST: must FAIL
 
-Three constraints, inherited from LOTTO-0002 §7 and binding on all ten:
+Three constraints, inherited from LOTTO-0002 §7 and binding on all eleven:
 
   * No network. The seam is the BUILDER, not the model: make_server takes a
     callable, so POST /refresh has something to invoke.
@@ -853,6 +854,139 @@ def no_orphan_server():
             sup.child.wait(timeout=5)
 
 
+def refresh_reports_the_build():
+    """INV-23 - a refresh is reported as DONE only after its build finished,
+    and a build that failed, is still running or was never started is never
+    reported as a success."""
+    temp_home()
+    import threading
+
+    # Two servers, because make_server() binds its builder at construction and
+    # POST /refresh re-invokes that same callable: one cannot both block and
+    # raise. The gate is an Event rather than a sleep so the case CONTROLS when
+    # the build finishes - a machine under load cannot turn this into a flake.
+    gate = threading.Event()
+
+    def gated():
+        gate.wait(30)
+        return fixture_model()
+
+    srv, _state, port, _t = serve_on(gated)
+    srv2, _state2, port2, _t2 = serve_on(Stub(raises=True))
+
+    def driver(p):
+        # start() is the only MINTER of the token, not the only writer: this
+        # Supervisor talks to a server it did not spawn (LOTTO-0013 §4.1).
+        sup = supervise.Supervisor(port=p)
+        sup.token = "tok"
+        return sup
+
+    sup, bad_sup = driver(port), driver(port2)
+
+    if broken("notify_on_202"):
+        # RED-TEST: the shipped defect - treat the 202 as completion.
+        def early(self, timeout=300.0, interval=2.0):
+            self.post("/refresh", timeout=min(supervise.POST_TIMEOUT, timeout))
+            return supervise.REFRESH_DONE
+
+        supervise.Supervisor.refresh = early
+    if broken("stale_is_success"):
+        # RED-TEST: wait correctly, then ignore `stale`. A patient lie.
+        real_refresh = supervise.Supervisor.refresh
+
+        def blind(self, timeout=300.0, interval=2.0):
+            out = real_refresh(self, timeout=timeout, interval=interval)
+            return supervise.REFRESH_DONE if out == supervise.REFRESH_FAILED else out
+
+        supervise.Supervisor.refresh = blind
+    if broken("success_wording"):
+        # RED-TEST: the timing half stays correct and the wording half lies.
+        supervise.REFRESH_MESSAGE[supervise.REFRESH_RUNNING] = "Results refreshed."
+
+    try:
+        # 1. It must not have returned while the builder is still blocked. This
+        #    is the assertion that separates REPORTED from FINISHED; a 202
+        #    arrives in milliseconds.
+        gate.clear()
+        out = {}
+        job = threading.Thread(
+            target=lambda: out.update(r=sup.refresh(interval=0.2)), daemon=True
+        )
+        job.start()
+        job.join(0.6)  # three poll intervals
+        need(
+            job.is_alive(),
+            "refresh() returned while the build was still running - 202 means "
+            "accepted, not finished",
+        )
+
+        # 5. A second refresh while that build is in flight: 409 -> BUSY, and
+        #    returned at once rather than waiting on someone else's build.
+        started = time.monotonic()
+        busy = sup.refresh(interval=0.2)
+        need(
+            busy == supervise.REFRESH_BUSY,
+            f"a refresh during a build reported {busy!r}, expected REFRESH_BUSY",
+        )
+        need(
+            time.monotonic() - started < 0.2,
+            "the 409 was polled on rather than reported at once",
+        )
+
+        # 2. Released, it reports DONE.
+        gate.set()
+        job.join(15)
+        need(not job.is_alive(), "refresh() never returned after the build finished")
+        need(
+            out.get("r") == supervise.REFRESH_DONE,
+            f"a finished build reported {out.get('r')!r}, expected REFRESH_DONE",
+        )
+
+        # 4. Still blocked when a short budget expires: RUNNING, and neither of
+        #    the two verdicts nothing observed.
+        gate.clear()
+        running = sup.refresh(timeout=0.5, interval=0.2)
+        need(
+            running == supervise.REFRESH_RUNNING,
+            f"an unfinished build reported {running!r}, expected REFRESH_RUNNING",
+        )
+        gate.set()
+
+        # 3. A build that raises reports FAILED. (That the previous model
+        #    survives is INV-18's, and failed_refresh_keeps_model asserts it.)
+        failed = bad_sup.refresh(interval=0.2)
+        need(
+            failed == supervise.REFRESH_FAILED,
+            f"a failed build reported {failed!r}, expected REFRESH_FAILED",
+        )
+
+        # The wording half. No server needed, and checkable only because the
+        # map lives in Qt-free supervise.py.
+        outcomes = (
+            supervise.REFRESH_DONE,
+            supervise.REFRESH_FAILED,
+            supervise.REFRESH_RUNNING,
+            supervise.REFRESH_BUSY,
+        )
+        for outcome in outcomes:
+            need(
+                (supervise.REFRESH_MESSAGE.get(outcome) or "").strip(),
+                f"outcome {outcome!r} has no sentence in REFRESH_MESSAGE",
+            )
+        for outcome in outcomes[1:]:
+            said = supervise.REFRESH_MESSAGE[outcome].casefold()
+            for word in ("refreshed", "updated", "up to date", "success"):
+                need(
+                    word not in said,
+                    f"{outcome!r} reads as success: {word!r} in "
+                    f"{supervise.REFRESH_MESSAGE[outcome]!r}",
+                )
+    finally:
+        gate.set()  # or a server thread stays parked inside the builder
+        srv.shutdown()
+        srv2.shutdown()
+
+
 def nothing_in_the_url():
     """INV-21 — no ticket data in any URL, fragment or title; no-store on all."""
     temp_home()
@@ -907,6 +1041,7 @@ CASES = [
     ("serve_is_headless", "INV-19", serve_is_headless),
     ("no_orphan_server", "INV-20", no_orphan_server),
     ("nothing_in_the_url", "INV-21", nothing_in_the_url),
+    ("refresh_reports_the_build", "INV-23", refresh_reports_the_build),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -924,6 +1059,9 @@ BREAKS = {
     "qt_import": "serve_is_headless",
     "terminate_only": "no_orphan_server",
     "url_pushstate": "nothing_in_the_url",
+    "notify_on_202": "refresh_reports_the_build",
+    "stale_is_success": "refresh_reports_the_build",
+    "success_wording": "refresh_reports_the_build",
 }
 
 

@@ -33,15 +33,16 @@ python3 tools/verify_coverage.py  # INV-6: each entry scored over exactly its dr
 python3 tools/verify_privacy.py   # INV-4: no real SMS content is tracked by git
 python3 tools/verify_pools.py     # INV-7/INV-11: prices resolve; partly-checkable
                                   # tickets are never written off whole
-python3 tools/verify_page.py      # INV-12..INV-21: the page, its security boundary
-                                  # and the tray's spawn-and-reap lifecycle
+python3 tools/verify_page.py      # INV-12..INV-21 and INV-23: the page, its
+                                  # security boundary, the tray's spawn-and-reap
+                                  # lifecycle and what it reports after a refresh
 ```
 
 `verify_page.py` carries a `--break <name>` flag that applies one deliberate
 defect and asserts the named case goes red. That is not a debugging aid: these
 three items are greenfield, so there was no pre-fix code to red-test against,
 and the flag is what makes "every case observed failing" reproducible rather
-than a one-off hand edit. `--list` shows the thirteen breaks. It caught a real
+than a one-off hand edit. `--list` shows the sixteen breaks. It caught a real
 defect in a *case* rather than in the code — see CHANGELOG.
 
 Exit code is the signal, not the printed counts (`&& echo PASS`). Counts in the

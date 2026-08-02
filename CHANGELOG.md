@@ -108,6 +108,21 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The tray waits for the build before reporting a refresh, and reports a failure as a failure (INV-23)** (LOTTO-0018)
+  `POST /refresh` answers 202 = accepted, not finished — `serve.py::refresh()`
+  starts a daemon thread and returns — and `tray.py` treated that as
+  completion, so the icon said "Results refreshed." milliseconds into a
+  thirty-second build, and said the same when the build raised. New
+  `supervise.Supervisor.refresh()` POSTs, then polls `GET /status` (the signal
+  the page already uses) on the page's own 2 s cadence until `building` clears,
+  and returns one of four outcomes: done, failed, still running at the 300 s
+  budget, or already running (the 409, which surfaced as
+  `Refresh failed: HTTP Error 409: Conflict`). Only the first reads as success.
+  The wording lives in Qt-free `supervise.REFRESH_MESSAGE` so a headless case
+  can assert it. LOTTO-0013 §4.6, three cold-eyes loops, 43 verified findings
+  fixed; `tools/verify_page.py::refresh_reports_the_build` and its three
+  breaks (`notify_on_202`, `stale_is_success`, `success_wording`).
+
 - **The cold-eyes gate INV-22 was owed, run to acceptance in two loops** (LOTTO-0022)
   LOTTO-0001 §13 loops 5 and 6. 23 verified findings fixed, 2 dismissed,
   1 filed as LOTTO-0023. §6 still described the pre-INV-22 behaviour, so

@@ -24,6 +24,38 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_PORT = 4322
 MIN_PORT, MAX_PORT = 1024, 65535
 
+# ------------------------------------------------------------ refresh outcomes
+#
+# LOTTO-0013 §4.6. The four things Supervisor.refresh() can report, and the one
+# sentence each. The wording lives HERE rather than in tray.py for the reason
+# port_fallback does (§4.5): this module is Qt-free, so a headless case can read
+# it. INV-23 asserts the map is total and that only REFRESH_DONE reads as
+# success - the other three name what is NOT known, and a user who reads only
+# the first few words must not take any of them for a finished refresh.
+
+REFRESH_DONE = "done"
+REFRESH_FAILED = "failed"
+REFRESH_RUNNING = "running"
+REFRESH_BUSY = "busy"
+
+POST_TIMEOUT = 30.0  # the refresh POST's own ceiling. It is answered without
+                     # touching the build, so waiting longer on it only delays
+                     # saying the server is not answering (§4.6).
+
+REFRESH_MESSAGE = {
+    REFRESH_DONE: "Results refreshed.",
+    # Not "the previous results": a FIRST build that failed leaves no model at
+    # all, and this sentence has to be true of that page too (§4.6).
+    REFRESH_FAILED: (
+        "The refresh failed. The page still shows what it had before, "
+        "and says so."
+    ),
+    REFRESH_RUNNING: "Still refreshing. The page shows the result when it finishes.",
+    REFRESH_BUSY: (
+        "A refresh is already running. The page shows the result when it finishes."
+    ),
+}
+
 
 # --------------------------------------------------------------- settings I/O
 #
@@ -190,6 +222,67 @@ class Supervisor:
         )
         with urllib.request.urlopen(req, timeout=timeout) as res:
             return res.read().decode()
+
+    def status(self, timeout=5.0):
+        """GET /status, parsed. No token - it is a GET (LOTTO-0014 §4.1).
+
+        is_ready() deliberately does NOT use this, and must not be refactored
+        onto it: readiness counts ANY HTTP status as an answer, including the
+        421 and 500 this raises on, so the obvious dedup would make a server
+        that answers 421 look like one that is not listening (§4.1).
+        """
+        with urllib.request.urlopen(self.url + "/status", timeout=timeout) as res:
+            return json.loads(res.read().decode())
+
+    def refresh(self, timeout=300.0, interval=2.0):
+        """POST /refresh, then WAIT for the build. Returns one of the four
+        outcomes above (LOTTO-0013 §4.6, INV-23).
+
+        202 means ACCEPTED, not finished: serve.py::refresh() starts a daemon
+        thread and returns, so reporting on the POST's return says "Results
+        refreshed." milliseconds into a thirty-second build - and says it just
+        as readily when the build then raises, which four of seven measured
+        attempts did. The completion is observable from outside the process
+        because State.begin() sets `building` before the POST is answered and
+        State.fail() sets `stale` without touching the model (INV-18), so this
+        is a wait on a signal that already exists, not a second opinion.
+
+        `timeout` is ONE deadline over the whole call, never one for the POST
+        and another for the poll.
+        """
+        deadline = time.monotonic() + timeout
+        try:
+            self.post("/refresh", timeout=min(POST_TIMEOUT, timeout))
+        except urllib.error.HTTPError as err:
+            # 409 alone: a refresh declined because one is already running is
+            # not a failure, and the build it names is not this call's - so it
+            # is reported at once and nothing is polled. Everything else (403,
+            # 500, a timeout) still raises and is still reported as a failure.
+            if err.code == 409:
+                return REFRESH_BUSY
+            raise
+        while True:
+            # Clamped to what is left, which is what keeps `timeout` one
+            # deadline. A poll with nothing left simply fails, and the check
+            # below then reports it as still running.
+            left = deadline - time.monotonic()
+            try:
+                answer = self.status(timeout=max(0.0, min(5.0, left)))
+            except (urllib.error.URLError, OSError, ValueError):
+                # One dropped response, or one malformed body, is not evidence
+                # that a thirty-second build failed. Only a child of OURS that
+                # has died ends the wait early (§4.6 case 1); a Supervisor that
+                # spawned nothing cannot ask, and keeps polling (case 3).
+                if self.child is not None and not self.is_running():
+                    raise RuntimeError("the server stopped while refreshing")
+            else:
+                if not answer.get("building"):
+                    return REFRESH_FAILED if answer.get("stale") else REFRESH_DONE
+            # The deadline is tested AFTER a poll attempt, never before, so this
+            # is never returned about a build nothing tried to look at.
+            if time.monotonic() >= deadline:
+                return REFRESH_RUNNING
+            time.sleep(min(interval, max(0.0, deadline - time.monotonic())))
 
 
 def free_port():

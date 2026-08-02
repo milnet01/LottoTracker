@@ -148,9 +148,21 @@ class LottoTray(QSystemTrayIcon):
 
         def finished(ok, msg):
             self._end(self.act_refresh, "Refresh results now")
-            self.note("Results refreshed." if ok else f"Refresh failed: {msg}")
+            # `msg` is one of supervise's four outcomes when ok, and an
+            # exception's text when not. The tray composes only the failure
+            # line - the one path that has no outcome because nothing was
+            # determined about the build (LOTTO-0013 §4.6, INV-23).
+            # .get() rather than [], because a KeyError raised here is inside a
+            # Qt slot. INV-23 asserts the map is total, so the fallback is
+            # unreachable; it exists so that if it ever were, the user sees a
+            # bare outcome word rather than the tray dying mid-notification.
+            self.note(
+                supervise.REFRESH_MESSAGE.get(msg, msg)
+                if ok
+                else f"Refresh failed: {msg}"
+            )
 
-        run_async(lambda: self.sup.post("/refresh"), finished)
+        run_async(self.sup.refresh, finished)
 
     def toggle(self):
         if self.busy:

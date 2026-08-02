@@ -1,15 +1,12 @@
 # LOTTO-0013 — Tray icon and server supervisor for the local page
 
-**Status:** amended (2026-08-02), **§4.6 and INV-23 specified and not yet
-implemented** — added for ROADMAP LOTTO-0018 (the tray reporting a refresh
-before it has happened, and reporting a failure as a success). Until that lands,
-`supervise.py` has no `refresh()`, `status()` or `REFRESH_MESSAGE`,
-`tray.py::refresh()` still notifies when the POST returns, and
-`tools/verify_page.py` holds ten cases rather than eleven. **Everything about
-the four refresh outcomes describes what is to be built** — §4.6 entire, INV-23,
-§4.1's two new methods, §6's four refresh bullets, §10's poll ceiling, §7's case
-and counts, and §11's four new rows. Everything else here is accepted
-(2026-08-02) and shipped.
+**Status:** accepted (2026-08-02), amended and shipped the same day — §4.6 and
+INV-23 were added for ROADMAP LOTTO-0018 (the tray reporting a refresh before it
+has happened, and reporting a failure as a success), gated over three loops, and
+then built: `supervise.py` carries `status()`, `refresh()`, the four outcome
+constants and `REFRESH_MESSAGE`, `tray.py::refresh()` shows what the wait
+returns, and `tools/verify_page.py` runs eleven cases and sixteen breaks, green,
+with all three of INV-23's breaks observed red.
 
 **Eight cold-eyes loops in all** — three before implementation (converged by cap
 and by the collateral trigger), two re-gate loops that the settings-reader
