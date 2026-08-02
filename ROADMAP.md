@@ -92,6 +92,27 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   to read `open_on_start` but may not import `serve.py`, so the settings reader
   moved to `supervise.py`; and `make_server()` does not build, which two cases
   had assumed. All five checks green.
+  Folded back (2026-08-02): both gaps are now in the contracts rather than only
+  in commit messages — §4.2 and §7 here, §4.1 in LOTTO-0013 — each with a §13
+  row marked as originating in implementation. Re-gated with two further
+  cold-eyes loops per spec: 65 verified findings fixed, 2 dismissed, 0 deferred.
+  Loop 1's CRITICAL was the amendment's own collateral, and both LOTTO-0002
+  lanes found it independently: §4.1 still denied the `serve.py → supervise.py`
+  import the settings move had just created, which would have told the next
+  implementer to rebuild the duplicate reader. Loop 2 found that §4.6's worked
+  snippet — the only runnable statement of the compared-spend figure — omitted
+  `t.resolved`, the clause INV-16 exists to protect; it reproduces the same
+  R10,603.50 today only because no ticket is unresolved.
+  **A real code defect came out of writing the amendment, not out of review:**
+  `serve.py` imported `read_settings()` from `supervise` and redefined it twenty
+  lines below, so the shipped file held the two readers the amendment claimed it
+  had collapsed into one. Identical bodies, all five checks green over it —
+  which is the shape of the failure, not a mitigation. Deleted; LOTTO-0013 §11
+  now records that nothing mechanical catches it, and CLAUDE.md's architecture
+  diagram carries the edge so a future session does not recreate it.
+  Gate stopped at two re-gate loops by user decision rather than at the 3-loop
+  cap: CRITICALs 1 → 0, nothing verified outstanding. One code gap found in
+  passing is filed as LOTTO-0017.
 
 - ✅ **LOTTO-0014** The local page's HTTP surface and security boundary.
   Kind: security. Source: split from LOTTO-0002 on 2026-08-02 (second cut).

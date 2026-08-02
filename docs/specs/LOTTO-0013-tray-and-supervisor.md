@@ -4,7 +4,10 @@
 implementation (converged by cap and by the collateral trigger), then two
 re-gate loops that the amendment's implementation forced. 105 verified findings
 fixed, 2 dismissed on evidence, 0 deferred; 1 code gap filed as LOTTO-0017
-rather than fixed in a documentation pass.
+rather than fixed in a documentation pass. The gate stopped after the second
+re-gate loop by the user's decision rather than at the 3-loop cap: no verified
+finding was outstanding and CRITICALs had gone 1 -> 0, so what was declined is
+one further cold read, not a known defect.
 See §13.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0013 — split out of LOTTO-0002 on 2026-08-02 per that

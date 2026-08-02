@@ -2,7 +2,9 @@
 
 **Status:** accepted (2026-08-02) — split out of the 1,161-line original, then
 four cold-eyes loops on the post-split bytes; 103 verified findings fixed, 2
-dismissed on evidence, none outstanding. The third loop was postponed once and then run: §13's `3-skipped`
+dismissed on evidence, none outstanding. The gate stopped after the second
+re-gate loop by the user's decision rather than at the 3-loop cap, with
+CRITICALs at 1 -> 0 and nothing verified left open. The third loop was postponed once and then run: §13's `3-skipped`
 row records the postponement, and its loop `3` row is that read, carried out as
 the re-gate the amendment's implementation forced.
 **Kind:** implement.
