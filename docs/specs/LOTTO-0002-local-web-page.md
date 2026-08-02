@@ -154,7 +154,7 @@ makes the plain `python3 serve.py` case work:
 |---|---|---|---|---|
 | `LOTTO_PORT` | `4322` | `supervise.py` (LOTTO-0013) | `serve.py` | bind port; also builds §4.4's `Host` allowlist |
 | `LOTTO_TOKEN` | minted per run | `supervise.py` (LOTTO-0013) | `serve.py` | §4.4's write token; standalone `serve.py` mints its own |
-| `LOTTO_NO_BUILD` | unset | the caller | `serve.py` | bind and serve, build nothing — for LOTTO-0013's INV-20 case only, see §6 |
+| `LOTTO_NO_BUILD` | unset | the caller | `serve.py` | bind and serve, build nothing — for LOTTO-0013's INV-20 case and LOTTO-0014's INV-13 child only, never for users; see §6 |
 
 **The token is not a model key** — `page.py`'s signature is
 `render(model, token)`, so the model stays exactly what §7's fixtures are built
@@ -359,10 +359,10 @@ the page with a deadline:
    the reason. The won cell is the one INV-15 asserts against, and it is why
    the entry shape carries `won_cents: int|None` rather than a bare integer —
    `0` and "not checkable" must not render the same.
-   **Filtering is client-side**, over rows already in the document: it must not
-   add a query parameter, a fragment or a `history.pushState()` entry, because
-   all three put ticket data somewhere the browser syncs (LOTTO-0014 INV-21).
-   The URL is the same string before and after every interaction with the page.
+   **Filtering is client-side**, over rows already in the document, and must
+   leave the URL byte-identical — LOTTO-0014 §4.4 states that rule and INV-21
+   asserts it, including the markup forms (a `href="?…"` link, a GET form) that
+   are easier to reach for than a `pushState`.
 4. **Spend against winnings** — §4.6.
 
 **The uncheckable rule is structural here, not prose.** `check.py::uncheckable_report()`
@@ -671,11 +671,10 @@ them unqualified.
   catch it because it compares against the dump's text rather than against what
   the text implies.) The page therefore stamps the build time and marks
   anything expiring today, rather than implying the figure is live.
-- **A tab left open across a server restart holds a stale token.** The token is
-  per process, not per page — so every tab of one run shares one token, and a
-  tab that outlives the run holds one nothing will accept. Its next toggle gets
-  a 403, which renders as "this page is from an earlier session — reload it",
-  not as a failure of the setting.
+- **A tab left open across a server restart holds a stale token** — its next
+  toggle gets a 403 and renders as "this page is from an earlier session —
+  reload it". LOTTO-0014 §6 owns that behaviour; it is listed here only because
+  the toggle the user clicks is §4.7's.
 
 ## 7. Tests
 
