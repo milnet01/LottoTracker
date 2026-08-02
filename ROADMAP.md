@@ -376,3 +376,25 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   already known from the bank's own record — the only end-to-end check of
   parsing, pool derivation, matching and pricing this project can have.
   Do LOTTO-0010 first: without the reconciliation script the oracle is unread.
+
+- 📋 [LOTTO-0017] **INV-19 says "no Qt" but cannot see a PyQt import.**
+  `tools/verify_page.py::serve_is_headless` collects the child interpreter's
+  `sys.modules` and flags a name containing `PySide`, or a module whose
+  top-level package is exactly `Qt`. `PyQt6.QtCore` is neither — so an import
+  of it in `serve.py` or `supervise.py` passes a case whose invariant reads
+  "pulls in no Qt or PySide6 module".
+  Not theoretical: measured 2026-08-02, **PyQt6 is importable on this machine**
+  (`~/.local/lib/python3.13/site-packages/PyQt6/`), so the breach is reachable
+  today by anyone reaching for the wrong binding out of habit.
+  The fix is one arm on the predicate — also flag a top-level package matching
+  `^PyQt\d*$`. Do it under the project's own rule that a case must be observed
+  failing first: add a `--break pyqt_import` alongside the existing
+  `qt_import`, confirm `serve_is_headless` goes red, then widen the predicate
+  and confirm it goes green. That takes the break count from thirteen to
+  fourteen; CLAUDE.md and LOTTO-0013 §7 both state it and must move together.
+  Documented meanwhile in LOTTO-0013's INV-19 clause, which names the gap
+  rather than papering over it — so this item closes a stated gap, not a
+  silent one.
+  **Layman:** A safety check has a blind spot: it would miss one of the two ways of importing the graphics library.
+  Kind: fix.
+  Source: cold-eyes-2026-08-02 (LOTTO-0013 re-gate, loop 4).

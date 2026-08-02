@@ -65,9 +65,11 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
                                                     ▼                            ▼
                                         check.py::__main__            serve.py ──> page.py
                                         (the terminal output)         (the local page)
-                                                                          ▲
+                                                                          ▲   │
                                                           tray.py ──> supervise.py
-                                                          (PySide6)   (spawns serve.py)
+                                                          (PySide6)   (spawns serve.py;
+                                                                       owns the settings
+                                                                       reader both import)
 ```
 
 - **`tickets.py`** is the only bank-specific file. `parse()` handles two SMS
@@ -89,6 +91,12 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   page be rendered in a test with no socket and no `archive_results.json`.
 - **`supervise.py`** owns the server child — its token, its port, its reaping —
   and is Qt-free so that lifecycle is checkable from a headless script.
+  It also owns **reading** the two settings (`config_home()`, `autostart_path()`,
+  `settings_path()`, `read_settings()`), because `tray.py` needs them and may
+  not import `serve`; **`serve.py` imports them from here** and owns only the
+  *writing*, behind `POST /settings`'s lock. One reader, three callers — do not
+  add a second, however local it looks: two readers that agree today pass every
+  check and diverge later (LOTTO-0013 §4.1).
   **`tray.py`** is the only file that imports PySide6.
 - **`tools/verify_*.py`** import the modules directly via a `sys.path` insert.
 

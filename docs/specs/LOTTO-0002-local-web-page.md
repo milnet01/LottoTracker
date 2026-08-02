@@ -1,9 +1,10 @@
 # LOTTO-0002 — Local web page for tickets, results and claimable winnings
 
 **Status:** accepted (2026-08-02) — split out of the 1,161-line original, then
-two cold-eyes loops on the post-split bytes; 69 verified findings fixed, 0
-deferred. The third loop was skipped by decision, not by convergence — §13's
-`3-skipped` row records what that does and does not mean.
+three cold-eyes loops on the post-split bytes; 84 verified findings fixed, 0
+deferred. The third was deferred rather than declined: §13's `3-skipped` row
+records the stop, and the loop `3` row above it is that read, run as the re-gate
+of the amendment implementation forced.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0002 (user-request-2026-08-01; three further choices
 taken with the user 2026-08-02, recorded in §3).
@@ -90,8 +91,15 @@ page.py       Renders a model dict to one HTML string. Pure function, no I/O,
 ```
 
 LOTTO-0013 adds `supervise.py`, `tray.py` and `icons/` around them, and the
-dependency runs one way — nothing in this document's two files imports
-anything in that one's three.
+dependency runs one way — but *toward* that document's files, not away from
+them. **`serve.py` imports the settings paths and reader from `supervise.py`**
+(LOTTO-0013 §4.1, which owns the reason: `tray.py` must read `open_on_start` and
+may not import `serve`, so the reader lives where both can reach it and the
+*writing* stays here, behind `POST /settings`'s lock). Nothing here imports
+`tray.py` or `icons/`, and nothing there imports `serve.py` or `page.py`.
+Reading this section as forbidding that one import is how an implementer ends up
+writing a second settings reader — the duplicate LOTTO-0013 §11 records as
+caught by nothing.
 
 **When the server is launched by the tray, `supervise.py` is the sole owner of
 the token, the port and the child process** (LOTTO-0013 §4.2). A standalone
@@ -134,10 +142,20 @@ happen in `serve.py`'s builder, not in the renderer.
 
 # What `State` owns, and what serve.py overlays at render time.
 {
-  "built":  "2026-08-02T14:31:07" | None,   # last SUCCESSFUL build (§4.2)
-  "stale":  False,                          # last refresh attempt raised
-  "error":  None | {"what": str, "pools": [str]},   # §6's results-unavailable
+  "built":    "2026-08-02T14:31:07" | None, # last SUCCESSFUL build (§4.2)
+  "stale":    False,                        # last refresh attempt raised
+  "error":    None | {"what": str, "pools": [str]}, # §6's results-unavailable
+  "building": False,                        # a build is running RIGHT NOW
+  "no_build": True,                         # present ONLY when there is no
+                                            # model, no error and no build in
+                                            # flight — §6's third empty state
 }
+
+# And the OTHER shape build_model() can return, when the dump is absent (§6).
+# It is not a stripped version of the model above: page.py branches on it and
+# renders the notice, so a renderer expecting the full shape must not be handed
+# this one and vice versa.
+{"no_dump": True, "settings": {...}}
 ```
 
 **The two halves are separate because only one of them can carry the failure.**
@@ -146,13 +164,28 @@ INV-18 rests on), so a `stale` key living inside the model could never become
 true: the object that would have to be edited is precisely the one the failure
 path must not edit. Same for `error`, which by definition exists only when there
 is no new model. So `build_model()` returns the data keys, `State` owns the
-three above, and `serve.py` renders
-`render({**model, "built": …, "stale": …, "error": …}, token)`. `page.py` stays
+five above, and `serve.py` renders
+`render({**model, "built": …, "stale": …, "error": …, "building": …}, token)`,
+adding `no_build` when that third state holds. `page.py` stays
 pure and sees one flat dict; §7's fixtures set all of them directly.
 
-`State.fail(exc, pools)` takes the exception and the pools it could not reach,
-and stores them as `error`; `get()` returns it alongside the rest. Without those
-arguments §6's results-unavailable state has nothing to name.
+**All five are overlaid, and the three empty-page states are told apart by
+them** — which is why none may be dropped from a fixture. `building` true is
+*ask again shortly*; `error` set is *the last fetch failed, these figures are
+older*; `no_build` is *nothing was built and nothing is coming*. Collapse any
+two and the page tells the user the wrong thing about why it is empty, which
+§6 states as one rule and INV-15 as the cardinal one.
+
+`State.fail(exc, pools)` takes the exception and, **where they are known**, the
+pools it could not reach; `get()` returns the pair as `error`. Today's only
+caller is `refresh()`'s `work()`, which passes the exception alone: the build
+that raised touched many pools and the exception does not say which one lost,
+so attributing it would be a guess. **`pools` is therefore optional, not
+unpopulated-by-oversight**, and `page.py` renders the empty case as *"all
+pools"* rather than as a blank — the whole point being that a failure names its
+scope even when the scope is everything. The parameter stays because a
+pool-attributable failure is exactly what a future caller would have, and a
+signature that cannot carry it would force that caller to widen the contract.
 
 **`settings` is in the model because `page.py` cannot go and look.** The
 renderer is pure (below) and there is no `GET /settings` route — LOTTO-0014
@@ -162,6 +195,17 @@ render both in an arbitrary state on every load. The builder reads them from
 the two places §4.7 names: `autostart` is the *presence* of the `.desktop`
 file, `open_on_start` is the key in `settings.json`. `POST /settings` returns
 the same shape, which is what the switches snap back to.
+
+**One state, three words, and they are deliberately not merged.**
+**Unscorable** is the model's word and matches the code — `history.scorable()`
+returns false, `reason` is set. **Uncheckable** is the *count's* word: §4.5's
+banner and `check.py::uncheckable_report()` speak of uncheckable entries and
+tickets, and a ticket can be *partly* uncheckable while no single entry can be
+partly anything. **"Not checkable"** is the *page's* word — the string a reader
+sees in a cell. So: unscorable entry, uncheckable count, "not checkable" on
+screen. They describe the same underlying fact and are used at three different
+altitudes; a fix that collapses them loses the entry/ticket distinction INV-11
+rests on.
 
 `reason` is `None` for a scorable entry and otherwise the §4.5 string;
 `draws_remaining` **and `draws_covered`** are both `None` for an unscorable
@@ -203,7 +247,7 @@ be redirected for every case.
 
 | Variable | Default | Written by | Read by | Effect |
 |---|---|---|---|---|
-| `LOTTO_PORT` | `4322` | `supervise.py` (LOTTO-0013) | `serve.py` | bind port; also builds §4.4's `Host` allowlist |
+| `LOTTO_PORT` | `4322` | `supervise.py` (LOTTO-0013) | `serve.py`, and `supervise.py` itself (LOTTO-0013 §4.5) | bind port; also builds §4.4's `Host` allowlist |
 | `LOTTO_TOKEN` | minted per run | `supervise.py` (LOTTO-0013) | `serve.py` | §4.4's write token; standalone `serve.py` mints its own |
 | `LOTTO_NO_BUILD` | unset | the caller | `serve.py` | bind and serve, build nothing — for LOTTO-0013's INV-20 case and LOTTO-0014's INV-13 child only, never for users; see §6 |
 
@@ -302,7 +346,7 @@ class State:
     def wait_idle(self, timeout): ...  # block until not building; -> False on timeout
 
 
-def refresh(state, build_model):
+def refresh(state, build_model_fn):
     """Rebuild from the sources on a worker thread. Clears the memos first.
 
     The previous model keeps serving throughout, and survives a failure — that
@@ -317,7 +361,7 @@ def refresh(state, build_model):
         results._divisions_cache.clear()  # {(game, issue, pool_id, plus_flag): [...]}
         check._struct.clear()             # {(game, plus_flag, pool_id): {label: div}}
         try:
-            state.finish(build_model())   # atomic swap; readers never see a half-built model
+            state.finish(build_model_fn())  # atomic swap; readers never see a half-built model
         except Exception as exc:
             state.fail(exc)               # keep the last good model, flag it stale
     threading.Thread(target=work, daemon=True).start()
@@ -363,9 +407,13 @@ socket and returns `(server, state)`. It does **not** build. The opening
 `serve_forever()`, which is what "bind before the first build" means in code.
 Two things follow, and the second is the one that is easy to read past:
 a server that has been constructed but not run through `main()` holds no model
-and is legitimately in the *building* state — which is precisely what
-`LOTTO_NO_BUILD` (§4.1's table, §6's third empty-page reason) leaves it in on
-purpose; and **anything driving `make_server()` directly must perform its own
+and is in the **no-build** state — `model is None`, `building` false, no error,
+so the render carries `no_build: True` and the page says *no build was
+performed* (§6). It is emphatically **not** the *building* state, and the
+distinction is not academic: a page told it is building polls `/status` waiting
+for a build that was never started. That no-build state is exactly what
+`LOTTO_NO_BUILD` (§4.1's table, §6's third empty-page reason) produces on
+purpose. And **anything driving `make_server()` directly must perform its own
 first build**, because there is no opening `refresh()` to wait for. §7 carries
 that as a constraint on the cases, since the cases are what drive it directly.
 
@@ -406,9 +454,10 @@ the page with a deadline:
    tickets": a 2019 ticket has no draws still to come, and filing 974 unscorable
    entries under a heading that asserts they do would be the cardinal error
    wearing the section title. The two groups are **draws still to come**, showing
-   draws remaining, and **not checkable**, showing why. Tickets with draws still
-   to come show draws remaining. Two **scorable** ones today; the unscorable entries below are
-   also listed here and are not counted by this figure:
+   draws remaining, and **not checkable**, showing why. Two **scorable
+   tickets** today — the unit here is the ticket, not the entry, because a
+   ticket is what has draws left to run; the unscorable entries below are also
+   listed here and are not counted by this figure:
 
    ```console
    $ python3 -c "
@@ -490,7 +539,7 @@ this one implements it and provides its check. Per-entry cost is that tier's own
 board price, in cents:
 
 ```text
-entry_cost_cents = tier_increment(game, era, plus_flag) * paid_lines * ndraws
+entry_cost_cents = tier_increments(game, era)[plus_flag] * paid_lines * ndraws
 ```
 
 **`paid_lines` is `len(Ticket.boards)`.** There is no `paid_lines` attribute —
@@ -502,8 +551,12 @@ charged for, including each Multiplay combination. Stating it matters because
 the two readings differ **only** on Multiplay tickets, which is the one place
 the error would not show up in a spot check.
 
-`tier_increment()` lives in **`serve.py`, in the model builder** — the only
-module that computes, per §4.1 — and writes `cost_cents` onto each entry.
+`tier_increments(game, era)` lives in **`serve.py`, in the model builder** — the
+only module that computes, per §4.1 — and writes `cost_cents` onto each entry.
+It is **plural and takes two arguments**, returning the whole `{plus_flag:
+increment}` mapping for that game and era; the per-entry value is the
+`[plus_flag]` lookup on it, which is why the formula above indexes rather than
+passing a third argument.
 
 **The builder also computes `spend.compared_cents` and `won.compared_cents`, and
 `page.py` renders those two verbatim rather than summing anything.** This is the
@@ -522,7 +575,7 @@ lifetime total while its cost is excluded from the spend side. Comparing the two
 would put an unearned surplus on the page for the same reason comparing lifetime
 spend would put a false loss on it.
 
-`tier_increment()` reads the **increment** column of `tickets.py::TIER_PRICES`
+`tier_increments()` reads the **increment** column of `tickets.py::TIER_PRICES`
 — a different column from the cumulative total `entered_pools()` matches on,
 and conflating them prices a R10.00 Lotto ticket at R22.50. It is written at
 this call site, as LOTTO-0009 §4.7 says it should be.
@@ -576,9 +629,17 @@ it, and only when the price resolves"* — and the condition is load-bearing:
 name-derived tier, when `entered_pools()` comes back unresolved, and that one
 tier's increment cannot sum to what the SMS charged. So:
 
-- **Lifetime spend is `Σ round(Ticket.cost * 100)` over every ticket** — always
-  correct, because `Ticket.cost` is what the bank charged and needs no
-  apportionment (INV-10).
+- **Lifetime spend is the sum of the per-entry costs over all 1,233 entries**,
+  not `Σ round(Ticket.cost * 100)` over tickets. The two are the same number
+  exactly when every price resolves — which is the case today, `unresolved
+  tickets 0` above — and they part company on the one ticket whose price does
+  not, because a name-derived single tier cannot sum back to what the SMS
+  charged. The entry sum is what the builder computes and what the table row
+  above labels, and it is the honest one to display beside a comparison that is
+  also drawn over entries. **The gap does not go unreported**: an unresolved
+  ticket's full `Ticket.cost` is carried on its own line (below), so the reader
+  is told what the lifetime figure could not apportion rather than left with two
+  totals that quietly differ.
 - **The comparison is over resolved tickets' checkable entries only.** An
   unresolved ticket contributes to neither side of it.
 - **Unresolved tickets get their own labelled line** — count and total cost —
@@ -607,7 +668,9 @@ The autostart setting has no separate record — the file *is* the state, so the
 switch cannot drift from what the desktop actually does. Both paths honour
 `$XDG_CONFIG_HOME` and fall back to `~/.config`.
 
-**Turning autostart off deletes the file** (`unlink(missing_ok=True)`); it does
+**Turning autostart off deletes the file**, and a file that was already gone is
+success, not an error — `os.remove()` under `except FileNotFoundError`, this
+project being `os`-based rather than `pathlib`-based throughout; it does
 not rewrite `X-GNOME-Autostart-enabled` to `false`. That key is present in the
 template below and is exactly what invites the wrong implementation — but a file
 that exists with the key flipped breaks the "presence *is* the state" rule this
@@ -650,10 +713,10 @@ re-reads after writing.
 matters because each reader fails differently if left to decide for itself — the
 tray never appears, the build dies, or a toggle 500s — and all three would be
 caused by one corrupt file that should simply have been ignored. This document
-owns the file: its path, its key, that default and that fallback. Writing the file creates its directory with
-`parents=True, exist_ok=True` — without `exist_ok` the second enable raises
-`FileExistsError`, which is the *normal* case and would surface as §6's 500 on
-every toggle after the first.
+owns the file: its path, its key, that default and that fallback. Writing the file creates its directory idempotently —
+`os.makedirs(dirname, exist_ok=True)` — and `exist_ok` is the load-bearing half:
+without it the *second* enable raises `FileExistsError`, which is the **normal**
+case, and would surface as §6's 500 on every toggle after the first.
 
 **Accessible switch markup.** The switch is a styled
 `<input type="checkbox" role="switch">`, not a `<div>` with a click handler:
@@ -722,7 +785,7 @@ them unqualified.
   asserts the rendered compared-spend figure **equals** a recomputation the case
   performs itself from `tickets.py::TIER_PRICES` — `Σ increment × len(boards) ×
   ndraws` over the scorable entries of resolved tickets — **never by calling
-  `serve.py`'s `tier_increment()`**, which is the code under test and would make
+  `serve.py`'s `tier_increments()`**, which is the code under test and would make
   the case agree with whatever the builder did (§7's third constraint), and that the rendered lifetime figure is a different, larger
   number. Equality against a recomputed value is the assertion; "the lifetime
   total never appears as an operand" is not something a test can observe.
@@ -763,8 +826,11 @@ them unqualified.
   it never serves an empty or zeroed page.
   *Test:* `tools/verify_page.py`, case `failed_refresh_keeps_model` — serves a
   fixture model, refreshes with a **stub builder that raises**, and asserts the
-  original wins still render, that `GET /status` reports `stale: true`, and that
-  `built` is unchanged from before the failed attempt.
+  original wins still render, that the page itself says the figures are from an
+  **earlier fetch** — the "and says so" half of the invariant, which `stale` in
+  a JSON route does not deliver to the person reading the page — that
+  `GET /status` reports `stale: true`, and that `built` is unchanged from before
+  the failed attempt.
   *Breaks when:* the model is cleared before the rebuild, or an exception on
   the background thread leaves `state` empty. The operator's API failed with
   `URLError(SSL: UNEXPECTED_EOF_WHILE_READING)` on **four of the seven** build
@@ -799,6 +865,15 @@ them unqualified.
   variable and how the tray surfaces the failure. (4322 chosen as free on this
   machine and adjacent to the user's stats dashboard on 4321 — `ss -ltn`,
   2026-08-02.)
+- **`LOTTO_PORT` is set to something that is not a port**, on the standalone
+  `python3 serve.py` path. This is the one launch path LOTTO-0013 §4.5's
+  fallback does **not** cover — that fallback lives in `Supervisor`, and nothing
+  constructs one here — so `serve.py` reads the variable itself and a
+  non-numeric value raises before the bind. A traceback is an acceptable answer
+  *here* and only here: there is a terminal to read it in, the user typed the
+  variable one command ago, and the alternative — silently serving on 4322 —
+  puts the page somewhere they are not looking. Under the tray, where there is
+  no terminal, §4.5's fallback is what runs instead.
 - **`lotto_sms_raw.txt` is absent.** The page renders its empty state and says
   the dump is missing and how to produce it — never "0 tickets, R0.00", which
   reads as "you have never won".
@@ -855,7 +930,7 @@ Three constraints on the script, each following from something in the existing
 suite, and all three binding on all ten cases, LOTTO-0013's and LOTTO-0014's included:
 
 - **It must not need the network.** The seam is the **builder**, not the model:
-  `make_server(build_model, token, port)` takes a callable. Handing it a
+  `make_server(build_model_fn, token, port)` takes a callable. Handing it a
   finished model would leave `POST /refresh` with nothing to invoke, so INV-17
   (count requests across two rebuilds) and INV-18 (make a rebuild raise) would
   have no rebuild to exercise — two of the ten cases untestable by
@@ -869,25 +944,34 @@ suite, and all three binding on all ten cases, LOTTO-0013's and LOTTO-0014's inc
   and `nothing_in_the_url`, which needs a rendered page to find ticket data
   absent from. Read the seam the other way — as though constructing the server
   built the model — and both cases still run, still pass, and assert against
-  the empty building state instead of the thing the invariant is about.
+  the empty *no-build* page (§4.2) instead of the thing the invariant is about.
   **`uncheckable_not_a_loss` is the exception, and deliberately so** — it runs
   the *real* builder under a doubled `all_draws`, because its whole subject is a
   derivation the builder performs (§4.5's `reason`), and a stub returning a
   finished fixture would assert only that the fixture was rendered. It still
   costs no network: the double is exactly what `all_draws` would have gone to
-  the network for. Nothing here touches `urllib`, so a whole run costs well
-  under a second against the 27 requests a real build makes.
+  the network for. No case issues an outbound request, so a whole run costs well
+  under a second against the 27 requests a real build makes. (`urllib` is not
+  untouched — every case that drives a real socket speaks HTTP to it, and
+  LOTTO-0013's `is_ready()` and `post()` use it too. The rule is that nothing
+  leaves the loopback interface, not that the module is unimported.)
 
   **INV-15 needs a second seam**, because its fixture requires `scorable()` to
   differ between two pools of one ticket — a property of `history.all_draws()`,
   not of the model. Its case injects `all_draws` with a double returning draws
   for one pool and `[]` for the other, which is the `daily/0` vs `daily/1`
   shape that makes 11 real tickets partly uncheckable.
-  **That double is swapped for a raising one before `render()` is called**, in
-  every case, which is what makes §11's "`page.py` performs no I/O" row true.
-  The two are not the same double and the swap point matters: a raising double
-  during the build kills every case, and a returning one during the render lets
-  a renderer that calls `all_draws()` pass unnoticed.
+  **That double is swapped for a raising one before `render()` is called**, and
+  the swap lives in one place — the `render_pure()` helper every case that
+  renders `page.py` **directly** goes through — which is what makes §11's
+  "`page.py` performs no I/O" row true. Scope it honestly: cases that render by
+  driving the real server over HTTP (`failed_refresh_keeps_model`,
+  `nothing_in_the_url`) call `render()` inside the server process, where no
+  double is installed, so the guarantee those cases give is about the *response*
+  and not about `page.py`'s purity. The two doubles are not interchangeable and
+  the swap point matters: a raising double during the build kills every case,
+  and a returning one during the render lets a renderer that calls
+  `all_draws()` pass unnoticed.
 - **It must not touch real data.** Cases run with **both `$HOME` and
   `$XDG_CONFIG_HOME`** pointed at a
   temporary directory and tickets built from the `VAS00000000000` sentinel, not
@@ -1056,6 +1140,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 3 | 2026-08-02 | 2 | 1 | 4 | 4 | 6 | Re-gate of the `2-impl` amendment, and the third cold read the `3-skipped` row below deferred rather than declined. All 15 verified findings fixed; 0 unverified, 0 deferred. **Both lanes led on the same CRITICAL and it was this session's own collateral:** §4.1 said "nothing in this document's two files imports anything in that one's three", which the settings-reader move made false — `serve.py` imports `supervise.py`, deliberately, and LOTTO-0013 §4.1 requires it. Left standing, the sentence tells an implementer to re-implement the reader inside `serve.py`: the duplicate that shipped in `45e3fc3` and was deleted the same day. Now stated as a one-way edge *toward* LOTTO-0013's files, with the reason pointed at rather than copied. **A second finding was also mine:** the `2-impl` paragraph called a constructed-but-unrun server "building" and said `LOTTO_NO_BUILD` leaves it there. It does not — `model is None` with no error and no build in flight sets `no_build`, and §6 requires a *no build was performed* notice; a page told it is building polls `/status` forever for a build nobody started. Two states one word apart, on the rule this project calls cardinal. **The remaining HIGHs are draft defects the two prior loops walked past, all on the model seam §4.1 calls "the seam every §7 fixture is built to".** Three keys reach `page.py` that the shape block never listed — `building`, `no_build`, and `build_model()`'s entirely separate `{"no_dump": True, "settings": …}` return — and two of the three are the carriers of §6's "an empty page is correct only when it names why". Lifetime spend was defined twice in one section, as `Σ Ticket.cost` in a bullet and as the entry sum in the table two paragraphs above; the builder computes the entry sum, they diverge on any ticket whose price does not resolve, and this is a money figure on a page. And `State.fail(exc, pools)` had no producer for `pools` while §6 promised a failure "naming the pools it could not reach" — resolved by stating what the code honestly does: `pools` is optional, today's caller cannot attribute the failure, and `page.py` renders the empty case as "all pools" rather than as a blank. Also fixed: `tier_increment(game, era, plus_flag)` named at three sites including INV-16's test clause, where the function is `tier_increments(game, era)` returning a dict; §4.7 citing `pathlib` spellings against `os`-based code; no failure mode for a malformed `LOTTO_PORT` on the standalone path, which is the one launch path LOTTO-0013 §4.5's fallback does not cover; §7 and §11 claiming the raising `all_draws` double is installed "in every case" when it lives in `render_pure()` and the two socket-driven cases never see it; the environment table crediting `serve.py` as `LOTTO_PORT`'s only reader; `refresh(state, build_model)` where the parameter is `build_model_fn`; INV-18's clause omitting the "and says so" assertion its case actually makes; and unscorable / uncheckable / not-checkable used for one state at three altitudes, now glossed rather than merged — collapsing them would lose the entry-versus-ticket distinction INV-11 rests on. §11 unchanged at twelve rows and seven `nothing`. Doc grew 1,063 -> 1,148 lines. |
 | 2-impl | 2026-08-02 | — | — | — | — | — | **Implementation row — no reviewer was dispatched, and this is not a review loop.** Origin is building the thing (commit `45e3fc3`), which is the reader the `3-skipped` row below said it was deferring to; this is that mechanism firing rather than a fourth opinion. **Nothing in this document said which function builds the model.** §4.2 required the bind to precede the first build and left the division of labour implicit, so an implementer could read `make_server()` as producing a ready server. It does not: it creates the `State`, binds and returns `(server, state)`, and the opening `refresh()` is `main()`'s. **Two of `tools/verify_page.py`'s cases were written to the other reading and had to run an explicit first refresh** — `failed_refresh_keeps_model`, which needs a previous model for the failure to preserve, and `nothing_in_the_url`, which needs a rendered page to find ticket data absent from. **The reason this is a contract amendment and not a note is that the wrong reading is silent**: both cases still run and still pass, asserting against the empty *building* state instead of against the thing their invariants are about — a case passing for a reason unconnected to what it locks, which is the `3-skipped` row's predicted "a fixture weaker than the one that ships", arriving exactly where it predicted. §4.2 now states the division and both of its consequences, including that `LOTTO_NO_BUILD` leaves a server in that same legitimate no-model state. **§7 carries the case-facing half inside its existing builder-seam constraint rather than as a fourth one**, deliberately: LOTTO-0014 §7 cites "the three constraints that bind all ten cases" by count, and a fourth bullet here would falsify a sibling document's sentence to say something the first bullet already owns. No invariant moved, no case was renumbered, and no shipped behaviour changed — the cases already do the right thing, and the document now says why they must. A sibling amendment landed the same day in `docs/specs/LOTTO-0013-tray-and-supervisor.md` §4.1 (the settings reader), with one real code defect fixed alongside it; that document's `3-impl` row holds the account. |
 | 1-post-split | 2026-08-02 | 2 | 3 | 6 | 10 | 14 | All 33 verified findings fixed; 0 unverified, 0 deferred. First loop on the post-split bytes, and every finding was a draft defect — the split removed the collateral churn but not the document's own gaps. **Both lanes led on the same CRITICAL: §6 promised a degraded startup that nothing in scope can build.** It said the page would serve "from `archive_results.json` alone with a visible notice that live results are missing", but `check.py::paying_combinations()` *raises* when the live feed yields no recent draw — deliberately, so an empty division table cannot score a pool as losses — and `history.py::all_draws()` reaches the API for every pool regardless of what the archive holds. So the whole build fails, and §9 puts changes to scoring out of scope: the implementer would have had to either ship nothing or edit `check.py`. Replaced with the achievable behaviour, plus the case nobody had defined — **a failed FIRST build has no previous model to keep**, so INV-18's "never serves an empty or zeroed page" had no answer for the commonest failure this project sees (four of seven attempts). It now renders a named "results unavailable" state, explicitly not a zero total. **Two further CRITICALs, one per lane.** The settings panel — the feature §1 names in its first paragraph — had no state in the model at all: `page.py` is pure, there is no `GET /settings` route, so both switches would render in an arbitrary state on every load; the model gains a `settings` key. And **INV-15's fixture could not see the bug its own *Breaks when* names.** It held only a *partly* uncheckable ticket, so a renderer iterating tickets that produced at least one scorable entry, then appending their other pools, passes — while silently dropping every *wholly* uncheckable ticket. That is 426 tickets against 11, on the rule this project calls cardinal. The fixture now holds both shapes, and asserts the checkable half renders too, which the second clause of the invariant previously had no assertion for at all. **Three findings came from reading the real source rather than the document:** "Every money value in the model is an integer of cents" was false, because the win dict is spread verbatim and `check.py::amount()` returns **rands** — a 100× error waiting on a money page, now fixed by having the builder drop the key; `draws_covered` was a bare `int` while `history.py::covered()` returns `[]` for an unscorable entry, so every uncheckable row would have read "0 draws checked" — the cardinal failure moved one column left; and the winnings side of §4.6's comparison had no resolved-scoped figure, so an unresolved ticket's wins counted while its cost did not. Also fixed: turning autostart *off* was never stated as deleting the file, while the template ships `X-GNOME-Autostart-enabled=true` and actively invites rewriting the key instead — which breaks the "presence *is* the state" rule the setting is built on; a failed refresh left an open page with no way to learn it failed, since the poll watched `built` and `built` does not change on failure; §11 credited one `all_draws` double with two incompatible jobs; and the "Live tickets" heading asserted draws-still-to-come of 974 entries that by definition have none. §11 grew to twelve rows and six `nothing`. Doc grew 875 -> 980 lines. |
 | 3-skipped | 2026-08-02 | — | — | — | — | — | **No reviewer was dispatched, and this is not a review loop.** The gate stopped at two post-split loops rather than the three-loop cap, on the user's decision, so the session's remaining capacity went to implementation. **What this does and does not mean:** loop 2's 36 verified findings were all fixed, so no verified finding is outstanding and nothing is deferred — what was skipped is one further cold read, not a known defect. The two loops that did run found 69 verified findings between them and the trend was falling. The document is accepted on that basis. **Implementation is the next reader**, and it catches a class no reviewer can: a signature that cannot hold its own state, a cost claim that contradicts the algorithm elsewhere in the same document, a fixture weaker than the one that ships. Anything it proves false comes back here as an amendment plus its own loop row, per the fold-back rule — that is the mechanism this stop is relying on, and it is why stopping at two is a deferral of the third read rather than a decision to do without one. |
