@@ -78,9 +78,8 @@ not import PySide6.
   wants one, which is what INV-19 protects.
 
 **Taken as part of the split, 2026-08-02:** this document owns INV-19 and
-INV-20. LOTTO-0002 kept INV-15 to INV-18 and LOTTO-0014 took INV-12 to INV-14
-and INV-21 in a second cut the same day. All three parts are implemented in one
-change and share one test script (§7).
+INV-20 (§5 maps the rest). All three parts are implemented in one change and
+share one test script (§7).
 
 ## 4. Design
 
@@ -114,14 +113,31 @@ The supervisor's surface, and nothing beyond it:
 ```python
 class Supervisor:
     """Owns the token, the port and the child process. No Qt anywhere."""
+
+    def __init__(self, port=None)   # port or $LOTTO_PORT or 4322 (§4.5)
     url: str                        # "http://127.0.0.1:<port>" — what the tray opens
-    token: str | None               # minted by start(); None while stopped
+    token: Optional[str]            # minted by start(); None while stopped
 
     def start(self) -> None         # spawn the child; no-op if already running
     def is_running(self) -> bool    # child is not None and child.poll() is None
-    def stop(self, timeout=5.0)     # terminate(), kill() after timeout, then wait()
-    def post(self, path) -> str     # POST to the child carrying X-Lotto-Token
+    def is_ready(self, timeout=10.0) -> bool   # child is ANSWERING on the port
+    def stop(self, timeout=5.0) -> None        # terminate(), kill(), then wait()
+    def post(self, path, timeout=300.0) -> str # POST carrying X-Lotto-Token
 ```
+
+**`Optional[str]`, not `str | None`.** README.md and CLAUDE.md both claim a
+Python 3.8 floor, and a bare `X | Y` in a class body is evaluated at import and
+raises `TypeError` before 3.10. The floor is asserted rather than tested, and
+LOTTO-0014 §4.2 already declines a stdlib constant on the same ground; a type
+annotation is not the place to break it either.
+
+**`is_running()` and `is_ready()` are different questions, and only the second
+is safe to open a browser on.** `Popen` returns before the child has bound
+anything, so `is_running()` is true during a window in which the port refuses
+connections. `is_ready()` polls the URL until it answers or the timeout expires.
+Anything that shows the user the page — left-click, the `open_on_start` open at
+startup, the Open page menu item — waits on `is_ready()`; only the icon state
+reads `is_running()`.
 
 **The token is minted per `start()`, not per process.** A Stop followed by a
 Start is a new run and gets a new token, which is what makes the restart case
@@ -133,15 +149,33 @@ server it never received a token from.
 ### 4.2 The supervisor: token, port, spawn, reap
 
 ```python
-# supervise.py — the sole owner of the token and the child
-HERE  = os.path.dirname(os.path.abspath(__file__))
-token = secrets.token_urlsafe(32)
-Popen([sys.executable, os.path.join(HERE, "serve.py")],
-      env={**os.environ, "LOTTO_TOKEN": token, "LOTTO_PORT": str(port)})
+# supervise.py — the sole owner of the token and the child.
+# Module scope defines HERE and nothing else: importing this file must not
+# mint a token and must not spawn anything (§4.4).
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+class Supervisor:
+    def __init__(self, port=None):
+        self.port = int(port or os.environ.get("LOTTO_PORT") or 4322)
+        self.url = f"http://127.0.0.1:{self.port}"
+        self.token = None
+        self.child = None
+
+    def start(self):
+        if self.is_running():
+            return
+        self.token = secrets.token_urlsafe(32)   # per start(), not per process
+        self.child = Popen(
+            [sys.executable, os.path.join(HERE, "serve.py")],
+            cwd=HERE,                            # see below — not optional
+            env={**os.environ,
+                 "LOTTO_TOKEN": self.token,
+                 "LOTTO_PORT": str(self.port)})
 ```
 
-**The channel is the environment**, and this is the second gap in §2 closed. Not argv,
-which `ps` exposes to every user on the machine, while `/proc/<pid>/environ` is
+**The channel is the environment**, and this is the second gap in §2 closed.
+Not argv, which `ps` exposes to every user on the machine, while
+`/proc/<pid>/environ` is
 readable only by the owning user; and not a file, because a token on disk
 outlives the run that issued it. A standalone `python3 serve.py` with no
 `LOTTO_TOKEN` mints its own — LOTTO-0002's environment table holds that
@@ -152,6 +186,17 @@ behaviour and its defaults, and this spec does not restate them.
 directory is not the repository, so a relative `"serve.py"` fails in exactly the
 configuration §4.5 adds; and the child must run under the interpreter the parent
 is already using rather than whatever `python3` resolves to in a session `PATH`.
+
+**`cwd=HERE` is load-bearing, and omitting it fails silently in the worst
+possible way.** Fixing the *script* path is only half the problem: the data the
+server reads is addressed relative to the working directory —
+`history.py::ARCHIVE` is `"archive_results.json"`, `backfill.py::CACHE` is
+`"archive_cache"`, and `tickets.py::load()` defaults to `"lotto_sms_raw.txt"`.
+A child inheriting an autostart session's working directory finds none of them
+and renders LOTTO-0002 §6's "the dump is missing" empty state. That is this
+project's cardinal failure — "no data" reading as "nothing here" — arriving
+through the one launch path this item adds, on a machine where running the same
+server by hand from the repository works perfectly.
 
 **Reaping is `terminate()`, then `kill()` after a timeout, then `wait()`.**
 `terminate()` alone is not enough: the server may be mid-build inside a
@@ -173,7 +218,14 @@ left-click opens the page. The wording of the Quit item states the consequence,
 because §3's accepted cost is that the server's lifetime is the tray's, and an
 icon that silently killed a server on quit would be the surprising outcome.
 
-Four details are copied from the user's existing stats tray, all four verified
+**The page is opened with `webbrowser.open(supervise.url)`** — stdlib, and it
+honours the desktop's default-browser setting the same way `xdg-open` does
+without shelling out. It is called only after `is_ready()` returns true, so the
+browser never lands on a port that is not answering yet; if `is_ready()` times
+out, the tray says so in a notification instead of opening a tab on a refused
+connection.
+
+Five details are copied from the user's existing stats tray, all five verified
 in `Ants_Projects_Hub_Website/tray/ants-stats-tray.py` on 2026-08-02:
 
 - **Long actions run on a `QThreadPool`**, never on the GUI thread. A refresh
@@ -188,13 +240,34 @@ in `Ants_Projects_Hub_Website/tray/ants-stats-tray.py` on 2026-08-02:
   the application and takes the server with it.
 - **The icon, the tooltip and the menu wording all state the same thing**, so
   the state is never read off a 22-pixel icon alone.
+- **One long action at a time**, guarded by a `busy` flag: the item that starts
+  one shows its in-flight wording and is disabled until it finishes, and the
+  state poll below returns early while it is set (`self.busy` in that file).
+  Without it a second Refresh click queues a second rebuild, which the server
+  answers with LOTTO-0014 §4.1's 409 while the tray shows neither the refusal
+  nor the fact that one is already running.
 
 **State is polled, because the child can die without being asked to.** The tray
-checks `Supervisor.is_running()` on a `QTimer` and updates icon, tooltip and the
-Stop/Start wording from it — the same `sync()` shape as the stats tray. A server
+checks `Supervisor.is_running()` on a **5-second** `QTimer` — the interval the
+stats tray uses (`POLL_MS = 5000`) — and updates icon, tooltip and the
+Stop/Start wording from it, the same `sync()` shape as that file. Five seconds
+is the budget: it bounds how long the icon can claim a dead server is running,
+and it costs one `Popen.poll()` on a local process, which issues no request and
+touches no socket. A server
 that exited on its own (port taken, an unhandled error at startup) otherwise
 leaves an icon claiming it is running, and the Refresh item failing for a reason
 the user cannot see.
+
+**`open_on_start` is read here, because `tray.py` is the file that acts on
+it.** LOTTO-0002 §4.7 owns the setting — its path, its key and its default of
+**true** — and this document owns what the tray does with it: at startup, after
+`start()` and once `is_ready()` returns true, the tray opens the page if the
+setting is true and does not if it is false. **A missing, unreadable or
+malformed `settings.json` falls back to the default rather than raising**, and
+that rule belongs here rather than with the file format, because the
+consequence is the tray's: a corrupt settings file must never be the reason no
+icon appears. Without this paragraph the setting has a writer (LOTTO-0002's
+settings panel) and no reader.
 
 **Two SVG icons, `icons/tray-running.svg` and `icons/tray-stopped.svg`,
 resolved relative to `tray.py`** — `os.path.dirname(os.path.abspath(__file__))`,
@@ -215,7 +288,11 @@ at `sys.modules`, and without the guard that import blocks in `serve_forever()`.
 A check that hangs reads as a broken test rather than a broken contract, so the
 guard is what makes the invariant observable at all.
 
-The same applies to `supervise.py`: importing it must spawn nothing.
+**The same two rules bind `supervise.py`**: it imports no Qt either, and
+importing it must spawn nothing — which is why §4.2's sketch defines only `HERE`
+at module scope and mints the token inside `start()`. INV-19 covers both
+modules, because a Qt import in `supervise.py` breaks the headless case exactly
+as one in `serve.py` does: `tools/verify_page.py` itself imports it.
 
 ### 4.5 One port, and the environment an autostarted tray inherits
 
@@ -234,9 +311,9 @@ LISTEN and a `socket.bind(('127.0.0.1', 4322))` succeeds.)
 **The start-at-login entry is written by the page, not by the tray.**
 LOTTO-0002 §4.7's settings panel owns `~/.config/autostart/lotto-tracker-tray.desktop`
 — it holds that file's bytes verbatim and LOTTO-0014's INV-14 asserts them
-byte-for-byte, so this spec does not restate them. Two obligations fall on this
-document's files, and both are the reason that entry's `Exec` must name
-`tray.py`:
+byte-for-byte, so this spec does not restate them. Two obligations follow from
+that entry naming `tray.py`, because it is what makes an autostart session a
+launch path for this document's files at all:
 
 - The autostart session's working directory is not the repository, which is why
   §4.2's paths are absolute and §4.3's icon paths resolve against `__file__`.
@@ -251,27 +328,54 @@ LOTTO-0009 INV-7 to INV-11, LOTTO-0014 INV-12 to INV-14 and INV-21, and
 LOTTO-0002 INV-15 to INV-18. CHANGELOG.md cites them unqualified, so the
 numbers do not move on a split.
 
-- **INV-19** — `serve.py` imports no Qt or PySide6 module at any depth, and
-  importing it starts no server.
-  *Test:* `tools/verify_page.py`, case `serve_is_headless` — imports `serve` in
-  a fresh interpreter and asserts no module name matching `PySide|Qt` is in
-  `sys.modules`, and that the import returns rather than blocking. Everything
-  that binds, builds or serves sits behind `if __name__ == "__main__":` (§4.4),
-  which is what makes the import safe to perform at all — without it this case
-  hangs instead of failing, and a hanging check reads as a broken test rather
-  than a broken contract.
-  *Breaks when:* a shared helper grows a Qt import, or `serve.py` imports
-  `tray.py` for a constant such as the port default or an icon path. Invisible
-  on a desktop with Qt installed, which is every desktop this is developed on.
+- **INV-19** — Importing `serve.py` or `supervise.py` pulls in no Qt or PySide6
+  module, starts no server and spawns no process.
+  *Test:* `tools/verify_page.py`, case `serve_is_headless` — imports each module
+  in a **fresh interpreter** (not the suite's own, which by then has imported
+  whatever the other cases needed) and asserts that no module name matching
+  `PySide|Qt` is in `sys.modules`, that the import returns rather than blocking,
+  and that no child process was created. Everything that binds, builds or serves
+  sits behind `if __name__ == "__main__":` (§4.4), which is what makes the
+  import safe to perform at all — without it this case hangs instead of failing,
+  and a hanging check reads as a broken test rather than a broken contract.
+  **The check sees import-time depth only.** A Qt import performed lazily inside
+  a function body is invisible to it, and that limit is stated rather than
+  papered over: what the case actually forbids is a module-level import, which
+  is the shape the failure takes in practice.
+  *Breaks when:* a shared helper grows a Qt import; `serve.py` imports `tray.py`
+  for a constant such as the port default or an icon path; or `supervise.py`
+  reaches for `QDesktopServices` instead of `webbrowser`. Invisible on a desktop
+  with Qt installed, which is every desktop this is developed on — importing
+  PySide6 headless **succeeds**, so nothing about running it elsewhere reveals
+  the breach.
 
-- **INV-20** — Quitting the tray leaves no server process holding the port.
+- **INV-20** — A `Supervisor` that started a server and then stopped it leaves
+  no process holding the port.
   *Test:* `tools/verify_page.py`, case `no_orphan_server` — drives
-  `supervise.Supervisor` to spawn and reap a real child, then asserts the child
-  has exited and that the port accepts a fresh bind.
+  `supervise.Supervisor` to spawn a real child, **waits for `is_ready()` and
+  fails if it never comes up**, then stops it and asserts the child has exited
+  and that the port accepts a fresh bind.
+  **The readiness wait is what stops the case being a tautology.** Without it, a
+  `serve.py` that dies instantly on an import error satisfies both closing
+  assertions — the process has certainly exited and the port is certainly free —
+  so the case would pass against a server that never worked at all. It is the
+  same trap `tools/verify_coverage.py` was rewritten to escape, and it is the
+  likelier failure here than a genuine orphan.
+  **The confirming bind retries for a bounded period** rather than asserting on
+  one attempt: a socket the child held can sit in `TIME_WAIT`, so a single
+  immediate bind can fail while nothing is holding the port in any sense the
+  invariant means.
+  The invariant is worded as the *supervisor's* contract, not the tray's,
+  because that is what the case can drive: reaching the Qt shutdown path needs a
+  `QApplication` and a display, and §11 records that as an unchecked gap rather
+  than claiming this case covers it.
   The case **picks a free port itself** — bind a socket to port 0, read the
   number the kernel assigned, close it, and pass that concrete number as
   `LOTTO_PORT` — rather than running on 4322, where a developer with their own
-  tray up fails this check for a reason unrelated to the contract.
+  tray up fails this check for a reason unrelated to the contract. (The gap
+  between closing that probe socket and the child binding is a race the readiness
+  wait already absorbs: if something else took the port, `is_ready()` never
+  succeeds and the case fails loudly rather than silently measuring nothing.)
   It must be a concrete number and not `LOTTO_PORT=0`: §4.5 has `serve.py` build
   the `Host` allowlist from that same value, so port 0 would produce the
   allowlist `{"127.0.0.1:0", "localhost:0"}` and answer 421 to everything, and
@@ -307,6 +411,23 @@ numbers do not move on a split.
 - **`terminate()` does not stop the child.** `kill()` after the timeout, then
   `wait()`. The user sees the quit take up to the timeout rather than the tray
   vanishing and the server surviving it.
+- **The child starts but never answers.** `is_ready()` times out — a bad
+  `LOTTO_PORT`, an import error in `serve.py`, a machine under enough load to
+  miss the window. The tray reports it and leaves the icon in its stopped state
+  rather than opening a browser tab on a refused connection. This is the case
+  the `is_running()` / `is_ready()` split (§4.1) exists for.
+- **A refresh fails or hangs.** `post()` carries an explicit 300-second timeout,
+  because a rebuild is measured at 27 requests against a third-party API that
+  failed four of seven attempts on 2026-08-02 (LOTTO-0002 §4.2, §6). On a
+  timeout, a 403, a 409 or a 500 the busy flag is cleared, the menu item is
+  re-enabled with its normal wording, and the reason goes into a notification —
+  the `finished(ok, msg)` shape of the stats tray. Without the timeout a single
+  hung POST wedges the one-job-at-a-time guard permanently and the Refresh item
+  never comes back.
+- **No browser could be opened.** `webbrowser.open()` returns false or raises:
+  reported in a notification with the URL, so the user can paste it. The server
+  is unaffected and the icon keeps its running state, because the server *is*
+  running — a failure to open a browser is not a failure of the server.
 - **PySide6 is not installed.** `tray.py` fails at import with the standard
   `ModuleNotFoundError`. Nothing else in the project imports it, so `check.py`,
   the four existing `tools/verify_*.py` and the headless `serve.py` path are
@@ -319,18 +440,20 @@ Both of this spec's cases live in `tools/verify_page.py`, the script LOTTO-0002
 §7 introduces — **one script for all three parts of the split**, joining
 `tools/verify_privacy.py`, `tools/verify_sources.py`, `tools/verify_coverage.py`
 and `tools/verify_pools.py`. Exit code is the signal, as with the other four.
-One script rather than two because the ten cases share their fixtures, their
-temporary-directory setup and their stub builder, and because the five-command
-verification block in CLAUDE.md is what a contributor actually runs.
+One script rather than three because the ten cases share their fixtures, their
+temporary-directory setup and their stub builder, and because CLAUDE.md's
+verification block — four commands today, five once this ships — is what a
+contributor actually runs.
 
 | Case | Locks |
 |---|---|
 | `serve_is_headless` | INV-19 |
 | `no_orphan_server` | INV-20 |
 
-LOTTO-0002 §7 holds the constraints that apply to all ten cases, and names its
-own four; LOTTO-0014 §7 names the remaining four — no network, no real data, and recomputing rather than importing the
-judgement under test. Two of them bear on these two cases specifically:
+LOTTO-0002 §7 states the three constraints binding all ten cases — no network,
+no real data, and recomputing rather than importing the judgement under test —
+and names its own four cases; LOTTO-0014 §7 names the other four. Two points
+apply to this document's two cases specifically:
 
 - **`no_orphan_server` spawns a real child**, which is the one case that does
   not use the stub-builder seam. `LOTTO_NO_BUILD` is what keeps it cheap: the
@@ -338,17 +461,19 @@ judgement under test. Two of them bear on these two cases specifically:
   rather than 27 network requests against the operator's API.
 - **`serve_is_headless` must run in a fresh interpreter**, not in the one
   running the suite. By the time the other nine cases have run, the suite's own
-  process has imported whatever they needed; asserting on `sys.modules` there
-  would measure the test harness rather than `serve.py`.
+  process has imported whatever they needed — including `supervise`, which
+  `no_orphan_server` drives directly — so asserting on `sys.modules` there would
+  measure the test harness rather than the modules under test.
 
-**Each case is observed failing before the invariant is accepted.** There is no
-pre-fix code here — this is greenfield — so the equivalent of LOTTO-0009 §7's
-red-test against pre-fix code is to break the rule deliberately, confirm the
-case fails, then restore. For these two: add `import PySide6.QtCore` to
-`serve.py` and watch `serve_is_headless` fail; drop the `kill()` fallback (or
-the `wait()`) and watch `no_orphan_server` fail. A case never seen failing is a
-case that proves nothing, and on a greenfield spec that is the *only* way to
-know it can fail at all.
+**Each case is observed failing before the invariant is accepted**, per
+LOTTO-0002 §7, which owns that rule and the reasoning for it. The deliberate
+breakages for this document's two cases: add `import PySide6.QtCore` to
+`serve.py` and watch `serve_is_headless` fail, then do the same to
+`supervise.py`; and drop the `kill()` fallback (or the `wait()`) and watch
+`no_orphan_server` fail. A third is worth running because it is the one that
+case was rewritten for — make `serve.py` exit immediately at startup and confirm
+`no_orphan_server` fails on the readiness wait, rather than passing on closing
+assertions a dead child satisfies trivially.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -404,27 +529,36 @@ know it can fail at all.
 |------|----------------------|
 | INV-19 `serve.py` is Qt-free | `tools/verify_page.py::serve_is_headless` |
 | INV-20 no orphan server | `tools/verify_page.py::no_orphan_server` |
-| §4.1 `supervise.py` imports no PySide6 | `tools/verify_page.py::no_orphan_server` — the case drives the supervisor in the headless suite process, so a Qt import there fails the run |
+| §4.4 `supervise.py` Qt-free and spawning nothing on import | `tools/verify_page.py::serve_is_headless` — INV-19 covers both modules, each in a fresh interpreter |
+| §4.1 `is_ready()` gating every browser open | `tools/verify_page.py::no_orphan_server` — the case fails if the child never answers, which is that same wait |
 | §4.1 a new token per `start()` | **nothing** — a supervisor that reused one token across restarts would pass every case here; the stale-tab 403 it would suppress is a browser-side behaviour no exit-code script observes |
 | §4.2 the reap also running on `aboutToQuit` | **nothing** — INV-20 drives `Supervisor.stop()` directly, because reaching the Qt shutdown signal needs a `QApplication` and a display, which is what §4.1 split the module to avoid. Code review only |
 | §4.3 the four Qt details (thread pool, live wrapper set, quit-on-close, wording agreement) | **nothing** — each is a Qt runtime behaviour needing a display; the wrapper-lifetime one is a crash that a short run does not reproduce |
 | §4.3 the state poll noticing a child that died on its own | **nothing mechanical** — driving it needs a tray; observable by starting the tray with the port already occupied |
+| §4.3 the busy guard admitting one long action at a time | **nothing** — a second click needs a running tray and a display. The server's 409 (LOTTO-0014 §4.1) is the backstop; it is the tray's *reporting* of it that goes unchecked |
+| §4.3 `tray.py` reading `open_on_start`, and its fallback on a corrupt file | **nothing mechanical** — needs a tray and a session. The fallback is what stops a bad settings file hiding the icon, so it is verified by writing a malformed `settings.json` and starting the tray once |
 | §4.5 the port being read once and agreeing end to end | **nothing** — a disagreement surfaces as a 421 on every request, which is loud at run time and invisible to a check that supplies the port itself |
 | §6 the tray exiting non-zero with no system tray | **nothing mechanical** — depends on the session's tray implementation; verified by running it under a session with no tray |
 
-Nine rows, six `nothing`. (§4.2's environment channel for the token is not
+Twelve rows, eight `nothing`. (§4.2's environment channel for the token is not
 tabulated here — LOTTO-0014 §11 owns that row, since the rule it states is the
 token's, and a rule tabulated twice becomes two rules that disagree.)
 
 That ratio is high, and it is honest rather than alarming: this part of the
-split is the one that needs a display and a desktop session, and its two
-mechanically checkable contracts — the headless import and the reaped child —
-are exactly the two that fail silently. The six are all loud at run time.
+split is the one needing a display and a desktop session, and its mechanically
+checkable contracts — the headless imports and the reaped child — are exactly
+the ones that fail silently. **Seven of the eight are loud at run time.** The
+exception is the per-`start()` token: its breach is silent by construction,
+because a supervisor reusing one token across restarts leaves a stale page
+authorised against a server that never issued it one. That row is code review
+only, and it is the gap worth knowing about.
 
 ## 12. Cross-doc impact
 
 - `docs/specs/LOTTO-0002-local-web-page.md` — the parent of the split; it loses
-  §4.8, INV-19 and INV-20 and cross-references this file for them.
+  INV-19 and INV-20, its §4.8 is reduced to a pointer at this file, and its §4.7
+  hands the *reading* of `open_on_start` to this document's §4.3 while keeping
+  the setting's path, key and default.
 - `docs/specs/LOTTO-0014-http-surface-and-security.md` — the second cut of the
   same parent; its §4.3 receives the token this document's §4.2 mints, and its
   §4.2 builds the `Host` allowlist from the port §4.5 resolves.
@@ -432,7 +566,10 @@ are exactly the two that fail silently. The six are all loud at run time.
   and PySide6 as a tray-only requirement. Shared with LOTTO-0002, which writes
   the page half of the same section.
 - `CLAUDE.md` — the Commands block gains `python3 tray.py`; the verification
-  list gains `tools/verify_page.py` (shared with LOTTO-0002).
+  list gains `tools/verify_page.py` (shared with LOTTO-0002). Its opening claim
+  that the project is "Pure Python 3.8+ standard library plus `dbus-python`"
+  goes stale the moment `tray.py` lands and must gain PySide6 as a tray-only
+  requirement — the same edit README.md:55's "Needs Python 3.8+" line needs.
 - `CHANGELOG.md` — an `Added` entry citing LOTTO-0013.
 - `ROADMAP.md` — LOTTO-0013's bullet flips to shipped.
 
@@ -440,4 +577,5 @@ are exactly the two that fail silently. The six are all loud at run time.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 1 | 2026-08-02 | 2 | 4 | 4 | 9 | 8 | All 27 verified findings fixed; 0 unverified, 0 deferred. Both lanes independently led on the same two CRITICALs, and both were about the one code block an implementer copies. **§4.2's sketch minted the token and called `Popen` at module scope**, contradicting §4.1's "minted per `start()`" and §4.4's "importing it must spawn nothing" — and encoding precisely the alternative §8 rejects; it is now a `Supervisor` class with the mint inside `start()`. **The same `Popen` set no `cwd`.** The spec had already identified the hazard — an autostart entry's working directory is not the repository — and closed only the half about the *script* path. Verified: `history.py::ARCHIVE` is `"archive_results.json"`, `backfill.py::CACHE` is `"archive_cache"` and `tickets.py::load()` defaults to `"lotto_sms_raw.txt"`, all cwd-relative, so an autostarted tray would spawn a server that finds no data and renders the empty state — this project's cardinal failure arriving through the one launch path this item adds, on a machine where running the same server by hand works. `cwd=HERE` added. **Two further CRITICALs, one per lane.** §11 credited `no_orphan_server` with catching a Qt import in `supervise.py`; measured (`env -u DISPLAY python3 -c "import PySide6.QtWidgets"` succeeds — only constructing a `QApplication` needs a display), so the row was false in the one table whose purpose is saying what is *not* checked. INV-19 now covers both modules and the row cites it. And `open_on_start` was orphaned across the split: LOTTO-0002 §4.7 states it is "read by **`tray.py`** at startup", while this document — which owns `tray.py` — never mentioned it, so an implementer reading only this spec ships a tray that ignores the setting the other spec promises. §4.3 now owns the reading and the corrupt-file fallback; §4.7 keeps the file. **One HIGH was a live tautology:** `no_orphan_server` asserted the child had exited and the port was free, both of which a `serve.py` that dies instantly on an import error satisfies — the case would have passed against a server that never worked. It now waits on a new `is_ready()` and fails if the child never answers. That split also fixed a real design gap neither lane framed as one: `Popen` returns before the child binds, so every browser open raced the bind. Also fixed: `token: str | None` in the surface block, a runtime `TypeError` before 3.10 against a floor both README.md:55 and CLAUDE.md:9 assert; §10 cited a busy guard §4.3 never stated (the prior art has one, the spec dropped it); §11's "The six are all loud at run time" was false of the per-`start()` token row, whose own text calls the breach silent; and §7's constraint sentence left "Two of them" with no referent. Doc grew 443 -> 580 lines, most of it §4.1's readiness contract and §6's three new failure modes. |
 | 0-split | 2026-08-02 | — | — | — | — | — | **Provenance row — no reviewer was dispatched, and this is not a review loop.** Split out of `docs/specs/LOTTO-0002-local-web-page.md` on the seam that spec's §12 recommended and the user chose: this document takes §4.8, INV-19 and INV-20 — the tray, the supervisor and the headless contract — and LOTTO-0002 kept §4.1–§4.7 with INV-12–18 and INV-21. **A second cut the same day** moved that spec's §4.3–§4.4 and INV-12–14 and INV-21 again, into `docs/specs/LOTTO-0014-http-surface-and-security.md`, once the first cut proved to remove only 66 of the parent's 1,161 lines; this document was unaffected by it beyond cross-references. The parent had run three cold-eyes loops (83 verified findings fixed, 0 deferred) and **converged by cap rather than clean**, with two of the three loops producing more defects from their own fixes than from the draft. **Those loops confer nothing on this document**: they were run against 1,161 lines that no longer exist, so the gate starts again from loop 1 on these bytes. Content carried over was re-grounded rather than trusted — PySide6 6.11.0 and `QSystemTrayIcon.isSystemTrayAvailable` confirmed by import, the port claim re-measured against `ss -ltn` and a real bind, and the four Qt details in §4.3 read out of `Ants_Projects_Hub_Website/tray/ants-stats-tray.py` rather than recalled. Two of those four (the runnable-wrapper set and `setQuitOnLastWindowClosed(False)`) are new here — the parent named the prior art without carrying them. |

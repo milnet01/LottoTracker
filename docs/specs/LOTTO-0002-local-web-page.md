@@ -534,10 +534,11 @@ rule to the child it spawns, for the same reason.) Both are substituted at write
 time, so the bytes on disk are constant for a given install — which is what lets
 LOTTO-0014's INV-14 assert them.
 
-`open_on_start` is read by **`tray.py` at startup** and defaults to **true**: a
-missing, unreadable or malformed `settings.json` falls back to the default
-rather than raising, because a corrupt settings file must not be the reason the
-tray fails to appear. Writing the file creates its directory with
+`open_on_start` defaults to **true**. Its only reader is `tray.py`, so
+**LOTTO-0013 §4.3 owns what happens when it is read** — including the rule that
+a missing, unreadable or malformed `settings.json` falls back to the default
+rather than raising, since the consequence of getting that wrong is a tray that
+never appears. This document owns the file: its path, its key and that default. Writing the file creates its directory with
 `parents=True, exist_ok=True` — without `exist_ok` the second enable raises
 `FileExistsError`, which is the *normal* case and would surface as §6's 500 on
 every toggle after the first.
