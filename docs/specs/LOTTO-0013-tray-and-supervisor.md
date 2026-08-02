@@ -1,6 +1,7 @@
 # LOTTO-0013 — Tray icon and server supervisor for the local page
 
-**Status:** spec draft (2026-08-02).
+**Status:** accepted (2026-08-02) — three cold-eyes loops, converged by cap
+and by the collateral trigger; 74 verified findings fixed, 0 deferred. See §13.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0013 — split out of LOTTO-0002 on 2026-08-02 per that
 spec's §12, which recommended the split along this seam. The scope decisions in
@@ -49,7 +50,7 @@ menu:
 3. **A lifecycle written into `tray.py` cannot be checked** — it would need a
    `QApplication` and a display inside a headless exit-code script. §4.1 states
    the argument and the remedy; it is why `supervise.py` is a separate module at
-   all. (Referred to below as the third gap in §2.)
+   all.
 
 The headless direction is the one that fails silently. A developer machine has
 Qt installed, so an accidental `serve.py → PySide6` import is invisible until
@@ -106,7 +107,10 @@ inside a script that has to sit beside four headless `tools/verify_*.py`.
 Splitting it out costs one small module and buys a testable lifecycle; it also
 lets someone with no tray supervise the server from a script.
 
-The supervisor's surface, and nothing beyond it:
+**The supervisor's whole surface is below, and it is the only place this
+document states it.** §4.2 explains the rules behind it in prose and does not
+restate the signatures — two copies of one contract is what a reader has to
+reconcile, and reconciling them is how they drift.
 
 ```python
 class Supervisor:
@@ -115,6 +119,8 @@ class Supervisor:
     def __init__(self, port=None)   # port or $LOTTO_PORT or 4322 (§4.5)
     url: str                        # "http://127.0.0.1:<port>" — what the tray opens
     token: Optional[str]            # minted by start(); None while stopped
+    child: Optional[Popen]          # the server process; survives stop() (INV-20)
+    port_fallback: Optional[str]    # set when $LOTTO_PORT was unusable (§4.5)
 
     def start(self) -> None         # spawn the child; no-op if already running
     def is_running(self) -> bool    # child is not None and child.poll() is None
@@ -129,12 +135,26 @@ raises `TypeError` before 3.10. The floor is asserted rather than tested, and
 LOTTO-0014 §4.2 already declines a stdlib constant on the same ground; a type
 annotation is not the place to break it either.
 
+**`stop()` clears `token` and leaves `child` set.** The token must not outlive
+the run that issued it; the finished `Popen` must survive, because INV-20's case
+inspects `child.returncode` after `stop()` returns and there is nothing else to
+inspect it on. `start()` replaces `child` with the new process.
+
+**`post()` raises on anything that is not a 2xx** — `urllib` does this by
+default and the contract keeps it, so a 403, 409, 500 or timeout arrives as an
+exception whose text becomes the notification's message via §4.3's
+`finished(ok, msg)`. On success it returns the response body as text. Calling it
+while `token is None` (i.e. stopped) raises the same way rather than sending an
+unauthenticated request.
+
 **`is_running()` and `is_ready()` are different questions, and only the second
 is safe to open a browser on.** `Popen` returns before the child has bound
 anything, so `is_running()` is true during a window in which the port refuses
 connections. `is_ready()` issues a loopback `GET` against `url` **every 100 ms**
-until it answers or the timeout expires — at most 100 requests inside the 10-second
-budget, and they are the only requests this half of the split makes (§10).
+until it answers — **any** HTTP status counts as an answer, including a 421 or a
+500, because the question is whether something is listening — or until the
+timeout expires. That is at most 100 requests per start; together with the
+Refresh POST (§10) they are the only requests this half of the split makes.
 Anything that shows the user the page — left-click, the `open_on_start` open at
 startup, the Open page menu item — waits on `is_ready()`; only the icon state
 reads `is_running()`.
@@ -146,13 +166,19 @@ thirty-odd seconds the first build takes. Against a build-then-bind server this
 default would time out on every start, so the dependency is named here rather
 than left for an implementer to discover from the symptom.
 
-**Every one of these blocks, so none of them runs on the GUI thread.**
-`start()`, `is_ready()`, `stop()` and `post()` are all dispatched through
-§4.3's `run_async()`; the menu handler and the left-click handler set the busy
-state and return immediately. This is not a refinement of §4.3's rule about
-*long* actions — a ten-second `is_ready()` on the GUI thread freezes the menu on
-the application's most-used interaction, and `stop()` can hold it for five more
-on Quit.
+**Blocking calls run off the GUI thread — with one exception that matters more
+than the rule.** `start()`, `is_ready()`, `post()` and the Stop *menu item*'s
+`stop()` are dispatched through §4.3's `run_async()`, because a ten-second
+`is_ready()` on the GUI thread freezes the menu on the application's most-used
+interaction. **The shutdown reap is the exception and runs synchronously**: on
+the Quit item and on `aboutToQuit`, `stop()` is called inline and the shutdown
+waits up to its five-second timeout. Dispatched to a thread pool it would return
+immediately, the event loop would end, and the process would exit before
+`wait()` completed — producing precisely the orphan INV-20 forbids, on the
+commonest exit path, in the one place §11 records that nothing checks. The
+prior-art tray does the same thing for the same reason: its `quit()` calls
+`systemctl("stop", UNIT)` inline before `QApplication.instance().quit()`. A
+freeze of up to five seconds while quitting is the accepted cost.
 
 **The token is minted per `start()`, not per process.** A Stop followed by a
 Start is a new run and gets a new token, which is what makes the restart case
@@ -163,20 +189,13 @@ server it never received a token from.
 
 ### 4.2 The supervisor: token, port, spawn, reap
 
-```python
-# supervise.py — the sole owner of the token and the child.
-# Module scope holds imports and HERE and no state or side effects:
-# importing this file must not mint a token and must not spawn (§4.4).
-HERE = os.path.dirname(os.path.abspath(__file__))
+The one method worth writing out, because every rule below is visible in it
+(§4.1 holds the rest of the surface):
 
-class Supervisor:
-    def __init__(self, port=None):
-        # A bad $LOTTO_PORT falls back to the default; it must not raise here,
-        # because a ValueError in the constructor means no icon appears at all.
-        self.port = _port_or_default(port)      # 1..65535, else 4322 + a notice
-        self.url = f"http://127.0.0.1:{self.port}"
-        self.token = None
-        self.child = None
+```python
+# supervise.py — module scope holds imports and HERE and no state or side
+# effects: importing this file must not mint a token and must not spawn (§4.4).
+HERE = os.path.dirname(os.path.abspath(__file__))
 
     def start(self):
         if self.is_running():
@@ -253,8 +272,12 @@ in `Ants_Projects_Hub_Website/tray/ants-stats-tray.py` on 2026-08-02:
 
 - **Long actions run on a `QThreadPool`**, never on the GUI thread. A refresh
   drives a rebuild that takes tens of seconds; doing it inline freezes the menu
-  mid-click and makes Plasma offer to kill the application. That file's
-  `run_async()` is the shape.
+  mid-click and makes Plasma offer to kill the application. The helper is
+  `run_async(fn, on_done)`: it wraps `fn` in a `QRunnable`, starts it on
+  `QThreadPool.globalInstance()`, and calls `on_done(ok, msg)` on the GUI thread
+  — `ok` false and `msg` the exception text when `fn` raised. That is the shape
+  of `run_async()` in the prior-art tray, and every notification in this section
+  is an `on_done` callback.
 - **A module-level set keeps each runnable's Python wrapper alive** while
   `QThreadPool` owns the C++ side (`_jobs` in that file). Without it the wrapper
   can be collected while the job is still running, which is a crash rather than
@@ -265,6 +288,11 @@ in `Ants_Projects_Hub_Website/tray/ants-stats-tray.py` on 2026-08-02:
   the state is never read off a 22-pixel icon alone. The two tooltips are
   `Lotto Tracker — running on http://127.0.0.1:<port>` and
   `Lotto Tracker — server stopped`, matching the Stop/Start item's wording.
+- **Open page and left-click are disabled while the server is stopped**, the
+  same way Refresh is, rather than implicitly starting it or waiting out a
+  ten-second `is_ready()` against a port nothing is listening on. Starting is
+  what the Start item is for, and a menu that silently starts a server because
+  the user asked to see a page is doing something they did not ask for.
 - **One long action at a time**, guarded by a `busy` flag: the item that starts
   one shows its in-flight wording and is disabled until it finishes, and the
   state poll below returns early while it is set (`self.busy` in that file).
@@ -330,6 +358,16 @@ on every request** — the allowlist rejecting the very URL the tray just opened
 which is a confusing failure to debug and a trivial one to prevent by reading
 the value once.
 
+**An unusable `LOTTO_PORT` falls back to 4322 and says so; it never raises.**
+A `ValueError` out of `Supervisor.__init__` means no icon appears at all, which
+is the same outcome §4.3 refuses for a corrupt `settings.json`. Unusable means
+non-numeric, or outside **1024–65535** — below 1024 a non-root tray cannot bind,
+so accepting it only defers the failure to a confusing "port in use". The
+fallback is recorded on `port_fallback` (§4.1) rather than printed, because
+`supervise.py` is Qt-free and has no notification channel of its own; `tray.py`
+reads that attribute at startup and raises §4.3's notification. Recording it on
+an attribute is what keeps the module Qt-free without swallowing the fact.
+
 (4322 was chosen as free on this machine and adjacent to the user's stats
 dashboard on 4321. Verified 2026-08-02: `ss -ltn` shows `127.0.0.1:4321`
 LISTEN and a `socket.bind(('127.0.0.1', 4322))` succeeds.)
@@ -358,12 +396,14 @@ numbers do not move on a split.
   module, starts no server and spawns no process.
   *Test:* `tools/verify_page.py`, case `serve_is_headless` — imports each module
   in a **fresh interpreter** (not the suite's own, which by then has imported
-  whatever the other cases needed) and asserts that no module name matching
-  `PySide|Qt` is in `sys.modules`, that the import returns rather than blocking,
-  and that no child process was created. Everything that binds, builds or serves
-  sits behind `if __name__ == "__main__":` (§4.4), which is what makes the
-  import safe to perform at all — without it this case hangs instead of failing,
-  and a hanging check reads as a broken test rather than a broken contract.
+  whatever the other cases needed) and asserts three things about that
+  subprocess: that no module name matching `PySide|Qt` appears in its
+  `sys.modules`, that the import returns rather than blocking, and that it
+  spawned nothing — observed by having the subprocess read
+  `/proc/self/task/*/children` after the import and print it, so the parent
+  asserts on an empty list rather than on the absence of evidence. Everything
+  that binds, builds or serves sits behind `if __name__ == "__main__":`, which
+  is what makes the import safe to perform at all; §4.4 states why.
   **The check sees import-time depth only.** A Qt import performed lazily inside
   a function body is invisible to it, and that limit is stated rather than
   papered over: what the case actually forbids is a module-level import, which
@@ -379,15 +419,21 @@ numbers do not move on a split.
   no process holding the port.
   *Test:* `tools/verify_page.py`, case `no_orphan_server` — drives
   `supervise.Supervisor` to spawn a real child, **waits for `is_ready()` and
-  fails if it never comes up**, then stops it and asserts three things: that the
-  child has exited, that **its exit status was collected** (`child.returncode is
-  not None`), and that the port accepts a fresh bind.
-  **The returncode assertion is what observes the reap**, and without it the
-  invariant's headline promise is unchecked: an unreaped zombie has exited and
-  holds no socket, so it satisfies the other two assertions exactly as a properly
-  reaped child does. `Popen.returncode` stays `None` until a `wait()` or `poll()`
-  collects the status, which makes the reap observable in the one place it
-  otherwise would not be.
+  fails if it never comes up**, then stops it and asserts three things, **in this
+  order**: that the process is gone (`os.kill(child.pid, 0)` raises
+  `ProcessLookupError`), that **its exit status was collected**
+  (`child.returncode is not None`), and that the port accepts a fresh bind.
+  **The order is the whole assertion, and getting it wrong makes the case
+  self-satisfying.** `Popen.poll()` *reaps* — measured: `returncode` is `None`
+  before the call and set after it — so checking "has it exited?" through
+  `poll()` or `is_running()` collects the status itself, and the returncode
+  assertion that follows can then never fail. `os.kill(pid, 0)` is the
+  independent observation: it succeeds against a zombie, because the pid is still
+  in the process table, and raises once the status has been collected — and it
+  never reaps. Without this ordering the invariant's headline promise is
+  unchecked, since an unreaped zombie has exited and holds no socket, satisfying
+  a naive version of all three assertions exactly as a properly reaped child
+  does.
   **The readiness wait is what stops the case being a tautology.** Without it, a
   `serve.py` that dies instantly on an import error satisfies both closing
   assertions — the process has certainly exited and the port is certainly free —
@@ -428,7 +474,11 @@ numbers do not move on a split.
 
 - **No system tray on the desktop.** `QSystemTrayIcon.isSystemTrayAvailable()`
   is false: the tray reports it and exits non-zero, as the stats tray does.
-  `serve.py` is unaffected, which is the point of INV-19.
+  **That check runs before `Supervisor.start()`**, which is an ordering
+  requirement rather than a stylistic one — starting the server first and then
+  exiting non-zero orphans a live child holding the port, an INV-20 breach on a
+  documented failure path. The prior-art `main()` checks availability before it
+  constructs the tray. `serve.py` is unaffected, which is the point of INV-19.
 - **The port is already in use.** The child exits with the port in its message
   rather than tracebacking (LOTTO-0002 §6 owns that behaviour); the supervisor
   sees a child that is no longer running, and the tray surfaces it as a
@@ -444,9 +494,9 @@ numbers do not move on a split.
 - **`terminate()` does not stop the child.** `kill()` after the timeout, then
   `wait()`. The user sees the quit take up to the timeout rather than the tray
   vanishing and the server surviving it.
-- **The child starts but never answers.** `is_ready()` times out — a bad
-  `LOTTO_PORT`, an import error in `serve.py`, a machine under enough load to
-  miss the window. The tray reports it and leaves the icon in its stopped state
+- **The child starts but never answers.** `is_ready()` times out — the port is
+  valid but already bound by something else, an import error in `serve.py`, or a
+  machine under enough load to miss the window. The tray reports it and leaves the icon in its stopped state
   rather than opening a browser tab on a refused connection. This is the case
   the `is_running()` / `is_ready()` split (§4.1) exists for.
 - **A refresh fails or hangs.** `post()` carries an explicit 300-second timeout,
@@ -498,9 +548,13 @@ apply to this document's two cases specifically:
   building, so it reads neither `lotto_sms_raw.txt` nor `archive_results.json`
   and costs a process spawn rather than 27 network requests. That reconciliation
   is necessary rather than incidental — §4.2 fixes the child's `cwd` to the
-  repository, so the real dump is exactly where it would look if it built. The
-  other nine cases keep real data away by redirecting `$HOME` and
-  `$XDG_CONFIG_HOME`; this one keeps it away by never reading.
+  repository, so the real dump is exactly where it would look if it built.
+  **LOTTO-0002 §7's redirect still applies and is not waived**: the child
+  inherits the suite's temporary `$HOME` and `$XDG_CONFIG_HOME` through
+  `{**os.environ}`, so it cannot write to the developer's real config either.
+  `LOTTO_NO_BUILD` is the *additional* guard that `cwd=HERE` makes necessary,
+  covering the one thing a redirected `$HOME` does not — the repository's own
+  data files.
 - **`serve_is_headless` must run in a fresh interpreter**, not in the one
   running the suite. By the time the other nine cases have run, the suite's own
   process has imported whatever they needed — including `supervise`, which
@@ -517,9 +571,12 @@ breakages, and the last three matter because the obvious ones do not go red:
   `SIGTERM` exits on `terminate()`, so the fallback is never reached. Install a
   no-op `SIGTERM` handler in the child *and* drop `kill()`; that is the state
   INV-20's *Breaks when* actually names.
-- **Dropping `wait()` alone does not fail the two closing assertions either** —
-  it fails the returncode assertion, and confirming that is the point of having
-  added it.
+- **Replace `stop()`'s body with a bare `terminate()`** — no `kill()`, no
+  `wait()`, no `poll()` — and confirm `no_orphan_server` fails on the returncode
+  assertion. This is the breakage that proves the reap is checked, and it must be
+  stated this precisely: any variant that still calls `wait(timeout)` or polls in
+  a loop has already collected the status on the ordinary SIGTERM-honoured path,
+  so it goes green and reads as a broken harness.
 - Make `serve.py` exit immediately at startup and confirm `no_orphan_server`
   fails on the **readiness wait** rather than passing on assertions a dead child
   satisfies trivially.
@@ -578,7 +635,7 @@ breakages, and the last three matter because the obvious ones do not go red:
 
 | Rule | What catches a breach |
 |------|----------------------|
-| INV-19 `serve.py` is Qt-free | `tools/verify_page.py::serve_is_headless` |
+| INV-19 both modules Qt-free, and neither spawns on import | `tools/verify_page.py::serve_is_headless` |
 | INV-20 no orphan server | `tools/verify_page.py::no_orphan_server` |
 | §4.4 `supervise.py` Qt-free and spawning nothing on import | `tools/verify_page.py::serve_is_headless` — INV-19 covers both modules, each in a fresh interpreter |
 | §4.1 `is_ready()` reporting readiness correctly | `tools/verify_page.py::no_orphan_server` — the case fails if the child never answers |
@@ -637,4 +694,5 @@ three that are not are the ones worth knowing about, all code-review only:
 |------|------|-------|------|------|-----|-----|---------|
 | 1 | 2026-08-02 | 2 | 4 | 4 | 9 | 8 | All 27 verified findings fixed; 0 unverified, 0 deferred. Both lanes independently led on the same two CRITICALs, and both were about the one code block an implementer copies. **§4.2's sketch minted the token and called `Popen` at module scope**, contradicting §4.1's "minted per `start()`" and §4.4's "importing it must spawn nothing" — and encoding precisely the alternative §8 rejects; it is now a `Supervisor` class with the mint inside `start()`. **The same `Popen` set no `cwd`.** The spec had already identified the hazard — an autostart entry's working directory is not the repository — and closed only the half about the *script* path. Verified: `history.py::ARCHIVE` is `"archive_results.json"`, `backfill.py::CACHE` is `"archive_cache"` and `tickets.py::load()` defaults to `"lotto_sms_raw.txt"`, all cwd-relative, so an autostarted tray would spawn a server that finds no data and renders the empty state — this project's cardinal failure arriving through the one launch path this item adds, on a machine where running the same server by hand works. `cwd=HERE` added. **Two further CRITICALs, one per lane.** §11 credited `no_orphan_server` with catching a Qt import in `supervise.py`; measured (`env -u DISPLAY python3 -c "import PySide6.QtWidgets"` succeeds — only constructing a `QApplication` needs a display), so the row was false in the one table whose purpose is saying what is *not* checked. INV-19 now covers both modules and the row cites it. And `open_on_start` was orphaned across the split: LOTTO-0002 §4.7 states it is "read by **`tray.py`** at startup", while this document — which owns `tray.py` — never mentioned it, so an implementer reading only this spec ships a tray that ignores the setting the other spec promises. §4.3 now owns the reading and the corrupt-file fallback; §4.7 keeps the file. **One HIGH was a live tautology:** `no_orphan_server` asserted the child had exited and the port was free, both of which a `serve.py` that dies instantly on an import error satisfies — the case would have passed against a server that never worked. It now waits on a new `is_ready()` and fails if the child never answers. That split also fixed a real design gap neither lane framed as one: `Popen` returns before the child binds, so every browser open raced the bind. Also fixed: `token: str | None` in the surface block, a runtime `TypeError` before 3.10 against a floor both README.md:55 and CLAUDE.md:9 assert; §10 cited a busy guard §4.3 never stated (the prior art has one, the spec dropped it); §11's "The six are all loud at run time" was false of the per-`start()` token row, whose own text calls the breach silent; and §7's constraint sentence left "Two of them" with no referent. Doc grew 443 -> 580 lines, most of it §4.1's readiness contract and §6's three new failure modes. |
 | 2 | 2026-08-02 | 2 | 1 | 5 | 8 | 10 | All 24 verified findings fixed; 0 unverified, 0 deferred. **Origin split: roughly 9 fix collateral against 5 draft defects**, so the batch was answered by re-sweeping wholesale rather than item by item. Loop 1's own `is_ready()` and `cwd=HERE` additions generated most of it, which is the expected shape and worth watching: a second consecutive loop like this is the stop-and-consolidate signal. **The CRITICAL was a draft defect both loops had walked past.** §4.2 claimed the `wait()` after the kill "is what INV-20 observes", but INV-20's case asserted only that the child had exited and the port was free — and an unreaped zombie satisfies both, having exited and holding no socket. The reap, the invariant's headline promise, was unchecked. Verified that `Popen.returncode` stays `None` until a `wait()` or `poll()` collects the status, so the case now asserts `child.returncode is not None` and the reap became observable. **A related HIGH: neither red-test breakage §7 prescribed could go red.** Dropping `kill()` fails nothing, because a `serve.py` honouring `SIGTERM` exits on `terminate()` and the fallback is never reached — INV-20's own *Breaks when* names the missing precondition (a child mid-fetch) that §7 had dropped. The breakage is now "install a no-op `SIGTERM` handler *and* drop `kill()`". So the one case justifying `supervise.py`'s existence could have been accepted without ever failing. **The largest collateral was loop 1's `is_ready()`**, which is a blocking ten-second poll: §4.3 put only *long* actions on a `QThreadPool`, so an implementer would call it inline from the left-click handler and freeze the menu on the application's most-used interaction. §4.1 now puts `start()`, `is_ready()`, `stop()` and `post()` all through `run_async()`. It also made §10's "Network: none of its own" false — the readiness poll is loopback traffic — and left the retry interval the only unpinned budget in a document that numbers every other one; both fixed, at 100 ms. `webbrowser.open(supervise.url)` named a module attribute §4.4 forbids, `url` being an instance attribute. **A dedup rather than a reconciliation:** the argument for `supervise.py` being a separate module was stated in four places (§2, §4.1, §8, §11); §4.1 keeps it and the rest point there, deleting three future sources of "these disagree" findings rather than aligning them. §11 grew to fourteen rows and ten `nothing` — one loop-1 row overclaimed, crediting `no_orphan_server` with proving the *tray* gates browser opens on `is_ready()`, which needs a display like every other `tray.py` rule; split into the checkable half and two honest gaps. Doc grew 580 -> 639 lines. |
+| 3 | 2026-08-02 | 2 | 2 | 4 | 10 | 7 | **Converged by cap, and by the collateral trigger — both fired together.** All 23 verified findings fixed; 0 unverified, 0 deferred. Origin split: **roughly 11 fix collateral against 4 draft defects**, after loop 2's 9-against-5 — collateral outnumbering draft defects two loops running, which is the stop-and-consolidate signal, reached on the same pass as the 3-loop cap. **Both lanes led on the same CRITICAL, and loop 2 had created it.** Loop 2 ruled that `start()`, `is_ready()`, `stop()` and `post()` all run through `run_async()` to keep the GUI thread free — which collides with §4.2's rule that the reap also runs on `aboutToQuit`. Dispatched to a thread pool, that handler returns immediately, the event loop ends and the process exits before `wait()` completes, producing exactly the orphan INV-20 forbids, on the commonest exit path, in the one place §11 already recorded that nothing checks. The shutdown reap is now explicitly synchronous and the up-to-5-second freeze is named as the accepted cost; the prior-art tray does the same thing, calling `systemctl("stop")` inline before `QApplication.quit()`. **The second CRITICAL was loop 2's other fix eating itself.** Loop 2 added `child.returncode is not None` to INV-20 to make the reap observable — but the case observes exit through `is_running()`, which calls `Popen.poll()`, and **`poll()` reaps**. Measured: `returncode` is `None` before the call and set after it. So the assertion could never fail, and the fix that was meant to close the tautology reinstated it one line later. The case now checks `os.kill(child.pid, 0)` first, which succeeds against a zombie and does not collect — verified — and only then reads `returncode`. The order is the assertion. Its red-test was restated for the same reason: only replacing `stop()`'s body with a bare `terminate()` goes red, since any variant still calling `wait(timeout)` has already collected the status. **The consolidation this trigger calls for was done rather than deferred:** the `Supervisor` contract had been stated twice — a surface block in §4.1 and a fuller class sketch in §4.2 — and every loop's edits to one drifted from the other, which is where most of three loops' collateral came from. §4.1 is now the only statement of it, carrying `child`, `port_fallback`, the `post()` error contract and the `stop()` semantics that were previously implied; §4.2 keeps one method and prose. Genuine draft defects, all present since the split: the tray availability check had no stated ordering against `start()`, so a desktop with no tray would exit non-zero having already orphaned a live child; `post()` had no error contract while §6 branched on 403/409/500; nothing said what Open page does while the server is stopped; and `run_async()` was named four times and never defined, existing only as a reference to a file in another repository. Doc grew 639 -> 696 lines. **Stopping here is the right call, not a budget compromise** — three loops have produced a document whose remaining findings are its own fixes, and the consolidation above removes the duplication that was generating them. |
 | 0-split | 2026-08-02 | — | — | — | — | — | **Provenance row — no reviewer was dispatched, and this is not a review loop.** Split out of `docs/specs/LOTTO-0002-local-web-page.md` on the seam that spec's §12 recommended and the user chose: this document takes §4.8, INV-19 and INV-20 — the tray, the supervisor and the headless contract — and LOTTO-0002 kept §4.1–§4.7 with INV-12–18 and INV-21. **A second cut the same day** moved that spec's §4.3–§4.4 and INV-12–14 and INV-21 again, into `docs/specs/LOTTO-0014-http-surface-and-security.md`, once the first cut proved to remove only 66 of the parent's 1,161 lines; this document was unaffected by it beyond cross-references. The parent had run three cold-eyes loops (83 verified findings fixed, 0 deferred) and **converged by cap rather than clean**, with two of the three loops producing more defects from their own fixes than from the draft. **Those loops confer nothing on this document**: they were run against 1,161 lines that no longer exist, so the gate starts again from loop 1 on these bytes. Content carried over was re-grounded rather than trusted — PySide6 6.11.0 and `QSystemTrayIcon.isSystemTrayAvailable` confirmed by import, the port claim re-measured against `ss -ltn` and a real bind, and the four Qt details in §4.3 read out of `Ants_Projects_Hub_Website/tray/ants-stats-tray.py` rather than recalled. Two of those four (the runnable-wrapper set and `setQuitOnLastWindowClosed(False)`) are new here — the parent named the prior art without carrying them. |
