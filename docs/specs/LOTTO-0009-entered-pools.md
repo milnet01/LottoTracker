@@ -655,10 +655,10 @@ Zero archive fetches in either run, as LOTTO-0001 §10 describes.
 | §4.3 era taken from the purchase timestamp, not the start date | `tools/verify_pools.py` — it re-reads each SMS's epoch from the dump and fails any ticket whose `bought` differs, so a `load()` that stopped passing it (falling back to the start date, which is later on 319 of 558) is caught. `--era-audit` prints both figures |
 | §4.5 `amount()` pricing each win from its **entry's** pool | **nothing** — a win priced from the wrong pool's division table is a plausible-looking number, and nothing compares it against the right one |
 | §4.6 partly-uncheckable never counted as wholly uncheckable | `tools/verify_pools.py` (INV-11) |
-| §4.7 comparison drawn only over checkable entries | **nothing** — this spec sets the rule; LOTTO-0002 implements the display and owns its check |
+| §4.7 comparison drawn only over checkable entries | `tools/verify_page.py::spend_over_checkable` (LOTTO-0002 INV-16) — shipped 2026-08-02; it recomputes the compared spend from `TIER_PRICES` over the scorable entries of resolved tickets and asserts the rendered figure equals it |
 | §2 the rules reading itself | **nothing mechanical** — three agreeing lines of evidence (§6), and each win names its pool so a claim is checkable |
 
-Twelve rows, four `nothing`.
+Twelve rows, three `nothing`.
 
 ## 12. Cross-doc impact
 

@@ -19,9 +19,11 @@ python3 backfill.py            # one-off: scrape pre-2026-06-01 results into
 python3 check.py               # score every ticket, print claimable wins
 python3 results.py             # smoke-test the official API (prints 3 recent draws/game)
 python3 find_lotto_sms.py      # pull new lottery SMSes over KDE Connect (D-Bus)
+python3 serve.py               # the local page on http://127.0.0.1:4322 (headless-safe)
+python3 tray.py                # the tray icon: starts serve.py, opens the page, reaps it
 ```
 
-Verification — there is no test runner; these three scripts *are* the test
+Verification — there is no test runner; these five scripts *are* the test
 suite, and each maps to a numbered invariant in the specs. Run from the
 repository root, after `backfill.py`, with `lotto_sms_raw.txt` present:
 
@@ -31,7 +33,16 @@ python3 tools/verify_coverage.py  # INV-6: each entry scored over exactly its dr
 python3 tools/verify_privacy.py   # INV-4: no real SMS content is tracked by git
 python3 tools/verify_pools.py     # INV-7/INV-11: prices resolve; partly-checkable
                                   # tickets are never written off whole
+python3 tools/verify_page.py      # INV-12..INV-21: the page, its security boundary
+                                  # and the tray's spawn-and-reap lifecycle
 ```
+
+`verify_page.py` carries a `--break <name>` flag that applies one deliberate
+defect and asserts the named case goes red. That is not a debugging aid: these
+three items are greenfield, so there was no pre-fix code to red-test against,
+and the flag is what makes "every case observed failing" reproducible rather
+than a one-off hand edit. `--list` shows the thirteen breaks. It caught a real
+defect in a *case* rather than in the code — see CHANGELOG.
 
 Exit code is the signal, not the printed counts (`&& echo PASS`). Counts in the
 specs are dated snapshots that grow — **except** the unscorable ratio, which
@@ -49,6 +60,14 @@ phone ──adb/KDE Connect──> lotto_sms_raw.txt ──tickets.py::parse()�
                                                                           │
 results.py    (official API, 2026-06-01 on, has payouts) ──┐              │
 backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─┴─> check.py
+                                                                              │
+                                                    ┌─────────────────────────┴──┐
+                                                    ▼                            ▼
+                                        check.py::__main__            serve.py ──> page.py
+                                        (the terminal output)         (the local page)
+                                                                          ▲
+                                                          tray.py ──> supervise.py
+                                                          (PySide6)   (spawns serve.py)
 ```
 
 - **`tickets.py`** is the only bank-specific file. `parse()` handles two SMS
@@ -63,6 +82,14 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   `check.py::amount()` has two pricing paths.
 - **`check.py`** scores and prices. Prize divisions are read from the live
   source, never hardcoded (INV-5).
+- **`serve.py`** is `check.py`'s second consumer and adds no third opinion: a
+  wrong number on the page is a bug in its rendering or in LOTTO-0001/0009,
+  never a separate calculation. It does **all** the I/O; **`page.py`** is a pure
+  function from a model dict to one HTML string, which is what lets the whole
+  page be rendered in a test with no socket and no `archive_results.json`.
+- **`supervise.py`** owns the server child — its token, its port, its reaping —
+  and is Qt-free so that lifecycle is checkable from a headless script.
+  **`tray.py`** is the only file that imports PySide6.
 - **`tools/verify_*.py`** import the modules directly via a `sys.path` insert.
 
 ### Load-bearing decisions — do not "simplify" these
@@ -128,5 +155,13 @@ pattern.
   `TIER_PRICES`, `Ticket`, or anything that counts tickets — §4.2's price
   table is the one hardcoded table in the project and the one most likely to
   rot.
+- **The page must never let "no data" read as "did not win"** — the cardinal
+  rule, in its newest form. `page.py::_money_cell()` renders `won_cents: None`
+  as "not checkable" and an integer `0` as `R0.00`, and they must not converge;
+  `_draws_cell()` does the same for `draws_covered`/`draws_remaining`. An empty
+  page is correct only when it carries a notice naming *why* (the dump is
+  missing, the first build failed, or `LOTTO_NO_BUILD` is set) — three states,
+  one rule. `tools/verify_page.py::uncheckable_not_a_loss` is what catches a
+  breach, and its forbidden-strings list includes the empty string.
 - Known deferred rough edges are listed under `LOTTO-0007` in `ROADMAP.md`;
   check there before reporting one as new.

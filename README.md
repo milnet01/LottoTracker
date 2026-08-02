@@ -53,7 +53,9 @@ This matters enough to be explicit, because the repository is public:
 ## Setup
 
 Needs Python 3.8+ and a Linux desktop. Everything below is free software from
-your distribution's repositories.
+your distribution's repositories. The tray icon additionally needs PySide6 —
+that is the *only* thing that does, so the page still works headless without
+it.
 
 ```bash
 sudo zypper install android-tools kdeconnect-kde   # openSUSE
@@ -125,6 +127,44 @@ what is still claimable rather than a lifetime total.
 
 Small winnings are often paid straight back into the account by the bank, so
 treat the total as "check your statement for this", not "this is owed to you".
+
+## The page and the tray icon
+
+The terminal output is a flat list, and there are 1,233 entries. For something
+you can read, there is a small page:
+
+```bash
+python3 tray.py     # an icon by the clock; click it to open the page
+python3 serve.py    # or just the page, no icon, no PySide6 needed
+```
+
+The icon starts the server, opens the page, refreshes the results on demand and
+shuts the server down when you quit. The page shows what is claimable now with
+the soonest expiry first, what is still outstanding, every entry with what it
+cost and what it won, and what you have spent against what you have won. A
+settings panel has two switches: start the icon when you log in, and open the
+page when it starts.
+
+Three things worth knowing:
+
+- **It is yours alone.** The server listens only on `127.0.0.1:4322`, so nothing
+  on your network can reach it. It also refuses any request that does not name
+  that address, which is what stops a website you happen to be visiting from
+  quietly reading your tickets out of it — that is a real attack, not a
+  hypothetical one, and it is why the page will not load through any other
+  hostname. Nothing about a ticket ever appears in the address bar or the page
+  title, because browsers sync those.
+- **"Not checkable" is not "did not win".** Entries with no results to check
+  against say exactly that, in words, everywhere they appear. They are never
+  shown as a blank, a dash or R0.00.
+- **The comparison is honest about what it covers.** Spend is compared against
+  winnings only over the entries that could actually be checked. Lifetime spend
+  is shown too, on its own line, and the two are never subtracted from each
+  other — that would turn 974 unchecked entries into losses.
+
+To have the icon start automatically, use the switch on the page rather than
+editing anything: it writes `~/.config/autostart/lotto-tracker-tray.desktop`,
+and turning it off deletes the file again.
 
 ## Adding your bank
 

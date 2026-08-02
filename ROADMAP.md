@@ -15,7 +15,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   tickets: 1,233 entries, 259 checkable, R2,423.00 still claimable. Its §4.2,
   §4.4 and INV-6 are amended accordingly.
 
-- 🚧 **LOTTO-0002** Local web page showing tickets, results and claimable winnings.
+- ✅ **LOTTO-0002** Local web page showing tickets, results and claimable winnings.
   Kind: implement. Source: user-request-2026-08-01.
   Layman: a page in your browser instead of a wall of terminal text.
   Spec: `docs/specs/LOTTO-0002-local-web-page.md`. Unblocked 2026-08-01 —
@@ -78,8 +78,22 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   lifecycle, what the page shows, spend against winnings, and the settings
   panel. Sections were deliberately not renumbered — §4.3 and §4.4 remain as
   pointers, because LOTTO-0011 and sibling specs cite §4.5 and §4.7 by number.
+  Resolved (2026-08-02): shipped. `serve.py`, `page.py`, `supervise.py`,
+  `tray.py`, `icons/` and `tools/verify_page.py`. Every one of the ten cases was
+  observed FAILING against a deliberate break before its invariant was accepted
+  — thirteen breaks, all red — and one of them found a defect in a *case* rather
+  than in the code: an em-dash for an unscorable amount did not turn INV-15 red,
+  because the assertion compared raw markup and excluded the empty string from
+  its own forbidden set. Both are renderings the cardinal rule forbids.
+  End to end against the real dump, reproducing the specs' figures
+  independently: 974 of 1,233 entries uncheckable, R10,603.50 spent on checkable
+  entries against R2,651.60 won, R28,244.50 lifetime, 62 claimable lines.
+  Two contract gaps surfaced by building rather than by reading: `tray.py` needs
+  to read `open_on_start` but may not import `serve.py`, so the settings reader
+  moved to `supervise.py`; and `make_server()` does not build, which two cases
+  had assumed. All five checks green.
 
-- 🚧 **LOTTO-0014** The local page's HTTP surface and security boundary.
+- ✅ **LOTTO-0014** The local page's HTTP surface and security boundary.
   Kind: security. Source: split from LOTTO-0002 on 2026-08-02 (second cut).
   Layman: the rules that stop a website you happen to be visiting from reading
   your lottery tickets off the page running on your own machine.
@@ -96,7 +110,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Ships with LOTTO-0002 and LOTTO-0013 in one change; the three share
   `tools/verify_page.py`.
 
-- 🚧 **LOTTO-0013** Tray icon and server supervisor for the local page.
+- ✅ **LOTTO-0013** Tray icon and server supervisor for the local page.
   Kind: implement. Source: split from LOTTO-0002 on 2026-08-02 (first cut, per
   that spec's §12).
   Layman: the icon next to the clock that starts the page, opens it, refreshes
