@@ -537,3 +537,39 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   read of the contract describing it.
   Worth folding in with LOTTO-0001's next amendment rather than running alone,
   if one is coming soon.
+
+- 📋 [LOTTO-0023] **A win in a retired prize division is dropped silently, with no count.**
+  Found by a cold-eyes lane on LOTTO-0001 during the LOTTO-0022 gate, and
+  verified against the code.
+
+  `check.py::check()` tests every line's label against
+  `paying_combinations()`, which reads the division set from the pool's
+  **newest** draw. A pre-handover division with no current equivalent
+  therefore fails the gate and the line is dropped before `amount()` runs.
+  LOTTO-0001 §4.4 has always called that "a known limit, not an oversight",
+  and §11's label-grammar row reads `nothing`.
+
+  The cardinal rule in its *omission* form: the win leaves no row, no count
+  and no diagnostic, and reads exactly like a losing line. INV-22 closed the
+  same shape on the money path one step later (an unpriceable win raises);
+  this is the step before it, where the line never reaches pricing at all.
+
+  **It is not unreportable by construction**, which is why this is filed
+  rather than accepted. The gate uses the newest draw's division set; the
+  draw being scored carries its **own** set (`results.py::divisions()` for
+  API draws, the payout page for archive draws), and a label absent from the
+  current set but present in that draw's own set is a retired-division win
+  rather than a loss. The two cases are separable with one extra lookup,
+  already memoised per draw.
+
+  Scope decision needed before building: report a count beside the
+  uncheckable report (cheap, honest, no repricing), or score and price such
+  lines (changes the totals, and the prize is almost certainly past the
+  365-day claim window anyway — every archive draw predates 2026-06-01). The
+  count is probably the whole fix.
+
+  Not a regression and not urgent: no such line is known to exist. What is
+  known is that if one does, nothing says so.
+  **Layman:** If an old ticket won in a prize category the lottery no longer runs, it vanishes from the report instead of being flagged — it looks exactly like a losing line.
+  Kind: fix.
+  Source: cold-eyes-2026-08-02 (LOTTO-0022 loop 6).
