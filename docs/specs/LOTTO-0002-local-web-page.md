@@ -1,6 +1,7 @@
 # LOTTO-0002 — Local web page and tray icon for tickets, results and claimable winnings
 
-**Status:** spec draft (2026-08-02).
+**Status:** accepted (2026-08-02) — three cold-eyes loops, converged by cap.
+A split is recommended before implementation; see §12 and §13.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0002 (user-request-2026-08-01; three further choices
 taken with the user 2026-08-02, recorded in §3).

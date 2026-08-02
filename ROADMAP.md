@@ -49,6 +49,24 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
     server). `Cache-Control: no-store`. Generic `<title>`, no ticket data in
     the URL — browsers send URLs and titles to sync and search suggestions.
   - Never pass request-derived data to `send_header()` (no CRLF validation).
+  Spec written and gated 2026-08-02: 3 cold-eyes loops, 2 lanes each, 83 findings
+  verified and fixed, 0 deferred. Holds INV-12 to INV-21. Three further
+  decisions taken with the user that day: the tray spawns `serve.py` as a child
+  rather than driving a systemd unit (no install step); the start-at-login
+  toggle lives in a settings panel **on the page**, which is what gives the
+  server its one write endpoint and therefore its token; and settings render as
+  sliding switches over a real checkbox.
+  Two design holes the review closed, both of which an implementer would have
+  patched by weakening security: the tray's Refresh button is a `POST /refresh`
+  and had no way to obtain the token (now `LOTTO_TOKEN` in the child's
+  environment), and there was no anti-framing header, so a hostile page could
+  iframe the port — the `Host` allowlist passes, the framed page holds the
+  token, and the user clicks the autostart switch through an overlay.
+  **Converged by cap, not clean: the spec is 1,160 lines and §12 recommends
+  splitting it into page-and-security (INV-12–18, 21) and tray-and-supervisor
+  (INV-19, 20) before implementation.** Two of the three loops produced more
+  defects from their own fixes than from the draft, which is the size signal.
+  Splitting means allocating a second roadmap id — the user's call.
 
 - ✅ **LOTTO-0009** Score every pool a ticket was entered in, not just the top tier.
   Kind: fix. Source: in-session-2026-08-01 (found while sizing LOTTO-0008).
