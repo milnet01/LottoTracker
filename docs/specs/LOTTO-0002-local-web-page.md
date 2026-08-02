@@ -285,8 +285,9 @@ terminates on failure**: a refresh that raises leaves `built` unchanged and
 comes and the user is never told the fetch failed. When the poll sees
 `building: false` with `built` unchanged and `stale: true`, it stops and shows
 the stale notice INV-18 requires the page to carry. Without the fourth job the
-opening *building* page never leaves that state and `GET /status` has no
-consumer at all. It is inline rather than a served asset
+opening *building* page never leaves that state. (The route has a second
+consumer since LOTTO-0018: the tray waits on the same two keys for the same
+reason — LOTTO-0013 §4.6.) It is inline rather than a served asset
 because a fifth route serving files is the thing LOTTO-0014 §4.1 exists to
 avoid.
 
@@ -965,13 +966,13 @@ fixtures, their temporary-directory setup and their stub builder.
 | `failed_refresh_keeps_model` | INV-18 |
 
 Three constraints on the script, each following from something in the existing
-suite, and all three binding on all ten cases, LOTTO-0013's and LOTTO-0014's included:
+suite, and all three binding on all eleven cases, LOTTO-0013's and LOTTO-0014's included:
 
 - **It must not need the network.** The seam is the **builder**, not the model:
   `make_server(build_model_fn, token, port)` takes a callable. Handing it a
   finished model would leave `POST /refresh` with nothing to invoke, so INV-17
   (count requests across two rebuilds) and INV-18 (make a rebuild raise) would
-  have no rebuild to exercise — two of the ten cases untestable by
+  have no rebuild to exercise — two of the eleven cases untestable by
   construction. A stub builder gives each case what it needs: one that counts
   its calls, one that raises, one that returns a fixture.
   **`make_server()` binds but does not build (§4.2), so a case that needs a
