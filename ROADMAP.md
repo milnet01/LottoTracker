@@ -62,11 +62,58 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   environment), and there was no anti-framing header, so a hostile page could
   iframe the port — the `Host` allowlist passes, the framed page holds the
   token, and the user clicks the autostart switch through an overlay.
-  **Converged by cap, not clean: the spec is 1,160 lines and §12 recommends
-  splitting it into page-and-security (INV-12–18, 21) and tray-and-supervisor
-  (INV-19, 20) before implementation.** Two of the three loops produced more
-  defects from their own fixes than from the draft, which is the size signal.
-  Splitting means allocating a second roadmap id — the user's call.
+  Converged by cap, not clean — two of the three loops produced more defects
+  from their own fixes than from the draft, which is the size signal, and §12
+  recommended a split before implementation.
+  **Split twice on 2026-08-02, on the user's decision.** The first cut took the
+  tray and supervisor out to LOTTO-0013 along the seam §12 named, and moved only
+  66 of 1,161 lines — the tray was never the weight. The second cut took the
+  HTTP surface and security boundary out to LOTTO-0014, along a seam of
+  *subject* rather than invariant count: web-security rules on one side, the
+  lottery-data honesty rules on the other, which need different expertise to
+  review. The three pre-split cold-eyes loops were archived to
+  `docs/specs/LOTTO-0002-pre-split-review-log.md`; they confer no review credit
+  on any part, and each part re-enters the gate at loop 1 on its own bytes.
+  This item now holds **INV-15 to INV-18** and 875 lines: the model, the build
+  lifecycle, what the page shows, spend against winnings, and the settings
+  panel. Sections were deliberately not renumbered — §4.3 and §4.4 remain as
+  pointers, because LOTTO-0011 and sibling specs cite §4.5 and §4.7 by number.
+
+- 📋 **LOTTO-0014** The local page's HTTP surface and security boundary.
+  Kind: security. Source: split from LOTTO-0002 on 2026-08-02 (second cut).
+  Layman: the rules that stop a website you happen to be visiting from reading
+  your lottery tickets off the page running on your own machine.
+  Spec: `docs/specs/LOTTO-0014-http-surface-and-security.md`. Holds INV-12,
+  INV-13, INV-14 and INV-21.
+  Four routes and nothing else; an exact `Host` allowlist answering 421
+  otherwise (CVE-2026-46611, Glances, is this design without that check, and it
+  was exploited by DNS rebinding); a per-run token in an `X-Lotto-Token` header
+  on both write routes, with `Origin` checked in addition and never instead;
+  `X-Frame-Options: DENY` plus `frame-ancestors 'none'`, without which the token
+  guards a forged request but not a real one clicked through an invisible
+  overlay; no `Access-Control-Allow-*` header ever; and nothing request-derived
+  reaching a response header or a written file.
+  Ships with LOTTO-0002 and LOTTO-0013 in one change; the three share
+  `tools/verify_page.py`.
+
+- 📋 **LOTTO-0013** Tray icon and server supervisor for the local page.
+  Kind: implement. Source: split from LOTTO-0002 on 2026-08-02 (first cut, per
+  that spec's §12).
+  Layman: the icon next to the clock that starts the page, opens it, refreshes
+  it and shuts it down again — and the guarantee that nothing is left running
+  behind it.
+  Spec: `docs/specs/LOTTO-0013-tray-and-supervisor.md`. Holds INV-19 and INV-20.
+  `supervise.py` is Qt-free and owns the token, the port and the child process,
+  which is what makes the spawn-and-reap lifecycle checkable from a headless
+  exit-code script instead of needing a `QApplication` and a display. `tray.py`
+  is PySide6 and nothing else. The token reaches the tray through the child's
+  environment — not argv, which `ps` exposes — closing the gap that would
+  otherwise be resolved by exempting `POST /refresh` from the token check.
+  Two Qt details carried from the user's existing stats tray that the parent
+  spec named the prior art for but never wrote down: a module-level set keeping
+  each `QRunnable`'s Python wrapper alive while `QThreadPool` owns the C++ side,
+  and `setQuitOnLastWindowClosed(False)` so dismissing a notification does not
+  end the application and take the server with it.
 
 - ✅ **LOTTO-0009** Score every pool a ticket was entered in, not just the top tier.
   Kind: fix. Source: in-session-2026-08-01 (found while sizing LOTTO-0008).
