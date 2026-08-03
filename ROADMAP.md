@@ -685,6 +685,15 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   are rewritten. Step 3 was revised rather than done, above. The document goes
   to `/cold-eyes` before step 2 touches `paying_combinations()`, per the
   cold-eyes-then-implement ordering.
+  **The gate is running and unconverged.** Loop 7's two lanes returned ~27
+  findings, none verified and none fixed —
+  `docs/reviews/LOTTO-0001-cold-eyes-loop7.md` holds them at lane-level
+  detail. Resume there: verify, fix, re-dispatch cold. Do **not** re-review to
+  rediscover them. Both lanes' top finding is the same and is already known
+  true — INV-26 states the runtime raise in the present tense when it is this
+  item's own step 2 — so decide "mark it pending" versus "land step 2 first"
+  before working the rest of the list, because several findings resolve
+  differently either way.
 
 - ✅ **LOTTO-0027** The API's PowerBall division labels never matched, so 53 wins read as losses.
   Kind: fix. Source: in-session-2026-08-03, found while writing LOTTO-0026's
