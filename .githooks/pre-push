@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#
+# pre-push - run the gate before anything leaves this machine.
+#
+# Enable once per clone (hooks are not themselves tracked by git):
+#
+#     git config core.hooksPath .githooks
+#
+# local-CI.sh decides for itself whether the push needs gating: a
+# documentation-only push (every changed file .md) skips. To push past a red
+# gate deliberately, `git push --no-verify`.
+
+exec ./local-CI.sh

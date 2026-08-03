@@ -23,6 +23,21 @@ python3 serve.py               # the local page on http://127.0.0.1:4322 (headle
 python3 tray.py                # the tray icon: starts serve.py, opens the page, reaps it
 ```
 
+**`./local-CI.sh` is the pre-push gate — run it before every `git push`.** It
+runs everything below plus `ruff` and a syntax pass, and it is what
+`.github/workflows/ci.yml` invokes (as `./local-CI.sh --ci`), so the runner and
+this machine cannot drift apart — there is no second list of checks to forget.
+A documentation-only push (every changed file `.md`) skips the gate
+automatically; `--force` overrides.
+
+The two lanes are **not** equal and must not be made so. Three verifiers need
+`lotto_sms_raw.txt` and the scraped archive, neither of which may reach a public
+runner, and `verify_privacy.py` drops to a weaker pattern-only mode without the
+dump — while still exiting 0. So a green tick on GitHub is weaker than a green
+`./local-CI.sh`, and the script asserts locally that the privacy check ran at
+full strength rather than trusting its exit code. `local-CI.sh`'s header holds
+the reasoning.
+
 Verification — there is no test runner; these five scripts *are* the test
 suite, and each maps to a numbered invariant in the specs. Run from the
 repository root, after `backfill.py`, with `lotto_sms_raw.txt` present:

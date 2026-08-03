@@ -8,6 +8,23 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A pre-push gate, and a CI workflow that runs the same script.** (LOTTO-0025)
+  `./local-CI.sh` runs before every push (wire it up with `git config
+  core.hooksPath .githooks`); `.github/workflows/ci.yml` invokes
+  `./local-CI.sh --ci`, so there is one list of checks rather than two
+  copies to drift apart. **The two lanes are deliberately unequal.**
+  Three verifiers need the SMS dump and the scraped archive, and neither
+  may reach a public runner — in a fresh clone `verify_sources`,
+  `verify_coverage` and `verify_pools` exit 1, while `verify_privacy.py`
+  *passes* on a weaker pattern-only fallback. A green tick on GitHub is
+  therefore worth less than a green `./local-CI.sh`, so the script
+  asserts locally that the privacy check ran in `content+pattern` mode
+  instead of trusting its exit code — an exit code read as "no leak"
+  when the strong half never ran is this project's cardinal failure in
+  CI clothing. Documentation-only pushes skip the gate, and the
+  workflow's `paths-ignore` mirrors that. Every branch red-tested in a
+  dump-less clone, not assumed.
+
 - **The tray resolves the port the same way the server does.** (LOTTO-0024)
   `supervise.py` reads `$PORT`, then `$LOTTO_PORT`, then 4322 — one knob
   whichever way the page is started, so a shell that exports `$PORT` moves

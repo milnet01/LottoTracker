@@ -301,7 +301,7 @@ project, not the next free number in this file.
   drawn order.
 
 - **INV-4** — No file containing real SMS content is ever tracked by git.
-  *Test:* `python3 tools/verify_privacy.py` → `28 tracked files, 0 leak(s) [content+pattern]` (2026-08-02; the file count grows, the leak count must not)
+  *Test:* `python3 tools/verify_privacy.py` → `31 tracked files, 0 leak(s) [content+pattern]` (2026-08-03; the file count grows, the leak count must not)
   *Breaks when:* a dump is committed under a name `.gitignore` does not
   match, or real message content is pasted into prose as an "example". Two
   leaks got past weaker forms of this check, one per review loop, and the

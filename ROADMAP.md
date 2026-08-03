@@ -445,21 +445,11 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   and got 4322 has been told nothing (LOTTO-0002 INV-24, §6).
 
   `supervise.py` resolves the same two variables in the same order (one
-  Cold-eyes (2026-08-03): three loops on each of LOTTO-0002 and
-  LOTTO-0013, converged at the 3-loop cap. 56 verified findings fixed
-  across both, 1 dismissed on evidence, 1 deferred. CRITICAL 1 -> 1 -> 0
-  and HIGH 4 -> 3 -> 2 on LOTTO-0002; the same shape on LOTTO-0013. Loop 2
-  found the two halves failing to compose — a managed tray ignored $PORT —
-  which the user resolved by having the tray share the server's
-  precedence. Deferred tail: tray.py's module docstring says "Four details
-  are copied from the user's existing stats tray" where LOTTO-0013 §4.3
-  lists six and §11 says "four of the six"; pre-existing, code-side, one
-  word, and not this run's to edit under a docs gate.
-knob whichever way the page is started) and diverges only on a BAD
-value, where it falls back to 4322 with a notification rather than
-exiting — a tray that exits just vanishes, and that is safe because a
-manager range-checks before it sets and launches serve.py directly. It
-pins both variables in the child, both
+  knob whichever way the page is started) and diverges only on a BAD
+  value, where it falls back to 4322 with a notification rather than
+  exiting — a tray that exits just vanishes, and that is safe because a
+  manager range-checks before it sets and launches serve.py directly. It
+  pins both variables in the child, both
   to the port it already chose. Without that, a session exporting its own
   `$PORT` would send the child somewhere the tray is not watching — the
   421-on-every-request failure LOTTO-0013 §4.5 exists to prevent.
@@ -476,17 +466,67 @@ pins both variables in the child, both
   Two cases added to `tools/verify_page.py`, `port_from_environment` and
   `tray_headless_when_managed`, with four breaks; all thirteen cases and
   the other four verifiers green.
+
+  Cold-eyes (2026-08-03): three loops on each of LOTTO-0002 and
+  LOTTO-0013, converged at the 3-loop cap. 56 verified findings fixed
+  across both, 1 dismissed on evidence, 1 deferred. CRITICAL 1 -> 1 -> 0
+  and HIGH 4 -> 3 -> 2 on LOTTO-0002; the same shape on LOTTO-0013. Loop 2
+  found the two halves failing to compose — a managed tray ignored $PORT —
+  which the user resolved by having the tray share the server's
+  precedence. Deferred tail: tray.py's module docstring says "Four details
+  are copied from the user's existing stats tray" where LOTTO-0013 §4.3
+  lists six and §11 says "four of the six"; pre-existing, code-side, one
+  word, and not this run's to edit under a docs gate.
+
   **Layman:** An external manager can now put the page on whatever port it likes, and start it without an icon appearing next to the clock.
   Kind: feature.
   Source: user-request-2026-08-03.
 
 ## Hardening
 
+- ✅ [LOTTO-0025] **A pre-push gate, and the CI that mirrors it.**
+  `./local-CI.sh` runs before every push; `.github/workflows/ci.yml` runs the
+  same script with `--ci` on GitHub. One list of checks, in one file, so the
+  runner and this machine cannot drift apart.
+
+  **The two lanes are deliberately unequal, and the inequality is the point.**
+  Three verifiers need `lotto_sms_raw.txt` and the scraped archive, and neither
+  may reach a public runner — measured in a fresh clone: `verify_sources`,
+  `verify_coverage` and `verify_pools` all exit 1 on missing input. Worse,
+  `verify_privacy.py` *passes* there, because without the dump it falls back to
+  pattern-only checks and still exits 0. A green tick on GitHub therefore means
+  less than a green `./local-CI.sh`, and pretending otherwise would be this
+  project's cardinal failure wearing a CI badge: absence of a finding read as
+  absence of a leak. So `local-CI.sh` asserts the privacy check ran in
+  `content+pattern` mode rather than trusting its exit code, and both the
+  script header and the workflow say which checks a runner cannot perform.
+
+  The CI lane is `ruff`, a `compileall` syntax pass, `verify_page.py` (no
+  network, sentinel data, needs PySide6 plus four system libraries) and
+  `verify_privacy.py` in its weaker mode. A documentation-only push — every
+  changed file `.md` — skips the gate, and `paths-ignore` mirrors that on the
+  runner so the two agree about what needs no gating.
+
+  Red-tested rather than assumed: the full gate run in a dump-less clone goes
+  red on all four data-dependent checks including the degraded-privacy
+  assertion; `--ci` in the same clone goes green; a docs-only commit skips; a
+  docs+code commit does not; and `--force` overrides the skip.
+  **Layman:** One command now checks everything before your work leaves the machine, and GitHub runs the half it is allowed to see.
+  Kind: chore.
+  Source: user-request-2026-08-03.
+
 - 📋 **LOTTO-0004** Automated guard that no SMS content can be committed.
   Kind: security. Source: in-session-2026-08-01.
   Layman: make it impossible to accidentally publish your messages.
   `tools/verify_privacy.py` now does the checking, but someone must remember
   to run it. A pre-commit hook would make it structural.
+  **Partly advanced by LOTTO-0025 (2026-08-03), which does not close this.**
+  The `.githooks/pre-push` gate runs `verify_privacy.py` automatically before
+  every push, so "someone must remember" is no longer true at the push
+  boundary. It is still true at the *commit* boundary, which is what this item
+  asks for: content committed and then inspected locally has already been
+  written to history, and a pre-push gate that a `--no-verify` skips is a
+  seatbelt rather than a lock. Keep this item open for the pre-commit half.
   **A second, separate gap found 2026-08-02, and the hook does not close it.**
   `verify_privacy.py` compares tracked files against the dump's *text*, so it
   catches content that was copied. It cannot catch content that merely
