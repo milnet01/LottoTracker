@@ -708,9 +708,27 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   (`MATCH 6` for Daily Lotto, which the domain caps at five and so never
   builds; the real buildable-but-unpublished daily labels are `MATCH 0` and
   `MATCH 1`). `./local-CI.sh` 9 checks PASS.
-  **The gate is still unconverged** — loop 8 runs next, cold and un-briefed.
-  Do not hand its reviewers the loop-7 row or the review file: an issue not
-  raised again is the proof the fix held.
+  **The gate is closed: converged by cap at three loops (7, 8, 9).**
+  51 distinct findings across the three loops (19 + 14 + 18), 50 verified,
+  50 fixed, 1 dismissed on evidence, **0 deferred** — there is no findings tail to fold
+  in. Each loop's row in LOTTO-0001 §13 carries the detail.
+  Loop 9's two structural results are the ones that outlive this item.
+  **§4.3 never stated `history.py::POOL_NAMES`**, the table `all_draws()`
+  filters the API response on — and two of its seven strings are June-2026
+  rebrand names (`LOTTO 5 MAX`, `PowerBall XTRA`), so an implementer
+  rebuilding `history.py` from the spec would get zero API draws for `lotto/2`
+  and `powerball/1` with no error at all. It is now stated. That it surfaced
+  only at loop 3, after two cold reads had passed over it, is the evidence
+  behind the second result: **the document is 831 lines and should be split.**
+  Recommended, not done — the call is the user's, and LOTTO-0001 is the
+  project's root contract, so the split needs its own item.
+  A third thing worth carrying: §7's path-resolution paragraph produced a
+  finding in **all three loops** (a false exception, then the hazard written
+  backwards, then the wrong scripts). It is now a four-row table. Prose that
+  fails three independent cold reads is a shape problem, not a wording one.
+  **Still owed by this item: step 2 only** — the runtime raise in
+  `paying_combinations()`, plus its probe, plus removing the pending markers
+  INV-26 now carries. The contract for it is complete and gated.
 
 - ✅ **LOTTO-0027** The API's PowerBall division labels never matched, so 53 wins read as losses.
   Kind: fix. Source: in-session-2026-08-03, found while writing LOTTO-0026's
