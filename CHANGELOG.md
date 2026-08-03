@@ -149,6 +149,36 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Cold-eyes loop 7 on LOTTO-0001: 19 findings verified, 19 fixed, and the reach check no longer passes vacuously** (LOTTO-0026)
+  All 19 distinct findings across the loop's two lanes were verified
+  against current files and every one was true, so none was dropped. The
+  CRITICAL, found by both lanes: INV-26 described `paying_combinations()`
+  raising on an unreachable division in the present tense, when that is
+  LOTTO-0026's own step 2 and is not built — so a reader would have closed
+  step 2 believing the guard already shipped. The raise is now marked
+  pending in §4.4, §5, §6 and §11 rather than step 2 being landed first,
+  because three further findings were the contract holes step 2 must build
+  against.
+  Two fixes landed in `tools/verify_pools.py`. INV-26's division-label
+  reach check had no anti-vacuity floor where INV-3 and INV-6 both carry
+  one: its pool set is derived from the tickets an archive reaches, and
+  every division in an *empty* division set is trivially reachable, so a
+  feed returning no divisions at all would have printed `0 unreachable` and
+  exited 0. It now fails on zero live pools and on any live pool with an
+  empty division table, red-tested on both branches. The comment justifying
+  the check's direction also carried a counter-example that cannot happen —
+  `MATCH 6` for Daily Lotto, which the domain caps at five matches and
+  therefore never builds.
+  Prose fixes of substance: `division` is documented as coming from the
+  win's own draw and always comes from the pool's newest API draw, so an
+  archive-era win carries a current division name (69 of the 86 wins
+  measured before LOTTO-0027 were archive-era); `amount()`'s archive
+  plain-tier fallback was described as a bottom-tier repair when it applies
+  to any match count on both games; §5's invariant-ownership map was wrong
+  about four ranges and never named LOTTO-0014 at all; and §7 claimed
+  `verify_coverage.py` resolves its inputs relative to its own file, where
+  its tickets come from the working directory like every other script.
+
 - **Every PowerBall win needing the PowerBall itself was scored as a loss.** (LOTTO-0027)
   `check.py::api_label()` built `MATCH 5 + PB`, and `MATCH 0 + PB` for a
   line matching only the PowerBall. The API publishes `MATCH 5 +

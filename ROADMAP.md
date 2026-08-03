@@ -685,15 +685,32 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   are rewritten. Step 3 was revised rather than done, above. The document goes
   to `/cold-eyes` before step 2 touches `paying_combinations()`, per the
   cold-eyes-then-implement ordering.
-  **The gate is running and unconverged.** Loop 7's two lanes returned ~27
-  findings, none verified and none fixed —
-  `docs/reviews/LOTTO-0001-cold-eyes-loop7.md` holds them at lane-level
-  detail. Resume there: verify, fix, re-dispatch cold. Do **not** re-review to
-  rediscover them. Both lanes' top finding is the same and is already known
-  true — INV-26 states the runtime raise in the present tense when it is this
-  item's own step 2 — so decide "mark it pending" versus "land step 2 first"
-  before working the rest of the list, because several findings resolve
-  differently either way.
+  **Loop 7 is closed** (2026-08-03). All 19 distinct findings across its two
+  lanes were verified against current files; all 19 were true, all 19 are
+  fixed, 0 dismissed. The record is LOTTO-0001 §13's loop-7 row, and
+  `docs/reviews/LOTTO-0001-cold-eyes-loop7.md` is now a pointer at it rather
+  than a findings list.
+  **The fork both lanes raised is settled, the way the default said.**
+  INV-26's runtime raise is marked *pending* in §4.4, §5, §6 and §11 rather
+  than step 2 being landed first — because three of loop 7's own findings are
+  precisely the contract holes step 2 must build against: the `(hits,
+  special)` domain, whether the raise aborts the run or fails one pool, and
+  whether "publishes for a pool" means the pool's history or its newest draw.
+  Landing step 2 first would have built from the gaps the gate had just found.
+  **The pending markers come off with step 2, which is all this item still
+  owes.**
+  Two of the fixes landed in code rather than prose, both in
+  `tools/verify_pools.py`: INV-26's reach check gained the anti-vacuity floor
+  INV-3 and INV-6 both carry — zero live pools, or any live pool whose
+  division table is empty, now fail, where before both states printed
+  `0 unreachable` and passed (red-tested on both branches) — and the comment
+  justifying the check's direction carried the wrong counter-example verbatim
+  (`MATCH 6` for Daily Lotto, which the domain caps at five and so never
+  builds; the real buildable-but-unpublished daily labels are `MATCH 0` and
+  `MATCH 1`). `./local-CI.sh` 9 checks PASS.
+  **The gate is still unconverged** — loop 8 runs next, cold and un-briefed.
+  Do not hand its reviewers the loop-7 row or the review file: an issue not
+  raised again is the proof the fix held.
 
 - ✅ **LOTTO-0027** The API's PowerBall division labels never matched, so 53 wins read as losses.
   Kind: fix. Source: in-session-2026-08-03, found while writing LOTTO-0026's

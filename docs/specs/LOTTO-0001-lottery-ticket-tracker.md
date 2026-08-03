@@ -165,12 +165,21 @@ Two traps, both of which produce plausible-looking wrong answers:
 | Sizekhaya JSON API | 2026-06-01 → | yes, per division | `results.py` |
 | za.national-lottery.com | 2025-01-01 → | only per-draw pages | `backfill.py` |
 
-Two conventions the merged shape depends on, neither derivable from it:
+Three conventions this project depends on, none of them derivable from the
+shape above:
 
 - **The special ball is last.** The API's `winNumList` places the bonus
   (Lotto) or PowerBall last; the archive instead derives the role from each
   ball's CSS class. `history.py::all_draws()` normalises both to `special`.
   Drawn order does not imply this — it is an observed contract of the feed.
+- **The API pages newest-first.** `results.py::draws()` asks for
+  `pageNum: 1` and returns the list verbatim, and
+  `check.py::paying_combinations()` takes `rows[0]` as *the pool's most recent
+  draw* with no sort anywhere between them. Same class of assumption as the
+  special ball — observed, not promised — and it is what makes the paying set,
+  and therefore the `division` name on every win in both eras, current rather
+  than arbitrary. A feed that started paging oldest-first would build the gate
+  from a 2026-06 draw and stay silent about it.
 - **Money units differ by source.** The API reports cents; archive payout
   pages report rands. Every amount leaving `check.py::amount()` is rands.
 
@@ -189,19 +198,34 @@ than a computed calendar, so a cancelled or moved draw cannot shift the
 window (INV-6).
 
 `check()` returns one dict per winning line, oldest first. That shape is a
-contract, not an internal detail: `serve.py` spreads it into the page model
-(LOTTO-0002 §4.1), so a renamed key breaks the page rather than this module.
+contract, not an internal detail: `serve.py` reads it key by key into the page
+model, and **drops `amount` as it adds `amount_cents`** rather than spreading
+the dict through — LOTTO-0002 §4.1 specifies that deletion and calls it
+load-bearing against a 100× money error. A renamed key therefore breaks the
+page rather than this module.
 
 ```python
 {"ref": str, "game": str, "plus_flag": int, "pool_id": int,
- "line": str,               # the board letter this line came from
+ "line": str,               # the board line: "A", or "A1".."A7" on Multiplay
  "date": "YYYY-MM-DD",
- "division": str,           # the source's own winLevelName, e.g. "Division 7"
+ "division": str,           # a winLevelName - but always the API's, see below
  "matched": str,            # site_label() grammar - "3 + Bonus", never "MATCH 3"
  "amount": float,           # RANDS, not cents (§4.3)
  "source": "api" | "archive",
  "expired": bool, "expires": "YYYY-MM-DD"}
 ```
+
+**`division` does not come from the win's own draw, and on an archive-era win
+it does not come from the win's own era.** `check()` sets it from
+`paying_combinations()`, which reads the pool's *newest API draw* (§4.3), so an
+archive win carries a 2026 division name. That is the majority case, not a
+corner: 69 of the 86 wins measured before LOTTO-0027 were archive-era. `source`
+is the field that says where the money came from; `division` says only which
+*current* division the line's match qualifies for. A second, narrower
+disagreement rides on the plain-tier fallback below — `division` and `matched`
+can both name the bonus tier while `amount` was read from the plain row.
+`page.py` renders `division` and `matched` side by side, so the pair must not
+be read as one statement about one row.
 
 **An entry starting before the earliest known draw for its pool is not
 scorable and must be excluded, never truncated.** `history.py::scorable()`
@@ -255,11 +279,14 @@ before its guard did (LOTTO-0027, 2026-08-03).
 
 The rule that catches it is **directional**: every division the source
 publishes must be *reachable* by a label this project can build. The converse
-is false and must not be asserted — `api_label()` builds `MATCH 6` for Daily
-Lotto and `MATCH 0` for a line that hit nothing, and no source publishes a
-division for either. `tools/verify_pools.py` checks the reachable direction
-over every pool the dump reaches; making `paying_combinations()` raise on an
-unreachable division at run time is LOTTO-0026.
+is false and must not be asserted — for Daily Lotto `api_label()` builds
+`MATCH 0` and `MATCH 1`, and Daily Lotto's published divisions start at two
+matches, so no source pays either. (`MATCH 6` is *not* the counter-example to
+reach for, though it reads like one: INV-26's domain caps Daily Lotto at five
+matches, so that label is never built for it in the first place.)
+`tools/verify_pools.py` checks the reachable direction over every pool the dump
+reaches; making `paying_combinations()` raise on an unreachable division at run
+time is **LOTTO-0026 step 2, not yet built**.
 
 **Whether a line paid at all is gated by the *current* division set, in both
 eras** — `check.py::check()` tests the match label against
@@ -277,6 +304,14 @@ Pre-handover draws did not share a single division structure: some list a
 bottom tier of `2 + Bonus`, others a plain `2`. When the bonus-qualified
 label is absent from a payout table, `check.py::amount()` falls back to the
 plain match tier, which is the one that paid.
+**The fallback is not confined to that bottom tier**, and reading it as the
+narrow repair it was written for understates its reach: the code tries
+`str(hits)` for *any* `hits` and on *both* games, so a payout page missing its
+`3 + PowerBall` row prices that win at the plain `3` amount instead of raising
+under INV-22. That is a real price for a real division rather than a zero, so
+it does not breach the cardinal rule — but it is a *different* division's
+price, and nothing distinguishes the intended bottom-tier case from the rest
+from inside.
 
 `tickets.py` parses, and since LOTTO-0009 also derives which pools a ticket was
 entered in from its price - `check.py` is still the only scoring path.
@@ -284,14 +319,22 @@ entered in from its price - `check.py` is still the only scoring path.
 ## 5. Invariants
 
 Invariant ids are **project-wide, not per document**, which is why this section
-runs INV-1 to INV-6 and then jumps: INV-7 to INV-11 belong to
-`docs/specs/LOTTO-0009-entered-pools.md` and INV-12 to INV-21 to
-`docs/specs/LOTTO-0002-local-web-page.md`. This document owns INV-1 to INV-6,
-INV-22, which LOTTO-0007(a) added on 2026-08-02 after those two specs had
-taken their ranges, and INV-26, added by LOTTO-0026 on 2026-08-03 — INV-23 to
-INV-25 went to LOTTO-0013 and LOTTO-0002 in between. A new invariant here
-takes the next free number in the project, not the next free number in this
-file.
+runs INV-1 to INV-6 and then jumps. The ids in between are owned as follows,
+and the ranges are not contiguous per document — INV-15 to INV-18 were moved
+out of LOTTO-0014 and INV-19 to INV-20 out of it as well, each leaving a
+tombstone behind:
+
+| Range | Owner |
+|-------|-------|
+| INV-7 – INV-11 | `docs/specs/LOTTO-0009-entered-pools.md` |
+| INV-12 – INV-14, INV-21 | `docs/specs/LOTTO-0014-http-surface-and-security.md` |
+| INV-15 – INV-18, INV-24 | `docs/specs/LOTTO-0002-local-web-page.md` |
+| INV-19 – INV-20, INV-23, INV-25 | `docs/specs/LOTTO-0013-tray-and-supervisor.md` |
+
+This document owns INV-1 to INV-6; INV-22, which LOTTO-0007(a) added on
+2026-08-02 after the specs above had taken their ranges; and INV-26, added by
+LOTTO-0026 on 2026-08-03. A new invariant here takes the next free number in
+the project, not the next free number in this file.
 
 - **INV-1** — For PowerBall tickets the final number on a board line is the
   PowerBall, never a main number, in both SMS eras.
@@ -338,10 +381,14 @@ file.
 - **INV-5** — Which match combinations pay is read from the results source at
   runtime, never hardcoded in this project.
   *Test:* `grep -nE '"MATCH [0-9]' *.py | wc -l` → `0`
-  **The glob is the production modules only.** Two such literals live under
-  `tools/`, and a grep that swept them as well would report `2` against correct
-  code — where the obvious repair deletes one of INV-22's four probes. They are
-  not the same kind of literal: `verify_pools.py`'s is a genuine test double,
+  **The glob is the production modules only.** Widening it to `tools/` reports
+  **five** hits against correct code (measured 2026-08-03), where the obvious
+  repair deletes one of INV-22's four probes. They fall into three kinds, not
+  one. Three of the five are *prose*: comments in `verify_pools.py` quoting the
+  labels LOTTO-0027 got wrong, which a rename-catching grep can never
+  distinguish from code and which is on its own enough to make the wider glob
+  useless. Of the two real literals, `verify_pools.py`'s is a genuine test
+  double,
   standing in for the very feed this invariant says the project must read at
   runtime; `verify_page.py`'s sits in a page-model fixture's `matched` field,
   which production fills from `site_label()` in the *site* grammar (`3 + Bonus`),
@@ -412,23 +459,52 @@ file.
   point: it is a latent-defect guard, not a repricing. Red-tested the same day
   by reverting the archive branch to `return 0.0` → 2 probes mispriced, exit 1.
 
-- **INV-26** — Every division the source publishes for a pool is **reachable**:
-  some `(hits, special)` pair makes `check.py::api_label()` return exactly that
-  label. A published division no label can equal means the feed's grammar
-  moved, and `paying_combinations()` **raises** rather than returning a
-  division set with a hole in it. Added 2026-08-03 by LOTTO-0026; the number is
-  the next free one project-wide, not the next free one in this file (§5's
-  opening paragraph).
+- **INV-26** — Every division the pool's newest draw publishes is
+  **reachable**: some `(hits, special)` pair in the domain below makes
+  `check.py::api_label()` return exactly that label. A published division no
+  label can equal means the feed's grammar moved. Added 2026-08-03 by
+  LOTTO-0026; the number is the next free one project-wide, not the next free
+  one in this file (§5's opening paragraph).
+  **The unit is the newest draw, not the pool's history**, in both halves of
+  the invariant: `paying_combinations()` reads `rows[0]` and nothing else, so
+  the reachable set and the set being checked are the same one table. A
+  division retired before that draw is outside this invariant entirely — it is
+  §4.4's silent-drop case, tracked by LOTTO-0023.
   *Test:* `python3 tools/verify_pools.py` (repo root, after `backfill.py`) →
-  `division-label reach: 6 live pools, 0 unreachable divisions`, plus a probe
+  `division-label reach: 6 live pools, 0 unreachable divisions, 0 vacuous`
+  (2026-08-03; the pool count grows with the dump, the other two must not).
+  **The floor is part of the check, as it is for INV-3 and INV-6.** The pool
+  set is derived from the tickets that `reaches()` rather than listed, so a
+  partial archive silently shrinks what gets checked, and a pool whose division
+  table parsed to empty passes vacuously — every division in an empty set is
+  reachable. The check therefore fails on zero live pools and on any live pool
+  whose division set is empty. Without that, §7's demotion of the `6 live
+  pools` count to a non-asserted figure would leave nothing asserting the check
+  ran at all.
+  **The runtime half is LOTTO-0026 step 2 and is NOT YET BUILT.** As shipped,
+  `paying_combinations()` raises only when a pool has no recent draw at all;
+  it does not inspect the division table it just built for unreachable labels,
+  so today this invariant is asserted by `tools/verify_pools.py` over the pools
+  the dump reaches and by nothing else. Step 2 adds the raise, and the probe
   driving `paying_combinations()` against a doubled division table carrying an
-  unbuildable label, which must raise.
+  unbuildable label. **The raise aborts the run**, like the no-recent-draw
+  raise beside it and for the same reason: nothing catches `RuntimeError`, a
+  grammar that moved for one pool has almost certainly moved for its siblings,
+  and a run that pressed on would report a partial win list indistinguishable
+  from a complete one. Do not read the three places above as describing
+  shipped behaviour until this paragraph goes.
+  **The domain is bounded, and the bound is part of the contract** — an
+  unbounded sweep weakens the guard silently while too narrow a one raises on
+  healthy pools. `hits` runs `0` to the pool's main-ball count (Lotto 6,
+  PowerBall 5, Daily Lotto 5) and `special` is tried both ways only for Lotto
+  and PowerBall: `check.py::match()` returns `special=False` unconditionally
+  for Daily Lotto, so `api_label("daily", n, True)` is unreachable in
+  production and must not be counted as buildable.
   **The direction is the invariant, and reversing it breaks correct code.**
   Every *feed* division must be buildable here; the converse is false, because
-  `api_label()` builds `MATCH 6` for Daily Lotto, which has five numbers, and
-  `MATCH 0` for a line that hit nothing — and no source publishes a division
-  for either. An implementer asserting set equality would raise on every pool
-  on day one.
+  for Daily Lotto `api_label()` builds `MATCH 0` and `MATCH 1` while its
+  published divisions start at two matches. An implementer asserting set
+  equality would raise on every pool on day one.
   **Conformance to the `MATCH n` shape is not a substitute**, which is the
   lesson this invariant is built on rather than a hypothetical. The rule first
   proposed for it was *raise when no label conforms to the grammar*, and that
@@ -491,43 +567,56 @@ file.
 - **A pool has no recent draw record.** `paying_combinations()` raises rather
   than returning an empty set, because an empty set would score every line in
   the pool as a loss with no diagnostic.
-- **The source publishes a division this project cannot name.** The same
-  raise, for the same reason one step finer: the division set is not empty but
-  is missing the label a winner would join on, so the hole scores exactly the
-  lines that fall in it as losses and leaves the rest looking healthy
-  (INV-26). A rename reaching only *some* labels is the shape to expect — it
-  is the one that happened (§4.4, LOTTO-0027) — so the test is whether every
-  published division is reachable, not whether the set as a whole still looks
-  like the grammar.
+- **The source publishes a division this project cannot name.** The intended
+  answer is the same raise, for the same reason one step finer: the division
+  set is not empty but is missing the label a winner would join on, so the hole
+  scores exactly the lines that fall in it as losses and leaves the rest
+  looking healthy (INV-26). A rename reaching only *some* labels is the shape
+  to expect — it is the one that happened (§4.4, LOTTO-0027) — so the test is
+  whether every published division is reachable, not whether the set as a whole
+  still looks like the grammar. **As shipped there is no raise here**: this is
+  LOTTO-0026 step 2 and is not yet built, so the failure is currently caught
+  before the fact by `tools/verify_pools.py` over the pools the dump reaches,
+  and not at all for a pool nobody holds a ticket in.
 
 ## 7. Tests
 
-**Every count in this document is a dated measurement that grows over time**
-— §5's expected outputs are as of 2026-08-01, INV-4's and INV-22's of
-2026-08-02, and the figures in §2, §4.2 and §4.4 of 2026-08-01 — — overlap grows with every draw, ticket totals with every SMS. What
-each invariant actually asserts is the zero-term and the exit code
-(`0 disagree`, `0 with wrong draw coverage`, exit 0); a changed count is not
-a failure — **except the unscorable count**, which has a 90% floor precisely
-because "almost everything is unscorable" is what missing data looks like. Every script exits non-zero on a real breach, so prefer
-`&& echo PASS` over string-matching the line.
+**Every count in this document is a dated measurement that grows over time** —
+§5's expected outputs are as of 2026-08-01, INV-22's of 2026-08-02, and INV-4's
+and INV-26's of 2026-08-03; the figures in §2, §4.2 and §4.4 are of 2026-08-01
+except §4.4's win totals, which are LOTTO-0027's of 2026-08-03. Overlap grows
+with every draw, ticket totals with every SMS. What each invariant actually
+asserts is the zero-term and the exit code (`0 disagree`, `0 with wrong draw
+coverage`, exit 0); a changed count is not a failure — **except the unscorable
+count**, which has a 90% floor precisely because "almost everything is
+unscorable" is what missing data looks like, and **except INV-26's pool
+count**, which is not asserted as a number but must not reach zero (its own
+floor, stated with the invariant). Every script exits non-zero on a real
+breach, so prefer `&& echo PASS` over string-matching the line.
 
 Every script must be run **from the repository root, after
 `python3 backfill.py`**, with the SMS dump present. The requirement is not a
 convention the scripts share but a consequence of two cwd-relative defaults
 they all reach through — `tickets.py::load(path="lotto_sms_raw.txt")` and
-`history.py::ARCHIVE`. `tools/verify_coverage.py` is the exception worth
-knowing before writing a new one: it locates the dump relative to its own file
-(`os.path.dirname(__file__)`), so it reads the dump from the wrong root only
-if the repository itself moves, never if the caller's cwd does.
+`history.py::ARCHIVE`. **There is no exception to that**, and a reader looking
+for one will misread the `__file__`-relative `DUMP` constant in
+`verify_coverage.py`, `verify_privacy.py` and `verify_pools.py`: none of them
+loads *tickets* through it. Each takes its tickets from `load()`'s cwd-relative
+default like everything else and uses `DUMP` only for a second, direct read of
+the file — the `Played R` parse count, the privacy content comparison, the
+per-reference facts.
+The mixture is the hazard worth knowing before writing a new script. Run from a
+directory holding a *different* `lotto_sms_raw.txt` and `verify_coverage.py`
+counts that dump's purchases against the repository dump's parsed tickets, and
+prints a PARSE GAP that is an artefact of the two handles rather than a parser
+defect. Resolve both ends the same way or neither.
 
 `tools/verify_sources.py`, `tools/verify_coverage.py` and
 `tools/verify_privacy.py` are this spec's executable checks, joined by
-`tools/verify_pools.py`, which carries this spec's INV-22 and §4.4's
-division-label reach case as well as LOTTO-0009's invariants; INV-1, INV-2
-and INV-5 are the one-line commands
-recorded in
-§5. There is no test framework in this project and adding one is out of scope
-(§9) — these run under plain `python3`.
+`tools/verify_pools.py`, which carries this spec's INV-22 and INV-26 as well as
+LOTTO-0009's invariants; INV-1, INV-2 and INV-5 are the one-line commands
+recorded in §5. There is no test framework in this project and adding one is
+out of scope (§9) — these run under plain `python3`.
 
 Red-tested against a state that should fail: INV-2's one-liner against the
 pre-Multiplay scorer; INV-6's script against the parser that dropped
@@ -535,10 +624,15 @@ pre-Multiplay scorer; INV-6's script against the parser that dropped
 a `scorable()` regressed to `bool(rows)`; INV-4's script against a real board
 line pasted into `README.md`; INV-3's per-pool floor against an un-exempted
 empty pool; INV-22's probes against the archive branch reverted to
-`return 0.0` (2 mispriced, exit 1); §4.4's division-label reach case against
-the `+ PB` labels that preceded LOTTO-0027, which is the state that shipped
-rather than a contrived one (12 unreachable divisions across the two
-PowerBall pools, exit 1). Three assertions still have no red test:
+`return 0.0` (2 mispriced, exit 1); INV-26's reach case against the `+ PB`
+labels that preceded LOTTO-0027, which is the state that shipped rather than a
+contrived one (12 unreachable divisions across the two PowerBall pools,
+exit 1); and INV-26's anti-vacuity floor on both branches (2026-08-03) —
+`reaches()` forced false gives `0 live pools, 0 unreachable divisions,
+1 vacuous`, exit 1, and an emptied division table gives six pools each
+reporting NO DIVISIONS, exit 1, where before the floor both states printed
+`0 unreachable` and passed. INV-26's runtime raise has no red test because it
+has no implementation yet (step 2). Three further assertions have no red test:
 INV-1, INV-5, and INV-3's agreement half — the sources have agreed on every
 run.
 
@@ -584,10 +678,12 @@ one payout page per draw a winning ticket touches — 3.7 MB measured
 **Network, per `check.py` run:** `results.py::draws()` is **not** memoised, so
 `issueWinPoolInfoPageQuery` is called once per pool by `history.all_draws()`
 and once per pool by `check.paying_combinations()` — **7 + 6 = 13 requests**
-regardless of how many entries score. The seven `all_draws()` calls do precede
-scoring; the six paying-set queries are lazy, issued inside the loop as each
-pool's first scorable entry is reached (`check.py::check()`). Seven for
-`all_draws()`, one per pool; six for the
+regardless of how many entries score. **All thirteen are lazy and interleaved**,
+issued from inside the same loop in `check.py::check()`: `all_draws()` fires
+through `scorable()` as each pool's first *entry* is reached and the paying-set
+query as its first *scorable* entry is, so the two sequences interleave rather
+than one preceding the other. Both are memoised, which is what holds the total
+at thirteen. Seven for `all_draws()`, one per pool; six for the
 paying sets, because the always-empty `daily/1` is never asked for one (no
 entry in it is scorable). **`paying_combinations()` is itself memoised** in
 `check.py::_struct`, keyed `(game, plus_flag, pool_id)` — without that it would
@@ -607,13 +703,13 @@ carries the breakdown and the before/after.
 | INV-1 | §5 command, `tickets.py::parse()` |
 | INV-2 | §5 command, `tickets.py::parse()` |
 | INV-3 | `tools/verify_sources.py` |
-| INV-4 | `tools/verify_privacy.py`; **not yet a pre-commit hook** — tracked by LOTTO-0004 |
-| INV-5 | §5 grep, production modules only — labels only; **nothing** catches a hardcoded prize *amount*, and nothing checks the `tools/` doubles the glob deliberately excludes. It also cannot see a feed-side **rename**, and no widening fixes that: `api_label()` builds its labels with f-strings, so a pattern broad enough to see them fires on correct code. INV-26 is what catches a rename, and closes LOTTO-0007(c) in place of a wider glob |
+| INV-4 | `tools/verify_privacy.py`, run by `local-CI.sh` and so by `.githooks/pre-push` — **partly advanced by LOTTO-0025**, which made it a pre-*push* gate; still **not a pre-commit hook**, so a commit can carry a leak that only the push refuses. Tracked by LOTTO-0004 |
+| INV-5 | §5 grep, production modules only — labels only; **nothing** catches a hardcoded prize *amount*, and nothing checks the `tools/` literals the glob deliberately excludes. It also cannot see a feed-side **rename**, and no widening fixes that: `api_label()` builds two of its three forms with f-strings and the third as the plain literal `"MATCH POWERBALL"`, so a pattern broad enough to see them fires on correct code — and since LOTTO-0027 the widened glob also matches the comments quoting the old labels. INV-26 is what catches a rename, and closes LOTTO-0007(c) in place of a wider glob |
 | INV-6 | `tools/verify_coverage.py` |
 | §4.3 special-ball-is-last | `tools/verify_sources.py` — catches a change on either source alone; blind only if both change the same way together |
 | §4.4 expiry / `CLAIM_DAYS` | **nothing** — no test covers the 365-day boundary, and nothing tracks the gap |
 | §4.4 current-era pay gate | **nothing** — a pre-handover-only division is dropped silently |
-| INV-26 §4.4 label grammar reachable | `tools/verify_pools.py` — every division the live feed publishes must be reachable by a label `api_label()` builds, plus a probe asserting `paying_combinations()` raises on one that is not. The check reads only the pools the dump reaches, so a pool nobody holds a ticket in is outside it; the runtime raise covers that pool from the moment a ticket for it is scored, which is the division of labour between the two |
+| INV-26 §4.4 label grammar reachable | `tools/verify_pools.py` — every division the live feed publishes must be reachable by a label `api_label()` builds. The check reads only the pools the dump reaches, so a pool nobody holds a ticket in is **currently checked by nothing**: the runtime raise that would cover it from the moment a ticket for it is scored is LOTTO-0026 step 2 and is not yet built, and its probe does not exist either. That division of labour is the design, not the state |
 | INV-22 unpriceable win raises | `tools/verify_pools.py` — four blind-lookup probes (empty and unrecognised division tables, both branches), plus the converse that a source-stated R0.00 still prices as 0.0 |
 | archive payout scrape | `tools/verify_pools.py` (INV-22) — an unscrapable payout page now raises instead of pricing an archive win at R0.00. What remains unchecked is narrower: a page that parses into a **wrong** table, which is well-formed and not detectably wrong from inside |
 | `backfill.py` date parsing | **nothing** — an abbreviated month in a href raises `KeyError`, not an empty result |
@@ -622,15 +718,24 @@ carries the breakdown and the before/after.
 
 ## 12. Cross-doc impact
 
-README.md (usage), ROADMAP.md (LOTTO-0002 onward), CHANGELOG.md, and
-`docs/specs/LOTTO-0009-entered-pools.md`, which amends this document in §2,
-§4.2, §4.4, INV-6, §7, §10 and §11 — it changed the unit of work from the
-ticket to the entry.
+README.md (usage), ROADMAP.md (LOTTO-0002 onward), CHANGELOG.md, and:
+
+- `docs/specs/LOTTO-0009-entered-pools.md`, which amends this document in §2,
+  §4.2, §4.4, INV-6, §7, §10 and §11 — it changed the unit of work from the
+  ticket to the entry.
+- `docs/specs/LOTTO-0002-local-web-page.md`, which consumes §4.4's win dict by
+  name and specifies the `amount` → `amount_cents` substitution made on the way
+  into the page model. A key renamed here breaks that document's §4.1.
+- `docs/specs/LOTTO-0014-http-surface-and-security.md` and
+  `docs/specs/LOTTO-0013-tray-and-supervisor.md`, which own four of the
+  invariant ranges §5 maps and are otherwise independent of this document —
+  listed so the map has somewhere to point.
 
 ## 13. Cold-eyes loop log
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 7 | 2026-08-03 | 2 | 1 | 3 | 6 | 8 | **Run on the LOTTO-0026 step-1 amendment (INV-26) and the LOTTO-0027 corrections, before step 2 touches `paying_combinations()`.** 19 distinct findings after merging the lanes, **all 19 verified true, all 19 fixed, 0 dismissed** — the first loop in this document's history with nothing to drop, which is itself a signal: the amendment described unbuilt behaviour, and unbuilt behaviour cannot contradict the code it is checked against, so the reviewers found wording rather than argument. CRITICAL, found independently by both lanes: **INV-26 stated `paying_combinations()`'s raise in the present tense across §5, §6 and §11 when it is LOTTO-0026's own step 2 and is not built**, and INV-26's *Test* named a probe that does not exist — so a reader closes step 2 unbuilt and believes a pool nobody holds a ticket in is guarded. Resolved by marking the runtime half pending in all four places rather than by landing step 2 first: three of this loop's own findings (the `(hits, special)` domain, whether the raise aborts the run or fails one pool, and whether "publishes for a pool" means the pool's history or its newest draw) are exactly the contract holes step 2 must build against, so implementing first would have built from the gaps the gate had just found. The pending markers come off with step 2. HIGH: §4.4 described `amount()`'s archive plain-tier fallback as the bottom-tier case it was written for, where the code tries `str(hits)` for any `hits` and both games, so a payout page missing its `3 + PowerBall` row prices at the plain `3` amount instead of raising under INV-22 — a real price for the wrong division, which is not the cardinal-rule breach but is indistinguishable from inside. HIGH, both lanes: **`division` is documented as the win's own `winLevelName` and is always the API's newest draw's**, in both eras, so an archive-era win carries a 2026 division name — the majority case (69 of the 86 wins measured before LOTTO-0027), and on the plain-tier fallback `division` and `matched` can name the bonus tier while `amount` came from the plain row, three fields disagreeing on the money path with nothing saying so. The structural gap: **§5's invariant-ownership map was wrong about four ranges** — it sent INV-12 to INV-21 wholesale to LOTTO-0002, where LOTTO-0014 owns INV-12–14 and INV-21 and LOTTO-0013 owns INV-19–20, and `LOTTO-0014-http-surface-and-security.md` appeared nowhere in this document, §12 included. Now a table, with §12 extended to name every document the map points at. Two findings were fixed in **code** rather than prose, both in `tools/verify_pools.py`: INV-26's reach check had **no anti-vacuity floor** where INV-3 and INV-6 both carry one — its pool set is derived from the tickets that `reaches()`, so a partial archive silently shrinks what is checked, and every division in an *empty* division set is trivially reachable, so a feed returning no divisions would have printed `0 unreachable` and passed; it now fails on zero live pools and on any pool with an empty table, red-tested on both branches. And the comment justifying the check's direction carried §4.4's wrong counter-example verbatim — `MATCH 6` for Daily Lotto, which the domain caps at five and therefore never builds; the real buildable-but-unpublished daily labels are `MATCH 0` and `MATCH 1`. Also fixed: §7 claimed `verify_coverage.py` resolves its inputs relative to its own file, where its *tickets* come from `load()`'s cwd default like every other script and three scripts share the `__file__`-relative `DUMP` handle — the mixture prints a spurious PARSE GAP when cwd holds a different dump; §7 misdated INV-4 to 2026-08-02 against INV-4's own 2026-08-03 and carried no vintage for INV-26; §10 said the seven `all_draws()` calls precede scoring when both they and the paying-set queries are lazy inside the same loop (the 7 + 6 = 13 total was right); §4.4 said `serve.py` *spreads* the win dict where LOTTO-0002 §4.1 specifies it drops `amount` for `amount_cents` and calls that deletion load-bearing against a 100× money error; §4.4's `"line"` was "the board letter" where Multiplay lines are `A1`…`A7`; INV-5's "two such literals live under `tools/`" is five hits since LOTTO-0027, three of them comments quoting the old labels — a third kind the paragraph's taxonomy did not cover, and on its own enough to make the wider glob useless; §11's INV-5 row rested on "`api_label()` builds its labels with f-strings" when one is now the plain literal `"MATCH POWERBALL"` (the row's conclusion survives, and it is the sentence LOTTO-0007(c) was closed on); §11's INV-4 row still read "not yet a pre-commit hook" without noting LOTTO-0025 made it a pre-*push* one; and INV-22's `rows[0]` reasoning assumed the feed pages newest-first, the same class of observed-not-promised assumption §4.3 already records for the special ball, now recorded beside it as a third convention. `./local-CI.sh` 9 checks PASS after the code changes. **Not converged** — a cold loop 8 follows, un-briefed, per the re-brief rule. |
 | 6 | 2026-08-02 | 2 | 0 | 1 | 5 | 6 | **Accepted at two loops.** Loop 5's fixes held: neither lane re-raised §6, INV-5 or INV-22's triggers, which is the proof the cold re-read exists to give. All 12 verified findings fixed, 0 dismissed, 1 surfaced to the user as code-side, 1 filed as LOTTO-0023. Nine were draft defects, two were collateral from loop 5's own fixes — §7's dating sentence named INV-22 as the sole 2026-08-02 exception when loop 5 had just dated INV-4 the same day, and INV-5's new exemption paragraph called both `tools/` literals feed doubles when `verify_page.py`'s sits in a page-model `matched` field that production fills from `site_label()` in the *site* grammar. HIGH: INV-3's *Breaks when* contradicted itself inside one bullet — *"either source renames a pool, so it contributes no overlap and the run passes on the strength of the other five"*, then three lines later *"The check fails any pool with zero overlap"*. The first half is the pre-floor rationale lifted from `verify_sources.py`'s own comment, so an implementer building the script from the invariant alone omits the per-pool floor, which is the regression it exists to catch. The structural gap: **§4.4 never stated what `check()` returns**, though `serve.py` spreads that twelve-key dict into the page model and LOTTO-0002 §4.1 consumes it by name — no document carried the shape, so an implementer would have invented the key names. Now fenced in §4.4 beside §4.3's draw record, which is also where the `matched` grammar and the rands-not-cents rule become findable. Also fixed: §4.2 stated the same three facts in two consecutive paragraphs (deduped); §7 claimed every script resolves its inputs relative to the working directory, where `verify_coverage.py` resolves the dump relative to its own file; §10's *"before anything is scored"* was wrong about ordering, since the six paying-set queries are lazy; *unscorable* / *uncheckable* / *not scorable* named one set in three words with nothing saying so; §9 pointed at a loop-log entry a cold reader must not open; and a section index was added after three of four lanes across both loops asked for one. **Filed rather than fixed:** §4.4's pre-handover-division drop is silent — the cardinal rule in its omission form, one step earlier than the money path INV-22 closed — and it is separable with the draw's own division set, so it is LOTTO-0023 rather than a limit. `spec_lint` still reports INV-7–INV-21 as id gaps; that is mechanical noise here, since those ids never lived in this file and a tombstone would assert a move that never happened. |
 | 5 | 2026-08-02 | 2 | 1 | 2 | 3 | 5 | **The gate LOTTO-0022 recorded as owed for INV-22** — the invariant shipped, checked and red-tested on 2026-08-02, but no independent reader had seen the contract describing it. All 11 verified findings fixed, 2 dismissed on evidence, 0 deferred. Both lanes independently found the same CRITICAL and the same HIGH-graded second item. CRITICAL: §6's *"No division matches a win's label"* bullet still said *"`amount()`'s 0.00 return is reachable only for a label that passed the gate but is missing from that draw's payout table"* — the pre-INV-22 behaviour, stated in the section an implementer reads for the unhappy path, so the doc licensed the `.get(..., 0.0)` default INV-22's own *Breaks when* forbids. The amendment had added the invariant and left its contradiction standing five sections away. Second: **INV-5's recorded test was red against correct code** — `grep -nE '"MATCH [0-9]' *.py tools/*.py` returns `2`, not `0`, and one of the two hits is INV-22's own API probe double added the same day, so the obvious repair deletes a guard on the cardinal money rule; the glob is now production-only with the exclusion stated. HIGH: INV-22's *Breaks when* claimed a feed-side `MATCH n` rename as a trigger, which cannot fire — `paying_combinations()` reads its keys from the same feed, so `check()`'s gate drops every line before `amount()` is reached, and §4.4, §6 and §11 all already said so; only the archive branch's labels are ungated. Also fixed: nothing in the doc explained that invariant ids are project-wide, so §5 jumped INV-6 → INV-22 and the next invariant added here would have collided with LOTTO-0009's INV-7; §7 still credited `verify_pools.py` to LOTTO-0009 alone and its red-test roster omitted INV-22's while claiming only INV-3 lacked one; §9's script count had rotted a second time (now carries no count); §2 read as one global cutoff date where the gate is per pool; and `Ticket.boards` holds lines rather than lettered boards, which §2 and §4.4 counted both ways. Dismissed on evidence: a lane asked for a section index (no sibling spec carries one, and `doc_integrity` would then police a TOC across a corpus that has none); both lanes queried §10's undecomposed `(13 + 14)`, which LOTTO-0009 §10's measured table does carry, exactly as §10 says. |
 | 4 | 2026-08-01 | 2 | 0 | 3 | 6 | 8 | **Retrofit pass, after LOTTO-0009 changed the unit of work from the ticket to the entry.** All 17 verified findings fixed, 1 dismissed, 0 deferred. Both lanes independently found the same two HIGH items. First: §4.2 still said an implementer *"cannot derive `winPoolId` or `plusFlag` from anything else"* — false since `tickets.py::entered_pools()` derives both from the price, and the sentence sat directly above its own amendment, so a top-down reader was told the table was authoritative before being told it was not. Second: §4.4's *"(974 of 1233 entries)"* merged the two uncheckable reasons this project exists to keep apart — 963 entries predate their pool's data, and the other 11 are `daily/1`, which nobody publishes. Third HIGH: §11 still credited **nothing** with catching a >6-number PowerBall board when LOTTO-0009 INV-7 now exits non-zero on one, so two live contracts asserted opposite things about the same known defect. Also fixed: §10's 13-request budget was unreachable from what the document stated, because `paying_combinations()`'s memoisation was never mentioned and `check()` calls it once per scorable **entry** — an implementer building to the text would have fired 259 requests at a free public endpoint; §6's failure modes still excluded whole tickets; §6 had no failure mode at all for the shipped unresolved-price path; §9 said "the two verify scripts" where §7 names four; and INV-4's expected tracked-file count was two files stale. Dismissed on evidence: a lane read §11's `KeyError` claim against `backfill.py::payouts()`, which raises `IndexError` — the row is about `parse_page()`'s `MONTHS[...]` lookup, which does raise `KeyError`. |

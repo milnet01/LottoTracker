@@ -258,18 +258,29 @@ def main(argv=()):
     # PowerBall wins read as losses until this case was written.
     #
     # The direction is the whole check and must not be reversed: every FEED
-    # division must be constructible. The converse is false -- api_label()
-    # builds "MATCH 6" for Daily Lotto and "MATCH 0" for a blank line, and no
-    # source publishes a division for either.
+    # division must be constructible. The converse is false -- for Daily Lotto
+    # api_label() builds "MATCH 0" and "MATCH 1" while its published divisions
+    # start at two matches, and "MATCH 0" is unpublished on every game.
+    # ("MATCH 6" is NOT the example to reach for: mains caps daily at five, so
+    # that label is never built for it in the first place.)
     #
     # Live pools only, derived from the tickets rather than listed here, which
     # is also what keeps daily/1 out: no source publishes it, so
     # paying_combinations() would (correctly) raise for it.
-    unreachable = 0
+    unreachable = vacuous = 0
     mains = {"lotto": 6, "powerball": 5, "daily": 5}
     pools = sorted(
         {(t.game, pf, pool) for t in tickets for pf, pool in t.pools if reaches(t, pf)}
     )
+    # Anti-vacuity floor, the same shape INV-3 and INV-6 carry. The pool set is
+    # derived, so a partial archive shrinks what is checked without failing,
+    # and every division in an EMPTY division set is trivially reachable -- so
+    # a feed that returned no divisions at all would report 0 unreachable and
+    # pass. Both are asserted rather than left to the printed count, which §7
+    # of the spec has already demoted to a non-asserted figure.
+    if not pools:
+        print("  NO LIVE POOLS: nothing was checked for division-label reach")
+        vacuous += 1
     for game, plus_flag, pool_id in pools:
         # (False, True) only where match() can report a special hit at all.
         buildable = {
@@ -277,18 +288,33 @@ def main(argv=()):
             for hits in range(mains[game] + 1)
             for special in ((False, True) if game in ("lotto", "powerball") else (False,))
         }
-        for label in check.paying_combinations(game, plus_flag, pool_id):
+        published = check.paying_combinations(game, plus_flag, pool_id)
+        if not published:
+            print(
+                f"  NO DIVISIONS {game}/{plus_flag} pool {pool_id}: the division "
+                f"table is empty, so reach passes over nothing"
+            )
+            vacuous += 1
+        for label in published:
             if label not in buildable:
                 print(
                     f"  UNREACHABLE {game}/{plus_flag} pool {pool_id}: the feed pays "
                     f"{label!r}, which no label this project builds can equal"
                 )
                 unreachable += 1
-    print(f"division-label reach: {len(pools)} live pools, {unreachable} unreachable divisions")
+    print(
+        f"division-label reach: {len(pools)} live pools, {unreachable} unreachable "
+        f"divisions, {vacuous} vacuous"
+    )
 
     return (
         0
-        if bad == 0 and not wrong and not double and not unpriceable and not unreachable
+        if bad == 0
+        and not wrong
+        and not double
+        and not unpriceable
+        and not unreachable
+        and not vacuous
         else 1
     )
 
