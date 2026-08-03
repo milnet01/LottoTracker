@@ -235,13 +235,31 @@ base pool's divisions, and one lookup applied to all of them drops wins whose
 division exists only in the pool they were won in.
 
 Both lookups join on an exact string this project constructs, so the grammar
-is part of the contract:
+is part of the contract — and the two sources do not share one grammar:
 
 | | API (`matches`, uppercased and stripped) | archive payout table (column 2) |
 |---|---|---|
 | plain | `MATCH 3` | `3` |
 | Lotto + bonus | `MATCH 3 + BONUS` | `3 + Bonus` |
-| PowerBall + PB | `MATCH 3 + PB` | `3 + PowerBall` |
+| PowerBall + PB | `MATCH 3 + POWERBALL` | `3 + PowerBall` |
+| PowerBall, no mains | `MATCH POWERBALL` | `0 + PowerBall` |
+
+**Transcribed from the live feed on 2026-08-03, not inferred**, after this
+table's previous API column was found wrong on both PowerBall rows: the feed
+spells the PowerBall out where this document recorded an abbreviation, and its
+PowerBall-only division carries no digit and no `+` at all, where the
+archive's is `0 + PowerBall`. `check.py::api_label()` built both wrong forms,
+so the gate below dropped **53 PowerBall wins as losses** — the cardinal rule
+broken by shipped code, and the failure LOTTO-0026 was filed against arriving
+before its guard did (LOTTO-0027, 2026-08-03).
+
+The rule that catches it is **directional**: every division the source
+publishes must be *reachable* by a label this project can build. The converse
+is false and must not be asserted — `api_label()` builds `MATCH 6` for Daily
+Lotto and `MATCH 0` for a line that hit nothing, and no source publishes a
+division for either. `tools/verify_pools.py` checks the reachable direction
+over every pool the dump reaches; making `paying_combinations()` raise on an
+unreachable division at run time is LOTTO-0026.
 
 **Whether a line paid at all is gated by the *current* division set, in both
 eras** — `check.py::check()` tests the match label against
@@ -457,8 +475,9 @@ if the repository itself moves, never if the caller's cwd does.
 
 `tools/verify_sources.py`, `tools/verify_coverage.py` and
 `tools/verify_privacy.py` are this spec's executable checks, joined by
-`tools/verify_pools.py`, which carries this spec's INV-22 as well as
-LOTTO-0009's invariants; INV-1, INV-2 and INV-5 are the one-line commands
+`tools/verify_pools.py`, which carries this spec's INV-22 and §4.4's
+division-label reach case as well as LOTTO-0009's invariants; INV-1, INV-2
+and INV-5 are the one-line commands
 recorded in
 §5. There is no test framework in this project and adding one is out of scope
 (§9) — these run under plain `python3`.
@@ -469,7 +488,10 @@ pre-Multiplay scorer; INV-6's script against the parser that dropped
 a `scorable()` regressed to `bool(rows)`; INV-4's script against a real board
 line pasted into `README.md`; INV-3's per-pool floor against an un-exempted
 empty pool; INV-22's probes against the archive branch reverted to
-`return 0.0` (2 mispriced, exit 1). Three assertions still have no red test:
+`return 0.0` (2 mispriced, exit 1); §4.4's division-label reach case against
+the `+ PB` labels that preceded LOTTO-0027, which is the state that shipped
+rather than a contrived one (12 unreachable divisions across the two
+PowerBall pools, exit 1). Three assertions still have no red test:
 INV-1, INV-5, and INV-3's agreement half — the sources have agreed on every
 run.
 
@@ -544,7 +566,7 @@ carries the breakdown and the before/after.
 | §4.3 special-ball-is-last | `tools/verify_sources.py` — catches a change on either source alone; blind only if both change the same way together |
 | §4.4 expiry / `CLAIM_DAYS` | **nothing** — no test covers the 365-day boundary, and nothing tracks the gap |
 | §4.4 current-era pay gate | **nothing** — a pre-handover-only division is dropped silently |
-| §4.4 label grammar | **nothing** — a feed-side rename of `MATCH n` drops every win with no error |
+| §4.4 label grammar | `tools/verify_pools.py` — every division the live feed publishes must be reachable by a label `api_label()` builds. It is a *check*, not a runtime guard: between runs `check()` still drops an unreachable division silently, which is LOTTO-0026. It also sees only the pools the dump reaches, so a pool nobody holds a ticket in is unchecked |
 | INV-22 unpriceable win raises | `tools/verify_pools.py` — four blind-lookup probes (empty and unrecognised division tables, both branches), plus the converse that a source-stated R0.00 still prices as 0.0 |
 | archive payout scrape | `tools/verify_pools.py` (INV-22) — an unscrapable payout page now raises instead of pricing an archive win at R0.00. What remains unchecked is narrower: a page that parses into a **wrong** table, which is well-formed and not detectably wrong from inside |
 | `backfill.py` date parsing | **nothing** — an abbreviated month in a href raises `KeyError`, not an empty result |

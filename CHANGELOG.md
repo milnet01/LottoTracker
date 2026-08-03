@@ -149,6 +149,34 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Every PowerBall win needing the PowerBall itself was scored as a loss.** (LOTTO-0027)
+  `check.py::api_label()` built `MATCH 5 + PB`, and `MATCH 0 + PB` for a
+  line matching only the PowerBall. The API publishes `MATCH 5 +
+  POWERBALL`, and names the PowerBall-only division `MATCH POWERBALL` —
+  no digit and no `+`. `check()`'s pay gate is `if api_label(...) not in
+  pays: continue`, so those lines continued past as losses with no error
+  anywhere and nothing on the page to tell them from a real miss: the
+  project's cardinal rule broken by shipped code on the money path, one
+  function earlier than the LOTTO-0007(a) hole it resembles. Found while
+  reading the grammar off the live feed to write LOTTO-0026's spec
+  amendment, rather than trusting the table LOTTO-0001 §4.4 already
+  carried — which was itself wrong on both PowerBall rows and is now
+  transcribed from the feed. On the current dump: **86 → 139 wins**,
+  lifetime R2,650.60 → R3,213.30, claimable 62 lines / R2,417.90 → 92
+  lines / R2,730.40. Nothing was repriced; 53 wins that were always
+  there are now reported, and the archive branch needed no change
+  because `site_label()` already built the payout table's own `0 +
+  PowerBall` grammar. `tools/verify_pools.py` gained the case that
+  catches it: every division the live feed publishes must be reachable
+  by a label `api_label()` can build — directional on purpose, since the
+  converse is false (`MATCH 6` for Daily Lotto, `MATCH 0` for a line
+  that hit nothing). Red-tested against the shipped labels first: 12
+  unreachable divisions across the two PowerBall pools, exit 1. This is
+  the failure LOTTO-0026 was filed against, arriving before its guard
+  did; that item keeps the runtime half, with its rule changed from
+  grammar conformance to reachability — conformance would have sat quiet
+  through this one, because only the PowerBall-qualified labels moved.
+
 - **The lint rule set is stated in `ruff.toml` instead of inherited from whichever ruff is installed.** (LOTTO-0025)
   Found by the new CI on its first run, which is the whole point of it.
   `ruff` was unpinned, so the runner resolved 0.16.1 against 0.15.11

@@ -638,15 +638,32 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   there is nothing to price because nothing was recognised as a win.
   LOTTO-0001 §11 already carries the row (`§4.4 label grammar | **nothing**`).
 
+  **Revised 2026-08-03: the failure arrived before the guard did.** Reading
+  the grammar off the live feed to write step 1 found the API had already
+  moved — or had never been read correctly — and 53 PowerBall wins were being
+  scored as losses. LOTTO-0027 fixed the labels and shipped the check; this
+  item still owns the **runtime** half, because a check that runs when someone
+  runs it does not stop the next rename from being silent in between. Two
+  things changed here as a result:
+  the rule is now **reachability, not conformance** — the approved
+  "raise when *no* label conforms to `MATCH n`" would have sat quiet through
+  LOTTO-0027, since the plain labels conformed and only the PowerBall-qualified
+  ones moved (user decision, 2026-08-03); and step 1's §11 row 547 is already
+  written, so what remains for the spec is INV-26 itself and its §6 failure
+  mode.
+
   Agreed approach, in this order:
   1. Amend `docs/specs/LOTTO-0001-lottery-ticket-tracker.md` — a new
      invariant for the grammar check, its §6 failure mode, and the §11 rows
      (542 for INV-5, 547 for the label grammar). Gate with `/cold-eyes`
      before implementing, per the cold-eyes-then-implement ordering.
   2. Implement the guard in `paying_combinations()`, mirroring its existing
-     raise: a division table that parses but yields **no** label conforming
-     to the grammar means the grammar moved — raise rather than return a
-     dict guaranteed to match nothing. Red-test first.
+     raise: a division table carrying a division **no label this project can
+     build will ever equal** means the grammar moved — raise rather than
+     return a dict with a hole in it. Reuse `tools/verify_pools.py`'s reach
+     rule rather than writing a second one, and mind its direction (LOTTO-0001
+     §4.4). Red-test first; LOTTO-0027's `+ PB` labels are a real red state to
+     test against rather than a contrived one.
   3. Widen INV-5's grep so it can see the f-string grammar in
      `api_label()`/`site_label()`, closing LOTTO-0007(c). Mind the glob:
      §5 restricts it to production modules because `tools/` holds two
@@ -655,6 +672,51 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Do not "fix" this by returning `{}` or a default** — that is the exact
   failure the guard exists to prevent, and `paying_combinations()`'s
   docstring already says so for the no-draw case.
+
+- ✅ **LOTTO-0027** The API's PowerBall division labels never matched, so 53 wins read as losses.
+  Kind: fix. Source: in-session-2026-08-03, found while writing LOTTO-0026's
+  spec amendment — the grammar was read off the live feed rather than out of
+  the document, and the document was wrong.
+  Layman: every PowerBall prize that needed the PowerBall number itself was
+  reported as "did not win". The tool was asking for a prize category spelled
+  a way the lottery does not spell it.
+  `check.py::api_label()` built `MATCH 5 + PB`, and `MATCH 0 + PB` for a line
+  matching only the PowerBall. The feed publishes `MATCH 5 + POWERBALL`, and
+  names the PowerBall-only division `MATCH POWERBALL` — no digit, no `+`.
+  `check()`'s pay gate is `if api_label(...) not in pays: continue`, so every
+  such line continued past as a loss, with no error anywhere and no figure on
+  the page distinguishing it from a real miss.
+  **This is LOTTO-0026's failure, already arrived** — and the guard approved
+  for that item would not have caught it: the plain `MATCH n` labels still
+  conformed to the grammar, and only the PowerBall-qualified ones had moved.
+  That is why LOTTO-0026's rule became *reachability* rather than conformance,
+  decided with the user 2026-08-03.
+  Measured on the current dump: **86 → 139 wins**, lifetime R2,650.60 →
+  R3,213.30, claimable 62 lines / R2,417.90 → 92 lines / R2,730.40. Nothing
+  was repriced — 53 wins that were there all along are now reported. The
+  archive branch needed no change: `site_label()` already built the payout
+  table's own `0 + PowerBall` grammar, so these lines priced correctly the
+  moment the gate stopped dropping them.
+  Red-tested first, per the project's rule that a case is observed failing
+  before it is trusted: the new division-label reach case in
+  `tools/verify_pools.py` reported 12 unreachable divisions across the two
+  PowerBall pools and exited 1 against the shipped labels, 0 after the fix.
+  Its direction is load-bearing and stated at the site — every *feed* division
+  must be buildable, never the converse, since `api_label()` legitimately
+  builds `MATCH 6` for Daily Lotto and `MATCH 0` for a line that hit nothing.
+  Noted, not chased: the pre-fix lifetime measured R2,650.60 today against the
+  R2,651.60 recorded on 2026-08-02, one win R1.00 apart. `results.py` holds
+  divisions in memory only, so API prize amounts are re-read every run and are
+  not frozen the way the archive cache is; an operator-side revision fits, and
+  it predates this change either way.
+  LOTTO-0001 §4.4's grammar table had the wrong API column and is corrected
+  from the live feed; §7 and §11 follow.
+  Left alone deliberately: `docs/specs/LOTTO-0002-local-web-page.md` §7's
+  worked example and its figure table are a dated snapshot of one run
+  (R2,651.60 lifetime, 86 wins) and now understate by these 53 wins. They
+  illustrate what the page displays rather than stating a contract, so they
+  are refreshed the next time that document is gated rather than edited here
+  — an edit would owe it a cold-eyes loop of its own for no design benefit.
 
 - 📋 **LOTTO-0006** Backfill results earlier than 2025-01-01.
   Kind: enhancement. Source: in-session-2026-08-01; re-valued 2026-08-02.

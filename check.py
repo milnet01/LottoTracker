@@ -56,8 +56,21 @@ def match(ticket, board, draw):
 
 
 def api_label(game, hits, special):
-    tag = " + BONUS" if game == "lotto" else " + PB"
-    return f"MATCH {hits}" + (tag if special else "")
+    """The API's own division label for this match, in the API's grammar.
+
+    check() gates on this string, so a label the feed never publishes drops
+    every win in that division with no error (LOTTO-0027). Two of the three
+    forms below were wrong until 2026-08-03: the feed spells the PowerBall out
+    in full where this built an abbreviation, and it names the PowerBall-only
+    division with no digit and no plus sign at all, where this built both. 53
+    wins read as losses. tools/verify_pools.py asserts that every division the
+    feed publishes is reachable from here, which is what caught it.
+    """
+    if not special:
+        return f"MATCH {hits}"
+    if game == "lotto":
+        return f"MATCH {hits} + BONUS"
+    return "MATCH POWERBALL" if hits == 0 else f"MATCH {hits} + POWERBALL"
 
 
 def site_label(game, hits, special):

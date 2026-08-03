@@ -248,7 +248,49 @@ def main(argv=()):
         check.payouts, check.divisions = real_payouts, real_divisions
 
     print(f"unpriceable-win guard: {len(probes)} blind-lookup probes, {unpriceable} mispriced")
-    return 0 if bad == 0 and not wrong and not double and not unpriceable else 1
+
+    # LOTTO-0027: every division the feed publishes must be REACHABLE by a
+    # label check.py can build. check()'s pay gate is a string join --
+    # `if api_label(...) not in pays: continue` -- so a division this project
+    # can never name is one whose wins are all scored as losses, silently.
+    # Not hypothetical: the feed pays "MATCH 5 + PowerBall" and "MATCH
+    # PowerBall", api_label() built "MATCH 5 + PB" and "MATCH 0 + PB", and 53
+    # PowerBall wins read as losses until this case was written.
+    #
+    # The direction is the whole check and must not be reversed: every FEED
+    # division must be constructible. The converse is false -- api_label()
+    # builds "MATCH 6" for Daily Lotto and "MATCH 0" for a blank line, and no
+    # source publishes a division for either.
+    #
+    # Live pools only, derived from the tickets rather than listed here, which
+    # is also what keeps daily/1 out: no source publishes it, so
+    # paying_combinations() would (correctly) raise for it.
+    unreachable = 0
+    mains = {"lotto": 6, "powerball": 5, "daily": 5}
+    pools = sorted(
+        {(t.game, pf, pool) for t in tickets for pf, pool in t.pools if reaches(t, pf)}
+    )
+    for game, plus_flag, pool_id in pools:
+        # (False, True) only where match() can report a special hit at all.
+        buildable = {
+            check.api_label(game, hits, special)
+            for hits in range(mains[game] + 1)
+            for special in ((False, True) if game in ("lotto", "powerball") else (False,))
+        }
+        for label in check.paying_combinations(game, plus_flag, pool_id):
+            if label not in buildable:
+                print(
+                    f"  UNREACHABLE {game}/{plus_flag} pool {pool_id}: the feed pays "
+                    f"{label!r}, which no label this project builds can equal"
+                )
+                unreachable += 1
+    print(f"division-label reach: {len(pools)} live pools, {unreachable} unreachable divisions")
+
+    return (
+        0
+        if bad == 0 and not wrong and not double and not unpriceable and not unreachable
+        else 1
+    )
 
 
 if __name__ == "__main__":
