@@ -445,6 +445,16 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   and got 4322 has been told nothing (LOTTO-0002 INV-24, §6).
 
   `supervise.py` resolves the same two variables in the same order (one
+  Cold-eyes (2026-08-03): three loops on each of LOTTO-0002 and
+  LOTTO-0013, converged at the 3-loop cap. 56 verified findings fixed
+  across both, 1 dismissed on evidence, 1 deferred. CRITICAL 1 -> 1 -> 0
+  and HIGH 4 -> 3 -> 2 on LOTTO-0002; the same shape on LOTTO-0013. Loop 2
+  found the two halves failing to compose — a managed tray ignored $PORT —
+  which the user resolved by having the tray share the server's
+  precedence. Deferred tail: tray.py's module docstring says "Four details
+  are copied from the user's existing stats tray" where LOTTO-0013 §4.3
+  lists six and §11 says "four of the six"; pre-existing, code-side, one
+  word, and not this run's to edit under a docs gate.
 knob whichever way the page is started) and diverges only on a BAD
 value, where it falls back to 4322 with a notification rather than
 exiting — a tray that exits just vanishes, and that is safe because a

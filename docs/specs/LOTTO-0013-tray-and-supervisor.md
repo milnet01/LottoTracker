@@ -143,7 +143,9 @@ the graph is still acyclic**: `serve.py` imports the settings paths and reader
 named below **and the port bounds `MIN_PORT`/`MAX_PORT` (§4.5)**, and
 `supervise.py` imports nothing of LOTTO-0002's. One pair of numbers, two
 policies about a bad value — `serve.py` exits, a `Supervisor` falls back — and
-the policies differ deliberately while the bounds must not. That edge is
+the policies differ deliberately while the bounds must not. **`DEFAULT_PORT` is
+deliberately *not* shared**, and LOTTO-0002 §4.1 owns that exception and its
+reason: the two are not one fact, and if they ever diverge nothing breaks. That edge is
 load-bearing rather than incidental — it is what makes "one reader" true instead
 of aspirational, and an implementer who reads this section as forbidding it
 writes the duplicate reader that §11 records as caught by nothing. What `supervise.py` must
@@ -189,7 +191,8 @@ class Supervisor:
     """Owns the token, the port and the child process. No Qt anywhere."""
 
     def __init__(self, port=None)   # port, else $PORT, else $LOTTO_PORT, else
-                                    # 4322 — and a bad one falls back (§4.5)
+                                    # 4322. A bad value at any level falls back
+                                    # to 4322 — never to the next source (§4.5)
     port: int                       # the resolved port (§4.5); also what start()
                                     # puts in the child's LOTTO_PORT *and* PORT
     url: str                        # "http://127.0.0.1:<port>" — what the tray opens
@@ -532,11 +535,13 @@ not why it matters.)
 `supervise.py` resolves the port once — `$PORT`, then `$LOTTO_PORT`, then 4322 —
 passes it to the child as **both** port variables alongside `LOTTO_TOKEN`, and
 exposes `url` for the tray to open.
-`serve.py` uses that same value both to bind and to build LOTTO-0014 §4.2's
-`Host` allowlist. **A tray and a server disagreeing about the port fail as a 421
-on every request** — the allowlist rejecting the very URL the tray just opened —
-which is a confusing failure to debug and a trivial one to prevent by reading
-the value once.
+What `serve.py` then does with it — one resolved value for both the bind and
+LOTTO-0014 §4.2's `Host` allowlist — is LOTTO-0002 §4.1's rule since LOTTO-0024,
+and is not restated here. What matters on this side is the consequence:
+**a tray and a server disagreeing about the port fail as a 421 on every
+request**, the allowlist rejecting the very URL the tray just opened — a
+confusing failure to debug and a trivial one to prevent by reading the value
+once.
 
 **§4.2 puts both variables in the child's environment, both set to the port this
 `Supervisor` already chose.** Not because the two might disagree about which
@@ -565,18 +570,27 @@ tidy-up pass looking only at the code sees two implementations of one rule:
   says so, which is the same rule §4.3 applies to a corrupt `settings.json`.
 
 **The fallback is safe here specifically because it cannot deceive a manager,
-and that is the reason rather than a general licence.** A manager range-checks a
-port before it sets one, and it launches `serve.py` directly — its detection
-prefers a root-level `serve.py` — so the unusable case is unreachable on the
-managed path. The path where it *is* reachable is the one with a human in front
-of it. Remove either half of that and the fallback stops being defensible.
+and that is the reason rather than a general licence.** Two things make it true,
+and removing either one costs the argument:
 
-**"Says so" means a notification, not a print.** The message is recorded on
-`port_fallback` and `tray.py` raises it through `showMessage()` after the icon
-is shown (§4.3); an autostarted tray has no terminal for a print to land in, and
-a fallback nobody sees is exactly the silent substitution the whole rule exists
-to prevent. A managed run has no icon, so it prints — there the reader is the
-manager's log (§4.7).
+- **A manager range-checks a port before it sets one**, so a value this resolver
+  would reject is one the manager would not have sent.
+- **This project's manager launches `serve.py`, not `tray.py`** — its detection
+  prefers a root-level `serve.py` — so the managed route runs the *fatal*
+  resolver, and a manager asking for a port it cannot have is told so.
+
+That leaves `tray.py`'s two routes, and both have a reader. A hand-started tray
+notifies a human. A `LWSM_MANAGED=1` run (§4.7) — which is reachable, whatever
+this project's manager happens to do — has no icon, so it **prints**, and the
+reader is the manager's log. What is not permitted anywhere is falling back
+without saying so.
+
+**"Says so" means a notification wherever there is an icon.** The message is
+recorded on `port_fallback`, and `tray.py` raises it through `showMessage()`
+after the icon is shown (§4.3) — never a print on that path, because an
+autostarted tray has no terminal for one to land in, and a fallback nobody sees
+is exactly the silent substitution the whole rule exists to prevent. The managed
+run prints instead, as above, because it has no icon and does have a log.
 
 The message names whichever source was bad — `PORT`, `LOTTO_PORT`, or `port`
 for a constructor argument — because a notification that cannot say what was
@@ -1037,9 +1051,9 @@ unqualified, so the numbers do not move on a split.
   reaches no path that stops the server; with any other value, or none, it takes
   the tray path unchanged.
   *Test:* `tools/verify_page.py`, case `tray_headless_when_managed` — a probe in
-  a **fresh interpreter**, for two reasons rather than one: importing `tray.py`
-  imports PySide6, and this suite's other twelve cases run in a process that
-  INV-19 requires to stay Qt-free. The probe replaces `supervise.Supervisor`
+  a **fresh interpreter** — §7 owns the reason, and it is not INV-19's: the
+  probe patches module globals that the cases running after it need unpatched.
+  The probe replaces `supervise.Supervisor`
   with a recording double and `tray.QApplication` with something that **raises**,
   then calls `tray.main()` and reports what happened. Reaching Qt is therefore
   the failure, not an assertion about it — there is no display to construct one
@@ -1206,8 +1220,9 @@ apply to this document's four cases specifically:
   in the suite that requires PySide6 to be installed at all — the other twelve
   run on the standard library, and this one is what the tray-only requirement in
   README.md and CLAUDE.md costs the test suite. It spawns no server: the
-  `Supervisor` is a double, so the case costs one interpreter start per run and
-  makes no socket.
+  `Supervisor` is a double, so the case makes no socket, and its cost is **seven
+  interpreter starts** — one per `LWSM_MANAGED` value it asserts — each paying
+  the PySide6 import.
 - **`serve_is_headless` must run in a fresh interpreter**, not in the one
   running the suite. By the time the other twelve cases have run, the suite's own
   process has imported whatever they needed — including `supervise`, which
@@ -1479,6 +1494,7 @@ INV-25:**
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 11 | 2026-08-03 | 1 | 0 | 1 | 3 | 3 | **Third and final gate loop on the LOTTO-0024 amendment — converged at the 3-loop cap, not clean.** All 7 verified findings fixed; 1 dismissed on evidence, 1 still deferred (the code-side docstring count, unchanged since loop 9). **No CRITICAL, and the trend is the one the loop watches: 1 → 1 → 0 CRITICAL, 4 → 3 → 1 HIGH.** Origin split: roughly 5 draft defects against 2 fix collateral, so neither stop trigger fired. **The HIGH was loop 10's own argument overreaching by one sentence.** §4.5 justified the fatal/fallback divergence partly on the unusable case being "unreachable on the managed path" — true of *this* project's manager, which launches `serve.py`, and false of `LWSM_MANAGED=1 python3 tray.py`, which the same amendment introduced nine lines further down and which §4.5's own next paragraph describes. The claim is now split into the two things that actually carry it (a manager range-checks before it sets; this project's manager launches `serve.py`) with the managed-tray route named as reachable and its stdout line as the reader. The defensibility argument for the whole port design hung on that sentence, which is why a single unqualified word rated HIGH. **Both MEDIUMs were duplication rather than error:** §5 gave INV-25's fresh interpreter a reason contradicting §7's — and §7's is the true one, since the probe patches globals later cases need unpatched — and §10 counted the case's cost as one interpreter start where it makes seven, one per `LWSM_MANAGED` value. §5 now points at §7 rather than restating; §10 counts. Also fixed: §4.1's surface comment read as though a bad value fell back to the *next source* rather than to 4322; §4.1's import enumeration said nothing about `DEFAULT_PORT` being deliberately not shared while the sentence beside it argues against exactly that shape (LOTTO-0002 §4.1 now owns the exception, and this file points at it); and §4.5 restated the resolved-port-builds-the-allowlist rule that LOTTO-0002 §4.1 had taken ownership of one loop earlier — reduced to a pointer, which is the dedup the run's own "delete N−1" rule asks for. Dismissed on evidence: a finding that CLAUDE.md still reads "sixteen breaks" and `INV-12..INV-21` — it reads twenty-two and `INV-12..INV-21 and INV-23..INV-25`, verified by grep; the lane inferred it from §12's impact list rather than checking. **Stopping here is the cap, and the tail is one deferred item, filed.** Doc grew 1,494 -> 1,510 lines (measured, `wc -l`). |
 | 10 | 2026-08-03 | 2 | 1 | 3 | 8 | 6 | Second gate loop on the LOTTO-0024 amendment. All 18 verified findings fixed; 0 unverified, 1 still deferred (the same code-side docstring count). Origin split: roughly 12 draft defects against 6 fix collateral — the healthy direction. **The CRITICAL was the two halves of the amendment failing to compose, and only a cold read of the whole document could see it.** Each half was individually correct: `serve.py` honours `$PORT`, and `LWSM_MANAGED=1` runs the tray without an icon. But the managed run goes through `Supervisor`, which read `LOTTO_PORT` only — so `PORT=8080 LWSM_MANAGED=1 python3 tray.py`, the one launch shape built *for* a process manager, silently served 4322. That is verbatim the outcome §3 declares intolerable, arriving through the feature written to prevent it. **Taken to the user as a decision rather than fixed unilaterally**, since the alternatives (document that managers must learn `LOTTO_PORT`; make the tray fatal too) trade different things away. Resolved: the tray adopts the same precedence, and diverges only on a *bad* value. Three refinements came back with that decision and are now contract: the divergence is stated **at both call sites in the code**, because a later tidy-up pass sees two implementations of one rule and unifies the wrong way; the fallback message must be a **notification, not a print**, since an autostarted tray has no terminal and a fallback nobody sees is the silent substitution the rule exists to forbid; and the reason it is safe is that a manager range-checks before it sets *and* launches `serve.py` directly, so the unusable case is unreachable under management — stated, so the reasoning survives the next reader. **Two HIGHs were this session's own collateral from loop 1.** §4.7 said detaching the child was "forbidden nowhere else in this document" three sections after loop 1 made it a rule in §4.2 — one rule stated twice, and the copies already disagreed. And §4.7's "no desktop session, therefore no browser" was a false premise: §11's own hand-verification ran a managed tray inside a live session. Re-based on "the manager decides when this runs, so there is no user request to open a page against". **The authority/presentation boundary needed narrowing rather than defending:** never calling `stop()` *is* a lifecycle decision hung off the variable, which the loop-1 wording forbade outright and `tray.py::managed()`'s docstring forbade in stronger terms still. Now stated as **authorisation**, with process lifetime named as the one non-presentation consequence and safe because it **removes** a capability rather than granting one — and the docstring says the same. Also fixed: §6's tray-availability check was unscoped, so read literally every managed run exits non-zero before starting anything (INV-25 broken by its own failure mode); §7 gave `tray_headless_when_managed`'s fresh interpreter `serve_is_headless`'s reason rather than its own (it patches globals the later cases need unpatched); §10 excluded the managed run from the readiness-poll ceiling it does incur and from the PySide6 import it does pay; the `Supervisor` surface and `port_fallback` comments still named one variable; the ten-second quit freeze was stated twice in one paragraph; and §7's "three are stated at length because the obvious edit does not go red" was false of `notify_on_202`, which does. Doc grew 1,440 -> 1,494 lines (measured, `wc -l`). |
 | 9 | 2026-08-03 | 2 | 1 | 4 | 6 | 5 | Gate for the LOTTO-0024 amendment (§4.7, INV-25, and §4.2/§4.5's port pinning), run **after** implementation rather than before it — the user asked for the code first and the amendment records what was built. All 16 verified findings fixed; 0 unverified, 1 deferred as out-of-scope code. **The CRITICAL was the new section's own absolute claim eating the rule it was written to protect.** §4.7 said `LWSM_MANAGED` touches no "decision about what gets started or stopped" — three lines above the section's sharpest rule, which is a decision about what gets stopped, and three lines below one about what gets started. An implementer reconciling that can go either way: add the `stop()` INV-25 forbids, or refuse to start the server at all because no start decision may hang off the variable. Rewritten as a claim about **authority** — no permission, no token, no bind, no allowlist entry is conditioned on it — with the consequences of *no icon* (no menu, therefore no Quit; no session, therefore no browser) stated as following from the icon rather than from the flag. **The sharpest HIGH was an unstated precondition on the one path that may never call `stop()`.** §4.7 asserted that termination "comes from the manager, through the process group" as though it were an observation; nothing required it. `start_new_session=True` on §4.2's `Popen` is a routine idiom for a server child, forbidden nowhere, and it would silently delete the managed run's only termination path — the child surviving every manager signal, holding the port, which is the INV-20 orphan arriving where §11 records that nothing checks. Now a rule in §4.2, a requirement on the deployment in §4.7, two §6 bullets and two §11 rows. **Both lanes independently found the surface block stale in the same place**: §4.1's `port: int` comment still said `start()` puts the port in the child's `LOTTO_PORT`, after the amendment had made it pin `PORT` too — the canonical statement of the spawn contract describing the pre-amendment behaviour that causes the 421 the amendment exists to prevent. **One finding was the test being unbuildable from the document:** INV-25's probe patches `supervise.Supervisor` and `tray.QApplication`, which works only because `tray.py` imports the first as a module and the second by name; neither was stated anywhere, and a `from supervise import Supervisor` leaves the double inert while the case still passes. Also fixed: §4.5 still called a traceback the right answer for the standalone path that LOTTO-0002 §6 had just stopped producing (a cross-doc conflict this amendment created); §4.1's import-edge enumeration omitted the `MIN_PORT`/`MAX_PORT` the same amendment added, which is how a second copy of the bounds gets written into `serve.py`; §11's loud/silent split still read "nine of the thirteen" against a table now at twenty-three rows and sixteen `nothing`; §7 had no break bullets for INV-25's two though every other break has one; §4.5's autostart advice did not say which of two variables to set; §4.7 never named `run_headless(sup=None)`, its exit-status propagation, its line-flushed logging, or that a managed run still needs PySide6 installed; §6 had no managed-run failure mode at all; §3 had no scope-decision entry; and §1/§4.1 still called `tray.py` "the menu and the icon and nothing else" beside a new section describing a path with neither. Deferred: `tray.py`'s docstring says "Four details are copied from the user's existing stats tray" where §4.3 lists six — pre-existing, code-side, and not this run's to edit under a docs gate. Doc grew 1,307 -> 1,440 lines (measured, `wc -l`). |
 | 6 | 2026-08-02 | 2 | 0 | 4 | 6 | 9 | Gate for the `5-amend` LOTTO-0018 amendment. All 19 verified findings fixed; 0 unverified, 0 deferred. **No CRITICAL.** Origin split: roughly 12 draft defects against 7 fix collateral — the healthy direction, and both lanes led on the same three HIGHs. **The sharpest was §4.3's new rule eating the failure path it was written to protect.** "It composes no message of its own and reads no HTTP status" is true of the four outcomes and false of everything that raises — a 403, a 500, a dead child — and an implementer obeying it literally deletes the `Refresh failed: <msg>` composition, leaving the raise path silent. The cardinal failure arriving through the fix for the cardinal failure, which is why both lanes ranked it top three. **The second was doc-versus-code and predates the amendment:** §4.1 has put the Stop *menu item*'s `stop()` through `run_async()` since loop 3, while `tray.py::toggle()` calls it inline and says so in a comment; the paragraph now states that **every** `stop()` is synchronous and gives the Stop item's own reason — `sync()` and the *Server stopped.* notification describe a reap that must already have happened. **Two contract gaps in the new material, both of which would have stopped an implementer.** INV-23's case needs a `Supervisor` pointed at a server it did not spawn, and §4.1's surface mints the token only inside `start()`, so the case as written was unbuildable — `token` is now stated to be a plain attribute a driver may assign, chosen over widening the constructor for one caller. And `refresh(timeout=300.0)` sat beside "the budget is `post()`'s existing 300 s" without saying whether that is one deadline or two: read as two, the worst case is ten minutes with the busy flag held, which is the wedge the bounded wait exists to prevent. It is now explicitly one deadline, with the POST issued on the smaller of 30 s and the remainder. **One finding was the case being unrunnable as specified:** `make_server()` binds its builder at construction, so a single `serve_on()` server cannot both block and raise — the case now stands up two. Also fixed: §5's INV-23 headline said a refresh "is reported only after the build has finished" while three of its four outcomes are reports issued mid-build, which read literally makes `REFRESH_BUSY` wait; §6 promised a notification on the state poll that no section specifies and `tray.py::sync()` does not raise; §11 had no row for §4.6's dying-child branch, which INV-23's childless case provably cannot reach (eighteen rows, thirteen `nothing`); §4.1's "at most 100 requests … the only requests this half makes" was left closed against §10's new 150-per-refresh poll; §7's "the last three" pointed at three bullets the amendment had displaced; the wording assertion did not say it is case-folded, so *Refreshed…* would pass it; and the header now says outright that §4.6 and INV-23 are **specified and not yet implemented**, a lane having had to ask whether there was work to do. Doc grew 1,043 -> 1,107 lines. |

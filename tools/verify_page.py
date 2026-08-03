@@ -1131,7 +1131,7 @@ def port_from_environment():
                 # the bounds, so `"0" in msg` is satisfied by the 0 in "1024"
                 # and asserts nothing for the value most likely to be mishandled.
                 # Either spelling of the value - the non-numeric path reprs it,
-                # which is what makes `PORT=' 5999 '` readable.
+                # which is what makes `PORT='59 99'` readable.
                 joined = (f"{name}={value}", f"{name}={value!r}")
                 need(
                     any(j in str(exc) for j in joined),

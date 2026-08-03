@@ -309,8 +309,9 @@ reads, which the third defines:
   and is stated at both call sites in the code as well as here — this side is
   machine-facing, where a manager must never be handed a port other than the one
   it asked for; the tray's is human-facing, where exiting means an icon that
-  never appears and no terminal to say why. LOTTO-0013 §4.5 owns the other half,
-  including why the tray's fallback cannot mislead a manager.
+  never appears and, on an autostarted run, no terminal to say why. LOTTO-0013
+  §4.5 owns the other half — where the fallback's message lands on each of the
+  tray's routes, and why it cannot mislead a manager.
   **`DEFAULT_PORT = 4322` is defined in both files and is not imported**, unlike
   the bounds. That is a deliberate exception to the rule one line up, and the
   reason is that it is not one fact: `serve.py`'s is the port this server binds
@@ -391,8 +392,10 @@ figure this spec can hold anyone to. The counts are what the design rests on:
   result in 0.03 s, because the project holds three module-level dicts that are
   never invalidated. A Refresh button wired straight to `check()` would redraw
   the same numbers, report success, and never fetch anything — the failure is
-  invisible from the page, which is why INV-17 counts requests rather than
-  checking that the button works.
+  invisible from the page, which is why INV-17 asserts the memos are empty at
+  the moment the builder is called rather than checking that the button works.
+  (Counting requests would be the obvious test and cannot work here — §5's
+  INV-17 says why.)
 
 All three, enumerated by command rather than by reading. The pattern was widened
 before being trusted, so an annotated or `dict()`-built memo could not hide from
@@ -934,8 +937,9 @@ them unqualified.
   **non-empty** value that cannot be a port ends the process non-zero with a
   message naming **the variable and the value**, and never falls back to another
   port. Unset and empty are not values and fall through (§4.1).
-  *Test:* `tools/verify_page.py`, case `port_from_environment` — two halves,
-  because the invariant makes two different kinds of claim. `resolve_port()` is
+  *Test:* `tools/verify_page.py`, case `port_from_environment` — three parts, in
+  this order, because the invariant makes three different kinds of claim.
+  **First, the resolution.** `resolve_port()` is
   called with **explicit environment dicts** for the resolution half: neither
   variable, both empty, each alone, both together (`$PORT` wins), an empty
   `$PORT` beside a set `$LOTTO_PORT`, and — the case that pins the
@@ -948,7 +952,8 @@ them unqualified.
   `4322.0` on `$PORT`, and `abc` and `80` on `$LOTTO_PORT` — each of which must
   raise `SystemExit` whose message contains **`<NAME>=<value>` joined** — the
   value quoted or bare, since the non-numeric path `repr()`s it so that
-  `PORT=' 5999 '` reads unambiguously; a
+  `PORT='59 99'` reads unambiguously rather than as a stray space in the
+  message; a
   resolution to any number is the failure, and the message assertion is what
   distinguishes this from a bare crash. The joined form is the assertion, not the
   value alone: the message also carries the bounds `1024-65535`, so a bare
@@ -957,13 +962,19 @@ them unqualified.
   `$LOTTO_PORT` is in that list because the unhandled
   `ValueError` this invariant replaces was on *its* path, and fixing only the
   new variable would leave the traceback exactly where it was.
-  The second half spawns three real children, because resolving a number and
-  binding it are different claims and only the process can settle the second: a
-  `python3 serve.py` with `$PORT` set must answer on that port; a
-  `Supervisor` started while the session exports a *different* `$PORT` must
-  still land its child on the port the tray is watching (LOTTO-0013 §4.5's 421);
-  and a `python3 serve.py` with a **bad** `$PORT` must exit **non-zero** having
-  bound nothing. The third is not redundant with the resolution half: everything
+  **Third, three real children**, because resolving a number and binding it are
+  different claims and only a process can settle the second: a
+  `python3 serve.py` with `$PORT` set must answer on that port; a `Supervisor`
+  constructed with an **explicit `port=`** while the session exports a
+  *different* `$PORT` must still land its child on the port the tray is watching
+  (LOTTO-0013 §4.5's 421 — and the explicit argument is load-bearing, since a
+  bare `Supervisor()` resolves `$PORT` itself and the two ports would be the
+  same one, making the assertion vacuous); and a `python3 serve.py` with a
+  **bad** `$PORT` must exit **non-zero** having bound nothing. **That third
+  child carries a valid `$LOTTO_PORT` pointing at a known-free port, and the
+  case then proves that port is still free** — the trap is what separates
+  "exited" from "fell through to the next variable", which is the failure the
+  invariant is about and which an exit-status check alone cannot see. The third is not redundant with the resolution half: everything
   above it tests `resolve_port()`, and an implementation whose `main()` caught
   the `SystemExit` and bound 4322 anyway would pass every one of those
   assertions while doing exactly what `--break port_silent_fallback` does.
@@ -971,13 +982,17 @@ them unqualified.
   reasons (§7). The rejected child's message is read off its **stderr** pipe,
   which is where `SystemExit` puts it and is therefore part of what the case
   asserts.
-  A third half covers `supervise.py`'s resolver, which shares this precedence
-  and inverts the policy (LOTTO-0013 §4.5): eight `Supervisor()` constructions
+  **Second, `supervise.py`'s resolver**, which shares this precedence and
+  inverts the policy (LOTTO-0013 §4.5): eight `Supervisor()` constructions
   assert the same order — and that a bad value yields 4322 **with a
-  `port_fallback` message naming the source**, where this side exits. Both are
-  asserted, because the fallback is only defensible while the user is told, and
-  a fallback that stopped saying so would pass a case that checked the port
-  alone.
+  `port_fallback` message naming the variable and the value, joined**, where
+  this side exits, while every good value leaves `port_fallback` unset. All
+  three are asserted, because the fallback is only defensible while the user is
+  told: one that stopped saying so, or said so on a value that was fine, would
+  pass a case checking the port alone. This part sets and restores
+  `os.environ` rather than passing a dict — `_port_or_default()` takes no env
+  mapping, unlike `resolve_port(env=None)` — which is the one exception to the
+  explicit-dicts rule above and is why the restore is in a `finally`.
   *Breaks when:* a bad value warns and serves 4322 anyway — `--break
   port_silent_fallback`, which is the failure this invariant exists for, since a
   manager that asked for port 80 and silently got 4322 has been told nothing —
@@ -1041,7 +1056,9 @@ them unqualified.
   crash rather than as a rejected setting. Under the tray, where there is no
   terminal to read either one in, §4.5's fallback is what runs instead, for
   **both** variables — `Supervisor` reads the same two in the same order and
-  falls back to 4322 with a notification rather than exiting. So a bad value
+  falls back to 4322 rather than exiting, and says so — as a notification where
+  there is an icon, and on stdout under a process manager, where the reader is
+  its log (LOTTO-0013 §4.5, §4.7). So a bad value
   never reaches the child on that path at all: LOTTO-0013 §4.2 writes both
   variables into the child's environment as the port the supervisor resolved,
   overwriting whatever the session held before `resolve_port()` sees it. Two
@@ -1108,7 +1125,7 @@ suite, and all three binding on all thirteen cases, LOTTO-0013's and LOTTO-0014'
 - **It must not need the network.** The seam is the **builder**, not the model:
   `make_server(build_model_fn, token, port)` takes a callable. Handing it a
   finished model would leave `POST /refresh` with nothing to invoke, so INV-17
-  (count requests across two rebuilds) and INV-18 (make a rebuild raise) would
+  (observe the memos at the moment of a rebuild) and INV-18 (make a rebuild raise) would
   have no rebuild to exercise — two of the thirteen cases untestable by
   construction. A stub builder gives each case what it needs: one that counts
   its calls, one that raises, one that returns a fixture.
@@ -1248,6 +1265,7 @@ LOTTO-0014 §8.)
 | INV-17 refresh re-fetches | `tools/verify_page.py::refresh_refetches` |
 | INV-18 failed refresh keeps the model | `tools/verify_page.py::failed_refresh_keeps_model` |
 | INV-24 the port comes from `$PORT`, then `$LOTTO_PORT`, then 4322, and a bad non-empty value exits | `tools/verify_page.py::port_from_environment` — which also covers `supervise.py`'s matching precedence and its opposite policy on a bad value (LOTTO-0013 §4.5) |
+| INV-24's `$LOTTO_PORT` and bare-4322 legs reaching the **bind** | **nothing** — both are asserted at `resolve_port()` level only; the three children cover the `$PORT` leg, the rejected leg and the supervised one. A `main()` that resolved correctly and then bound `DEFAULT_PORT` on the `$LOTTO_PORT` path alone would pass |
 | §4.1 the *resolved* port being what builds LOTTO-0014 §4.2's `Host` allowlist, not either variable read again | **nothing** — and the gap is structural rather than an omission: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because the question they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes both. The breach is loud to a *user* — every request fails — and invisible to the suite |
 | §4.1 `page.py` performing no I/O | `tools/verify_page.py` — **two** doubles for `all_draws`, swapped between phases: a *returning* one while the builder runs (INV-15 needs draws for one pool and `[]` for the other), then a *raising* one installed before `render()` is called. Only the second proves the renderer performs no I/O, and it must not be in place during the build or every case dies there. Absent the raising double the row would be false: with no `archive_results.json`, `history.all_draws()` falls straight through to `api_draws()`, which **succeeds** on a connected machine, so a renderer calling it would pass |
 | §4.1 `settings` in the model, so both switches render their real state | **nothing** — a switch rendered in the wrong state looks identical to one rendered right until the user toggles it; no case reads the panel's initial state |
@@ -1259,11 +1277,11 @@ LOTTO-0014 §8.)
 | §4.5 the page being *readable* — ordering, filters, marking near-expiry | **nothing** — no check can tell a clear layout from a cluttered one |
 | §4.7 the written `.desktop` file actually autostarting on this desktop | **nothing mechanical** — it depends on the session's XDG implementation; verified by logging out once |
 
-Fifteen rows, nine `nothing`.
+Sixteen rows, ten `nothing`.
 
 The parent's table held twenty-two rows and six `nothing`. The three parts now
-hold **56 rows and 31 `nothing` between them** — counted 2026-08-03, fifteen and
-nine here, eighteen and six in LOTTO-0014 §11, twenty-three and sixteen in
+hold **57 rows and 32 `nothing` between them** — counted 2026-08-03, sixteen and
+ten here, eighteen and six in LOTTO-0014 §11, twenty-three and sixteen in
 LOTTO-0013 §11. (The 2026-08-02 figures this paragraph carried were 44 and 23,
 and its per-document breakdown disagreed with the line above it by a row; these
 are counted from the tables rather than tracked by hand.)
@@ -1359,6 +1377,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 7 | 2026-08-03 | 1 | 0 | 2 | 5 | 4 | **Third and final gate loop on the LOTTO-0024 amendment — converged at the 3-loop cap, not clean.** All 11 verified findings fixed; 0 unverified, 0 deferred. **No CRITICAL for the second loop running; HIGHs 4 → 3 → 2.** Origin split: roughly 8 draft defects against 3 fix collateral. **The first HIGH is a test description that, built literally, asserts nothing.** INV-24's second half says "a `Supervisor` started while the session exports a *different* `$PORT`" — but since loop 10 of the sibling spec a bare `Supervisor()` resolves `$PORT` itself, so the two ports would be the same one and the assertion is vacuous. The shipped case works only because it passes an explicit `port=`, which this document had never mentioned; it now does, with the reason. **The second predates the amendment by four loops and is the sharper kind of error:** §4.2 and §7 both told an implementer INV-17 "counts requests", while §5's own INV-17 explains at length that counting requests *cannot work* here — the builder seam means no request is ever issued and the count is zero on every refresh. Three passages, one invariant, and the two casual mentions send a reader at the test the careful one proves impossible. Both now name the memo-emptiness assertion the case actually makes (verified against `tools/verify_page.py::refresh_refetches`). **One finding was an example that cannot happen:** the justification for `repr()`-ing a rejected value used `PORT=' 5999 '`, which §4.1's own `int()` rule accepts — whitespace and all — so it resolves to 5999 and no message is ever produced. Replaced with `PORT='59 99'`, which is genuinely non-numeric. Also fixed: the *Test:* clause announced "two halves" and then opened a third, in an order the case does not run; the third child's **trap** — a valid `$LOTTO_PORT` on a known-free port, proved still free afterwards — went unstated, and it is what separates "exited" from "fell through to the next variable"; the supervisor part's `os.environ` save/restore was undocumented although it is the one exception to the explicit-dicts rule; the fallback was called "a notification" unqualified where a managed run prints to a log; and §11 gained a row for INV-24's `$LOTTO_PORT` and bare-4322 legs, which are asserted at resolution level and never at the bind. Doc grew 1,370 -> 1,389 lines (measured, `wc -l`). |
 | 6 | 2026-08-03 | 1 | 0 | 3 | 3 | 5 | Second gate loop on the LOTTO-0024 amendment; one lane here, two on the sibling, where the composition defect turned out to be (that document's loop 10 holds it, and the resolution — the tray now shares this document's precedence — is recorded in §4.1 and §6 here). All 11 verified findings fixed; 0 unverified, 0 deferred. **The sharpest finding is a claim this document made about its own test.** §4.8 said the rule that the *resolved* port builds the `Host` allowlist is "asserted by INV-24" — it is not, and cannot be by that case: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because what they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes. §11 has the honest row now; the claim is gone. Loop 1 had fixed the *rule* (the table cell attributing the allowlist to `LOTTO_PORT`) and then overclaimed its coverage in the same pass — the fix and its own overstatement, one loop apart. **The second: two constraints the case enforces lived only in its *Test:* clause.** The rejection message must name the variable and value **joined**, and must go to **stderr** — the case reads the child's stderr pipe — while §4.1 and §6 required neither. An implementation built from the normative rules alone, printing `rejected PORT: 'abc'` to stdout, satisfies every stated rule and fails a green suite, which is the most expensive shape of spec gap there is. Both are now in §4.1's rule, with `raise SystemExit("…")` named as the one construct delivering the stream and the status together. **A third was a rule contradicting itself two bullets down:** "Three rules, all of them applying to both variables" above a third rule that short-circuits, so a bad `$LOTTO_PORT` behind a valid `$PORT` is deliberately never read. The enumerated test dicts had no case for that combination either, so an implementation validating both eagerly passed everything; the dict was added in the same pass. Also fixed: `LOTTO_NO_BUILD`'s "exists for these two cases only" enumeration, stale in two places 700 lines apart now INV-24 spawns three children under it; `DEFAULT_PORT`'s duplication across `serve.py` and `supervise.py` went undocumented beside a paragraph warning against exactly that shape — now stated as a deliberate exception, with the reason it is not one fact; §6's "Port 4322 is in use" heading naming a port the resolution may not have chosen; and the environment paragraph's own count of what it owns. Doc grew 1,327 -> 1,370 lines (measured, `wc -l`). |
 | 5 | 2026-08-03 | 2 | 1 | 4 | 5 | 3 | Gate for the LOTTO-0024 amendment (§4.1's `PORT` row and resolution paragraph, INV-24, §6's rewritten failure mode), run **after** implementation at the user's request; the amendment records what was built. All 13 verified findings fixed; 0 unverified, 0 deferred. **Both lanes led on the same CRITICAL, and it was one table cell.** §4.1's environment table left "also builds §4.4's `Host` allowlist" attached to the `LOTTO_PORT` **row** while the paragraph below it correctly gave that duty to the *resolved* value — so an implementer building from the table binds `$PORT` and allowlists `$LOTTO_PORT`, which is a 421 on every request, the exact failure the amendment's pinning exists to prevent. The table is what gets copied. **The most useful HIGH is one no reviewer could have raised before this pass: the accepted range appears nowhere in this document.** §4.1, INV-24 and §6 all said "cannot be a port" without defining it, and the bounds live in LOTTO-0013 §4.5 with nothing here pointing there — from INV-24's rejected list an implementer can derive the upper bound and not the lower one. **A second HIGH was the invariant contradicting its own test case:** INV-24 said "a value that is set and cannot be a port ends the process", and an *empty* value is set and cannot be a port, while `resolve_port()` deliberately falls through and `port_from_environment` asserts exactly that. Now "non-empty", with the carve-out named. **Two findings were the test being weaker than it reads.** Its message assertion was a bare substring test, so `PORT=0` was satisfied by the `0` in `1024-65535` and asserted nothing for the value most likely to be mishandled — now the joined `<NAME>=<value>` form. And its end-to-end half spawned only children carrying *valid* values, so "exits non-zero before the bind" had no process-level assertion at all: an implementation whose `main()` caught the `SystemExit` and bound 4322 anyway passed every assertion while doing exactly what `--break port_silent_fallback` does. A third child now runs a bad `$PORT` beside a *valid* `$LOTTO_PORT` and asserts the exit status, the message and that the fallback port was never bound. Both are code fixes, applied in the same pass. Also fixed: §6's older "Port 4322 is in use" bullet still named `LOTTO_PORT` as the override two sections after `$PORT` became the winner; §6's new bullet promised §4.5's fallback for both variables when `Supervisor` reads only one, and a bad `$PORT` is overwritten in the child rather than fallen back from; §4.8 said the port rule was "stated there rather than here" while citing this document's own §4.1; the `PORT` row's *Written by* omitted `supervise.py`, which pins it; the import-edge paragraph omitted the port bounds; `int()`'s leniency and the short-circuit between the two variables were left to be invented; and both port rows now read "unset", 4322 being the resolution's default rather than either variable's. Doc grew 1,282 -> 1,327 lines (measured, `wc -l`). |
 | 4 | 2026-08-02 | 2 | 0 | 4 | 6 | 9 | Second re-gate loop. All 19 verified findings fixed; **2 dismissed on evidence**, 0 deferred. **No CRITICAL, down from one.** Origin split: roughly 5 fix collateral against 14 draft defects — the healthy direction, and the reason this loop was worth running. Dismissed: two "`§13` does not exist" findings, an artefact of the orchestrator's scrubbed review copy dropping the section number from the heading it withholds; the document numbers it §13 and always has. **The most valuable finding is one no reviewer of this document had made in four loops: §4.6's worked snippet — the only executable statement of the compared figure — filtered on `scorable()` and omitted `t.resolved`,** the clause INV-16 exists to protect and which `serve.py` applies. It reproduces R10,603.50 either way *today*, because `unresolved tickets 0`, so nothing about the number could reveal it; the day one price fails to resolve, the snippet an implementer copied keeps agreeing with itself and stops agreeing with the code. Re-run with the clause: identical figures, now for the right reason. **Its neighbour was the same shape:** the summary table labelled the *lifetime* win total as "the comparison" while §4.6's prose two paragraphs down says `won.lifetime_cents` is explicitly not that figure — split into two rows. **One HIGH was loop 3's collateral:** "`State` owns the five above" followed loop 3's addition of `no_build`, which `State` does not own — `serve.py` derives it at render time from the absence of the other three, and an implementer adding a `no_build` attribute to `State` collapses the three empty states at the seam this section calls the one every fixture is built to. Also fixed: the `uncheckable` sub-dict was the one part of the model shape left as an ellipsis, while §4.5's banner needs four of its keys and §11 records the key set as checked by nothing — now enumerated; `reason` was said to be `None` exactly for scorable entries without stating why that biconditional holds (`history.py::scorable()` rejects on exactly the two grounds §4.5 derives `reason` from, so a third ground added there silently renders "not checkable" with nothing after it — half of INV-15); §6 had no failure mode for the server stopping while a page polls `/status`, which leaves a tab asserting a build is in progress on a process that no longer exists; §7 described red-testing as a hand edit when the shipped mechanism is `--break <name>`, undocumented in any spec despite CLAUDE.md carrying it, and §11 gained the row for the browser-side poll that nothing checks — thirteen rows and eight `nothing`. Smaller: a 100× unit warning cited §4.6, whose warning is a different ~2.25× one; "two scorable tickets" where the snippet counts tickets with draws still to come; `datetime.now()` where the builder uses `date.today()`; and §12's CLAUDE.md row left in the future tense after the edit had landed. Doc grew 1,148 -> 1,201 lines. |
