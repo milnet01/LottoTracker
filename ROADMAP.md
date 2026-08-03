@@ -619,7 +619,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   board would silently collapse to one line (no such ticket exists today);
   (e) §8's "~30 lookups a month" is not recomputed from §10's request model.
 
-- 📋 **LOTTO-0026** A feed-side rename of `MATCH n` scores every line as a loss.
+- 🚧 **LOTTO-0026** A feed-side rename of `MATCH n` scores every line as a loss.
   Kind: fix. Source: in-session-2026-08-03; approach approved by the user
   before the CI work interrupted it.
   Layman: if the lottery site renames its prize categories, every win would
@@ -664,14 +664,27 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
      rule rather than writing a second one, and mind its direction (LOTTO-0001
      §4.4). Red-test first; LOTTO-0027's `+ PB` labels are a real red state to
      test against rather than a contrived one.
-  3. Widen INV-5's grep so it can see the f-string grammar in
-     `api_label()`/`site_label()`, closing LOTTO-0007(c). Mind the glob:
-     §5 restricts it to production modules because `tools/` holds two
-     legitimate `"MATCH <digit>` literals, one of them INV-22's own probe.
+  3. ~~Widen INV-5's grep so it can see the f-string grammar in
+     `api_label()`/`site_label()`.~~ **Revised 2026-08-03: there is no
+     widening that works, and the spec now says so instead.** The labels are
+     built with f-strings, so any pattern broad enough to see the grammar
+     fires on the correct code that constructs it — a check that is red on a
+     healthy tree is worse than the blind spot it replaces. LOTTO-0007(c)
+     therefore closes against **INV-26**, which detects a rename by reading
+     the feed rather than by reading the source, and INV-5's §11 row records
+     both the limit and where the cover actually comes from. INV-5 keeps its
+     production-only glob and its original job: catching an inlined division
+     table.
 
   **Do not "fix" this by returning `{}` or a default** — that is the exact
   failure the guard exists to prevent, and `paying_combinations()`'s
   docstring already says so for the no-draw case.
+  Progress (2026-08-03): **step 1 done.** LOTTO-0001 §5 carries **INV-26**
+  (reachability, with its direction and why conformance is not a substitute),
+  §6 carries the matching failure mode, and §11's INV-5 and label-grammar rows
+  are rewritten. Step 3 was revised rather than done, above. The document goes
+  to `/cold-eyes` before step 2 touches `paying_combinations()`, per the
+  cold-eyes-then-implement ordering.
 
 - ✅ **LOTTO-0027** The API's PowerBall division labels never matched, so 53 wins read as losses.
   Kind: fix. Source: in-session-2026-08-03, found while writing LOTTO-0026's

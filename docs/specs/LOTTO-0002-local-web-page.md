@@ -830,7 +830,7 @@ This document holds **INV-15 to INV-18** — the honesty rules on the data the
 page renders — and **INV-24**, which is an honesty rule about the port the
 process binds rather than about the data, and lives here because §4.1's
 environment table and §6's failure mode are both this document's. LOTTO-0001
-holds INV-1 to INV-6, LOTTO-0009 INV-7 to INV-11,
+holds INV-1 to INV-6, INV-22 and INV-26, LOTTO-0009 INV-7 to INV-11,
 LOTTO-0014 INV-12 to INV-14 and INV-21, and LOTTO-0013 INV-19, INV-20, INV-23
 and INV-25. No
 number moved in either 2026-08-02 split — CHANGELOG.md and sibling specs cite

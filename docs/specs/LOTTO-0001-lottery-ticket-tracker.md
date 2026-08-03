@@ -286,10 +286,12 @@ entered in from its price - `check.py` is still the only scoring path.
 Invariant ids are **project-wide, not per document**, which is why this section
 runs INV-1 to INV-6 and then jumps: INV-7 to INV-11 belong to
 `docs/specs/LOTTO-0009-entered-pools.md` and INV-12 to INV-21 to
-`docs/specs/LOTTO-0002-local-web-page.md`. This document owns INV-1 to INV-6
-and INV-22, which LOTTO-0007(a) added on 2026-08-02, after those two specs had
-taken their ranges. A new invariant here takes the next free number in the
-project, not the next free number in this file.
+`docs/specs/LOTTO-0002-local-web-page.md`. This document owns INV-1 to INV-6,
+INV-22, which LOTTO-0007(a) added on 2026-08-02 after those two specs had
+taken their ranges, and INV-26, added by LOTTO-0026 on 2026-08-03 — INV-23 to
+INV-25 went to LOTTO-0013 and LOTTO-0002 in between. A new invariant here
+takes the next free number in the project, not the next free number in this
+file.
 
 - **INV-1** — For PowerBall tickets the final number on a board line is the
   PowerBall, never a main number, in both SMS eras.
@@ -410,6 +412,43 @@ project, not the next free number in this file.
   point: it is a latent-defect guard, not a repricing. Red-tested the same day
   by reverting the archive branch to `return 0.0` → 2 probes mispriced, exit 1.
 
+- **INV-26** — Every division the source publishes for a pool is **reachable**:
+  some `(hits, special)` pair makes `check.py::api_label()` return exactly that
+  label. A published division no label can equal means the feed's grammar
+  moved, and `paying_combinations()` **raises** rather than returning a
+  division set with a hole in it. Added 2026-08-03 by LOTTO-0026; the number is
+  the next free one project-wide, not the next free one in this file (§5's
+  opening paragraph).
+  *Test:* `python3 tools/verify_pools.py` (repo root, after `backfill.py`) →
+  `division-label reach: 6 live pools, 0 unreachable divisions`, plus a probe
+  driving `paying_combinations()` against a doubled division table carrying an
+  unbuildable label, which must raise.
+  **The direction is the invariant, and reversing it breaks correct code.**
+  Every *feed* division must be buildable here; the converse is false, because
+  `api_label()` builds `MATCH 6` for Daily Lotto, which has five numbers, and
+  `MATCH 0` for a line that hit nothing — and no source publishes a division
+  for either. An implementer asserting set equality would raise on every pool
+  on day one.
+  **Conformance to the `MATCH n` shape is not a substitute**, which is the
+  lesson this invariant is built on rather than a hypothetical. The rule first
+  proposed for it was *raise when no label conforms to the grammar*, and that
+  rule sits quiet through the failure that actually happened: on 2026-08-03
+  `api_label()` was found building `MATCH 5 + PB` against a feed publishing
+  `MATCH 5 + POWERBALL`, dropping 53 PowerBall wins as losses (LOTTO-0027,
+  §4.4), while the plain `MATCH 3` labels went on conforming. A partial rename
+  is the likely rename; a wholesale one is the easy case.
+  **Scope is the pay gate, not the price.** The gate is API-derived in both
+  eras (§4.4), so this covers every line either era scores. A *site*-grammar
+  drift shows up one step later instead, as a win the archive branch cannot
+  price — which raises under INV-22, and is why that invariant's *Breaks when*
+  keeps the API-side rename out of its own list.
+  *Breaks when:* the operator renames a division, or adds one whose label this
+  project cannot construct — both silent before this invariant, and both
+  costing money in the only direction that matters, since an unreachable
+  division is one whose winners are all reported as losers. It also breaks if
+  a future edit "simplifies" the raise into skipping the unrecognised label,
+  which is the same silent drop wearing a filter.
+
 ## 6. Failure modes
 
 - **The API changes shape or path.** `results.py::_post()` raises on any
@@ -452,6 +491,14 @@ project, not the next free number in this file.
 - **A pool has no recent draw record.** `paying_combinations()` raises rather
   than returning an empty set, because an empty set would score every line in
   the pool as a loss with no diagnostic.
+- **The source publishes a division this project cannot name.** The same
+  raise, for the same reason one step finer: the division set is not empty but
+  is missing the label a winner would join on, so the hole scores exactly the
+  lines that fall in it as losses and leaves the rest looking healthy
+  (INV-26). A rename reaching only *some* labels is the shape to expect — it
+  is the one that happened (§4.4, LOTTO-0027) — so the test is whether every
+  published division is reachable, not whether the set as a whole still looks
+  like the grammar.
 
 ## 7. Tests
 
@@ -561,12 +608,12 @@ carries the breakdown and the before/after.
 | INV-2 | §5 command, `tickets.py::parse()` |
 | INV-3 | `tools/verify_sources.py` |
 | INV-4 | `tools/verify_privacy.py`; **not yet a pre-commit hook** — tracked by LOTTO-0004 |
-| INV-5 | §5 grep, production modules only — labels only; **nothing** catches a hardcoded prize *amount*, and nothing checks the `tools/` doubles the glob deliberately excludes |
+| INV-5 | §5 grep, production modules only — labels only; **nothing** catches a hardcoded prize *amount*, and nothing checks the `tools/` doubles the glob deliberately excludes. It also cannot see a feed-side **rename**, and no widening fixes that: `api_label()` builds its labels with f-strings, so a pattern broad enough to see them fires on correct code. INV-26 is what catches a rename, and closes LOTTO-0007(c) in place of a wider glob |
 | INV-6 | `tools/verify_coverage.py` |
 | §4.3 special-ball-is-last | `tools/verify_sources.py` — catches a change on either source alone; blind only if both change the same way together |
 | §4.4 expiry / `CLAIM_DAYS` | **nothing** — no test covers the 365-day boundary, and nothing tracks the gap |
 | §4.4 current-era pay gate | **nothing** — a pre-handover-only division is dropped silently |
-| §4.4 label grammar | `tools/verify_pools.py` — every division the live feed publishes must be reachable by a label `api_label()` builds. It is a *check*, not a runtime guard: between runs `check()` still drops an unreachable division silently, which is LOTTO-0026. It also sees only the pools the dump reaches, so a pool nobody holds a ticket in is unchecked |
+| INV-26 §4.4 label grammar reachable | `tools/verify_pools.py` — every division the live feed publishes must be reachable by a label `api_label()` builds, plus a probe asserting `paying_combinations()` raises on one that is not. The check reads only the pools the dump reaches, so a pool nobody holds a ticket in is outside it; the runtime raise covers that pool from the moment a ticket for it is scored, which is the division of labour between the two |
 | INV-22 unpriceable win raises | `tools/verify_pools.py` — four blind-lookup probes (empty and unrecognised division tables, both branches), plus the converse that a source-stated R0.00 still prices as 0.0 |
 | archive payout scrape | `tools/verify_pools.py` (INV-22) — an unscrapable payout page now raises instead of pricing an archive win at R0.00. What remains unchecked is narrower: a page that parses into a **wrong** table, which is well-formed and not detectably wrong from inside |
 | `backfill.py` date parsing | **nothing** — an abbreviated month in a href raises `KeyError`, not an empty result |
