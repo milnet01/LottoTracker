@@ -259,17 +259,30 @@ and `len(counts["partly"])` rather than the ticket lists `uncheckable_report()`
 returns, because the banner renders counts and because a model carrying `Ticket`
 objects is not the plain dict every §7 fixture is written to.
 
-**Environment** — the three variables this project defines, each with a default
-that makes the plain `python3 serve.py` case work. `serve.py` also reads
-`$XDG_CONFIG_HOME` and `$HOME`, which are not this project's to define: §4.7's
+**Environment** — the four variables `serve.py` reads for its own configuration,
+each with a default that makes the plain `python3 serve.py` case work. Three of
+the names are this project's to define; **`PORT` is not**, and that is the whole
+reason it is honoured — it is the name an external process manager already sets,
+so a manager can move this server without knowing anything about the project. It
+therefore wins over the project's own `LOTTO_PORT`. `serve.py` also reads
+`$XDG_CONFIG_HOME` and `$HOME`, which are not this project's either: §4.7's
 two paths honour the first and fall back to the second, and §7 requires both to
 be redirected for every case.
 
 | Variable | Default | Written by | Read by | Effect |
 |---|---|---|---|---|
-| `LOTTO_PORT` | `4322` | `supervise.py` (LOTTO-0013), or the user on the standalone path | `serve.py`, and `supervise.py` itself (LOTTO-0013 §4.5) | bind port; also builds §4.4's `Host` allowlist |
+| `PORT` | unset | an external process manager, or the user | `serve.py` | bind port, **winning over `LOTTO_PORT`** (INV-24) |
+| `LOTTO_PORT` | `4322` | `supervise.py` (LOTTO-0013), or the user on the standalone path | `serve.py`, and `supervise.py` itself (LOTTO-0013 §4.5) | bind port when `$PORT` is unset or empty; also builds §4.4's `Host` allowlist |
 | `LOTTO_TOKEN` | minted per run | `supervise.py` (LOTTO-0013) | `serve.py` | §4.4's write token; standalone `serve.py` mints its own |
 | `LOTTO_NO_BUILD` | unset | the caller | `serve.py` | bind and serve, build nothing — for LOTTO-0013's INV-20 case and LOTTO-0014's INV-13 child only, never for users; see §6 |
+
+**The port is resolved once, before the bind** — `serve.py::resolve_port()`, in
+that order: `$PORT`, `$LOTTO_PORT`, `4322`. The resolved number is the one that
+binds *and* the one that builds §4.4's `Host` allowlist, which is why it is read
+once rather than at each use (LOTTO-0013 §4.5 owns what a disagreement costs).
+**Unset and empty are not values** — they mean "no preference" and fall through
+to the next source — while a value that was *meant* as a port and cannot be one
+ends the process (INV-24, §6). Both rules apply to both variables.
 
 **The token is not a model key** — `page.py`'s signature is
 `render(model, token)`, so the model stays exactly what §7's fixtures are built
@@ -758,8 +771,8 @@ reader announces. The visual is CSS; the semantics are the native control.
 
 The tray, `supervise.py`, the spawn-and-reap lifecycle and the headless
 contract are LOTTO-0013. Two of its rules bear directly on this document's
-files and are stated there rather than here: `serve.py` reads `LOTTO_PORT` once
-and uses that same value both to bind and to build §4.4's `Host` allowlist
+files and are stated there rather than here: `serve.py` resolves its port once
+(§4.1) and uses that same value both to bind and to build §4.4's `Host` allowlist
 (LOTTO-0013 §4.5), and everything in `serve.py` that binds, builds or serves
 sits behind `if __name__ == "__main__":` (LOTTO-0013 §4.4, which is what makes
 its INV-19 observable).
@@ -767,9 +780,12 @@ its INV-19 observable).
 ## 5. Invariants
 
 This document holds **INV-15 to INV-18** — the honesty rules on the data the
-page renders. LOTTO-0001 holds INV-1 to INV-6, LOTTO-0009 INV-7 to INV-11,
-LOTTO-0014 INV-12 to INV-14 and INV-21, and LOTTO-0013 INV-19, INV-20 and
-INV-23. No
+page renders — and **INV-24**, which is an honesty rule about the port the
+process binds rather than about the data, and lives here because §4.1's
+environment table and §6's failure mode are both this document's. LOTTO-0001
+holds INV-1 to INV-6, LOTTO-0009 INV-7 to INV-11,
+LOTTO-0014 INV-12 to INV-14 and INV-21, and LOTTO-0013 INV-19, INV-20, INV-23
+and INV-25. No
 number moved in either 2026-08-02 split — CHANGELOG.md and sibling specs cite
 them unqualified.
 
@@ -870,6 +886,36 @@ them unqualified.
   path rather than a rare one, and it is the reason §6 treats a degraded page
   as a normal state instead of an error.
 
+- **INV-24** — The bound port is `$PORT`, else `$LOTTO_PORT`, else 4322; a value
+  that is set and cannot be a port ends the process with a message naming it,
+  and never falls back to another port.
+  *Test:* `tools/verify_page.py`, case `port_from_environment` — two halves,
+  because the invariant makes two different kinds of claim. `resolve_port()` is
+  called with **explicit environment dicts** for the resolution half: neither
+  variable, both empty, each alone, both together (`$PORT` wins), and an empty
+  `$PORT` beside a set `$LOTTO_PORT`. Explicit dicts rather than `os.environ`,
+  or the case passes or fails according to how the developer's shell happens to
+  be set. Then eight rejected values — `abc`, `80`, `0`, `65536`, `-1`,
+  `4322.0` on `$PORT`, and `abc` and `80` on `$LOTTO_PORT` — each of which must
+  raise `SystemExit` **with the rejected value in the message**; a resolution to
+  any number is the failure, and the message assertion is what distinguishes
+  this from a bare crash. `$LOTTO_PORT` is in that list because the unhandled
+  `ValueError` this invariant replaces was on *its* path, and fixing only the
+  new variable would leave the traceback exactly where it was.
+  The second half spawns two real children, because resolving a number and
+  binding it are different claims and only the process can settle the second: a
+  `python3 serve.py` with `$PORT` set must answer on that port, and a
+  `Supervisor` started while the session exports a *different* `$PORT` must
+  still land its child on the port the tray is watching (LOTTO-0013 §4.5's 421).
+  Both run under `LOTTO_NO_BUILD`, like `no_orphan_server` and for the same
+  reasons (§7).
+  *Breaks when:* a bad value warns and serves 4322 anyway — `--break
+  port_silent_fallback`, which is the failure this invariant exists for, since a
+  manager that asked for port 80 and silently got 4322 has been told nothing —
+  or the precedence is the other way round (`--break lotto_port_wins`), which is
+  indistinguishable from correct on every machine where only one of the two is
+  ever set.
+
 ## 6. Failure modes
 
 - **The operator's API is unreachable.** Four of seven build attempts on
@@ -905,15 +951,19 @@ them unqualified.
   is a false statement about missing data — the cardinal rule arriving through
   the one part of this page that keeps running after the process behind it has
   gone. The notice is browser-side, so nothing mechanical checks it (§11).
-- **`LOTTO_PORT` is set to something that is not a port**, on the standalone
-  `python3 serve.py` path. This is the one launch path LOTTO-0013 §4.5's
-  fallback does **not** cover — that fallback lives in `Supervisor`, and nothing
-  constructs one here — so `serve.py` reads the variable itself and a
-  non-numeric value raises before the bind. A traceback is an acceptable answer
-  *here* and only here: there is a terminal to read it in, the user typed the
-  variable one command ago, and the alternative — silently serving on 4322 —
-  puts the page somewhere they are not looking. Under the tray, where there is
-  no terminal, §4.5's fallback is what runs instead.
+- **`PORT` or `LOTTO_PORT` is set to something that is not a port**, on the
+  standalone `python3 serve.py` path. This is the one launch path LOTTO-0013
+  §4.5's fallback does **not** cover — that fallback lives in `Supervisor`, and
+  nothing constructs one here — so `serve.py` resolves the port itself and a
+  non-numeric or out-of-range value **exits non-zero before the bind, naming the
+  variable and the value it rejected** (INV-24). Ending the process is the
+  answer, not falling back: silently serving on 4322 puts the page somewhere
+  nobody is looking, and the caller — a user one command ago, or a process
+  manager that asked for a specific port — is told nothing. It is not a
+  traceback either, which was what this path did until LOTTO-0024: an unhandled
+  `ValueError` names the variable only by accident of the stack, and reads as a
+  crash rather than as a rejected setting. Under the tray, where there is no
+  terminal to read either one in, §4.5's fallback is what runs instead.
 - **`lotto_sms_raw.txt` is absent.** The page renders its empty state and says
   the dump is missing and how to produce it — never "0 tickets, R0.00", which
   reads as "you have never won".
@@ -953,12 +1003,13 @@ failure, whatever produced it.
 
 `tools/verify_page.py` joins `tools/verify_privacy.py`, `tools/verify_sources.py`,
 `tools/verify_coverage.py` and `tools/verify_pools.py`. Exit code is the signal,
-as with the other four. **One script covers all three parts of the split**: ten
-cases, one per invariant, of which this document owns the four below,
+as with the other four. **One script covers all three parts of the split**:
+thirteen cases, one per invariant, of which this document owns the five below,
 LOTTO-0014 §7 owns `host_allowlist`, `token_required`, `no_reflected_headers`
-and `nothing_in_the_url`, and LOTTO-0013 §7 owns `serve_is_headless` and
-`no_orphan_server`. One script rather than three because the cases share their
-fixtures, their temporary-directory setup and their stub builder.
+and `nothing_in_the_url`, and LOTTO-0013 §7 owns `serve_is_headless`,
+`no_orphan_server`, `refresh_reports_the_build` and
+`tray_headless_when_managed`. One script rather than three because the cases
+share their fixtures, their temporary-directory setup and their stub builder.
 
 | Case | Locks |
 |---|---|
@@ -966,15 +1017,16 @@ fixtures, their temporary-directory setup and their stub builder.
 | `spend_over_checkable` | INV-16 |
 | `refresh_refetches` | INV-17 |
 | `failed_refresh_keeps_model` | INV-18 |
+| `port_from_environment` | INV-24 |
 
 Three constraints on the script, each following from something in the existing
-suite, and all three binding on all eleven cases, LOTTO-0013's and LOTTO-0014's included:
+suite, and all three binding on all thirteen cases, LOTTO-0013's and LOTTO-0014's included:
 
 - **It must not need the network.** The seam is the **builder**, not the model:
   `make_server(build_model_fn, token, port)` takes a callable. Handing it a
   finished model would leave `POST /refresh` with nothing to invoke, so INV-17
   (count requests across two rebuilds) and INV-18 (make a rebuild raise) would
-  have no rebuild to exercise — two of the eleven cases untestable by
+  have no rebuild to exercise — two of the thirteen cases untestable by
   construction. A stub builder gives each case what it needs: one that counts
   its calls, one that raises, one that returns a fixture.
   **`make_server()` binds but does not build (§4.2), so a case that needs a
@@ -1112,6 +1164,7 @@ LOTTO-0014 §8.)
 | INV-16 spend over checkable only | `tools/verify_page.py::spend_over_checkable` — also closes LOTTO-0009 §11's `nothing` row for its §4.7 |
 | INV-17 refresh re-fetches | `tools/verify_page.py::refresh_refetches` |
 | INV-18 failed refresh keeps the model | `tools/verify_page.py::failed_refresh_keeps_model` |
+| INV-24 the port comes from `$PORT`, then `$LOTTO_PORT`, then 4322, and a bad value exits | `tools/verify_page.py::port_from_environment` |
 | §4.1 `page.py` performing no I/O | `tools/verify_page.py` — **two** doubles for `all_draws`, swapped between phases: a *returning* one while the builder runs (INV-15 needs draws for one pool and `[]` for the other), then a *raising* one installed before `render()` is called. Only the second proves the renderer performs no I/O, and it must not be in place during the build or every case dies there. Absent the raising double the row would be false: with no `archive_results.json`, `history.all_draws()` falls straight through to `api_draws()`, which **succeeds** on a connected machine, so a renderer calling it would pass |
 | §4.1 `settings` in the model, so both switches render their real state | **nothing** — a switch rendered in the wrong state looks identical to one rendered right until the user toggles it; no case reads the panel's initial state |
 | §6 the first-build failure rendering "results unavailable" rather than an empty page | **nothing** — reproducing it needs the operator's API to be down, which the suite cannot arrange and must not depend on |
@@ -1122,12 +1175,14 @@ LOTTO-0014 §8.)
 | §4.5 the page being *readable* — ordering, filters, marking near-expiry | **nothing** — no check can tell a clear layout from a cluttered one |
 | §4.7 the written `.desktop` file actually autostarting on this desktop | **nothing mechanical** — it depends on the session's XDG implementation; verified by logging out once |
 
-Thirteen rows, eight `nothing`.
+Fourteen rows, eight `nothing`.
 
 The parent's table held twenty-two rows and six `nothing`. The three parts now
-hold **44 rows and 23 `nothing` between them** — measured 2026-08-02, twelve and
-seven here, eighteen and six in LOTTO-0014 §11, fourteen and ten in LOTTO-0013
-§11.
+hold **53 rows and 28 `nothing` between them** — counted 2026-08-03, fourteen and
+eight here, eighteen and six in LOTTO-0014 §11, twenty-one and fourteen in
+LOTTO-0013 §11. (The 2026-08-02 figures this paragraph carried were 44 and 23,
+and its per-document breakdown disagreed with the line above it by a row; these
+are counted from the tables rather than tracked by hand.)
 
 **That the totals grew is the point, not a regression.** The partition itself
 was clean; the growth is rules the parent never tabulated at all — Qt and
@@ -1163,6 +1218,22 @@ error budget is the number of them a reader can see.
 - `docs/specs/LOTTO-0001-lottery-ticket-tracker.md` — unaffected. This item adds
   no parsing, scoring or pricing behaviour, so none of INV-1 to INV-6 moves.
 
+**Added by the LOTTO-0024 amendment (2026-08-03), which introduced INV-24:**
+
+- `docs/specs/LOTTO-0013-tray-and-supervisor.md` — its §4.2 pins both port
+  variables in the child and its §4.5 states the `$PORT` precedence that made
+  that necessary; its new §4.7 and INV-25 own the managed run. That document's
+  §12 holds the rest of this amendment's impact.
+- `docs/specs/LOTTO-0014-http-surface-and-security.md` — **count-only**. Two
+  citations of the shared script's case count; the `Host` allowlist still comes
+  from whatever port `serve.py` bound, and that sentence needed no change
+  because §4.1 kept the port a single resolved value.
+- `CHANGELOG.md` — `Added` and `Fixed` entries citing LOTTO-0024.
+- `ROADMAP.md` — LOTTO-0024's bullet.
+- `CLAUDE.md` — **done 2026-08-03**: the port precedence, `LWSM_MANAGED`, the
+  verifier's invariant range and break count, and PySide6 as a `verify_page.py`
+  requirement.
+
 **The split this section recommended was taken on 2026-08-02**, by the user —
 and then taken a second time, because the first cut did not do enough.
 
@@ -1171,6 +1242,11 @@ and then taken a second time, because the first cut did not do enough.
 | this document — the model, the build lifecycle, what the page shows | §4.1, §4.2, §4.5–§4.7 | INV-15 – INV-18 |
 | LOTTO-0014 — the HTTP surface and the security boundary | its §4.1–§4.4 | INV-12 – INV-14, INV-21 |
 | LOTTO-0013 — the tray, the supervisor, the headless contract | its §4.1–§4.5 | INV-19, INV-20 |
+
+(That table records the split **as taken on 2026-08-02** and is not maintained
+as an ownership index — three invariants have been added since, INV-23 and
+INV-25 to LOTTO-0013 and INV-24 here. Each document's §5 is the authority on
+what it holds.)
 
 **Why twice.** The seam this section originally proposed was the one the
 invariants fell along, and it moved only 66 of the parent's 1,161 lines — the

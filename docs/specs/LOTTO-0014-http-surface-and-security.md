@@ -410,7 +410,7 @@ CHANGELOG.md and sibling specs cite them unqualified.
   **The wrong token is a proper prefix of the real one**, so `startswith` is
   actually caught; a random wrong token passes a `startswith` implementation.
   The case also asserts the rendered page contains the run token, since a
-  renderer that never embeds it (§4.3) 403s every toggle while all eleven cases
+  renderer that never embeds it (§4.3) 403s every toggle while all thirteen cases
   otherwise pass.
   **Every one of them is fired at both `/settings` and `/refresh`.** The
   *Breaks when* below names exempting `/refresh` as the likeliest breach, so a
@@ -582,7 +582,7 @@ as with the other four.
 | `no_reflected_headers` | INV-14 |
 | `nothing_in_the_url` | INV-21 |
 
-LOTTO-0002 §7 holds the three constraints that bind all eleven cases — no network,
+LOTTO-0002 §7 holds the three constraints that bind all thirteen cases — no network,
 no real data, and recomputing rather than importing the judgement under test.
 Two of them bear on these four specifically:
 

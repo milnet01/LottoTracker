@@ -33,16 +33,21 @@ python3 tools/verify_coverage.py  # INV-6: each entry scored over exactly its dr
 python3 tools/verify_privacy.py   # INV-4: no real SMS content is tracked by git
 python3 tools/verify_pools.py     # INV-7/INV-11: prices resolve; partly-checkable
                                   # tickets are never written off whole
-python3 tools/verify_page.py      # INV-12..INV-21 and INV-23: the page, its
-                                  # security boundary, the tray's spawn-and-reap
-                                  # lifecycle and what it reports after a refresh
+python3 tools/verify_page.py      # INV-12..INV-21 and INV-23..INV-25: the page,
+                                  # its security boundary, the tray's spawn-and-reap
+                                  # lifecycle, what it reports after a refresh, the
+                                  # port it binds, and the managed (no-icon) run
 ```
+
+`verify_page.py` is the one verifier that needs PySide6 installed — its
+`tray_headless_when_managed` case imports `tray.py` in a subprocess. It needs no
+display.
 
 `verify_page.py` carries a `--break <name>` flag that applies one deliberate
 defect and asserts the named case goes red. That is not a debugging aid: these
 three items are greenfield, so there was no pre-fix code to red-test against,
 and the flag is what makes "every case observed failing" reproducible rather
-than a one-off hand edit. `--list` shows the sixteen breaks. It caught a real
+than a one-off hand edit. `--list` shows the twenty breaks. It caught a real
 defect in a *case* rather than in the code — see CHANGELOG.
 
 Exit code is the signal, not the printed counts (`&& echo PASS`). Counts in the
@@ -85,6 +90,11 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   `check.py::amount()` has two pricing paths.
 - **`check.py`** scores and prices. Prize divisions are read from the live
   source, never hardcoded (INV-5).
+- **The port is `$PORT`, else `$LOTTO_PORT`, else 4322** (`serve.py::resolve_port()`,
+  INV-24). `$PORT` is the knob an external process manager sets, which is why it
+  wins. A value that is *set* and cannot be a port ends the process naming it —
+  never a silent fallback, because a caller that asked for port 80 and got 4322
+  has been lied to.
 - **`serve.py`** is `check.py`'s second consumer and adds no third opinion: a
   wrong number on the page is a bug in its rendering or in LOTTO-0001/0009,
   never a separate calculation. It does **all** the I/O; **`page.py`** is a pure
@@ -98,7 +108,10 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   *writing*, behind `POST /settings`'s lock. One reader, three callers — do not
   add a second, however local it looks: two readers that agree today pass every
   check and diverge later (LOTTO-0013 §4.1).
-  **`tray.py`** is the only file that imports PySide6.
+  **`tray.py`** is the only file that imports PySide6, and the only file that
+  reads `LWSM_MANAGED` — `=1` means a process manager started it, so it runs
+  with no icon and, above all, no path that stops the server (INV-25). It is a
+  presentation hint with no security value; nothing else may hang off it.
 - **`tools/verify_*.py`** import the modules directly via a `sys.path` insert.
 
 ### Load-bearing decisions — do not "simplify" these

@@ -8,6 +8,20 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`LWSM_MANAGED=1` runs the tray with no icon, logging to stdout.** (LOTTO-0024)
+  For processes an external manager starts, where a tray icon is redundant.
+  No headless path can stop the server — the menu it skips contains "Quit
+  (stops the server)", and the manager owns the tree it started. Any other
+  value, or none, is the unchanged tray. The variable is a presentation
+  hint with no security value; nothing is granted or relaxed on it.
+  LOTTO-0013 §4.7, INV-25.
+
+- **The bound port comes from `$PORT`, then `$LOTTO_PORT`, then 4322.** (LOTTO-0024)
+  `$PORT` is the name an external process manager already sets, so it wins;
+  the `$LOTTO_PORT` path is unchanged. `supervise.py` pins both variables
+  in the child so a session's own `$PORT` cannot send the server to a port
+  the tray is not watching. LOTTO-0002 INV-24.
+
 - **A local web page for tickets, results and claimable winnings** (LOTTO-0002)
   `serve.py` builds the model and serves it; `page.py` renders it and is a pure
   function, so the whole page can be rendered in a test with no socket and no
@@ -107,6 +121,13 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importing the derivation it is testing.
 
 ### Fixed
+
+- **A non-numeric port variable died with a traceback instead of a message.** (LOTTO-0024)
+  `LOTTO_PORT=abc python3 serve.py` raised an unhandled `ValueError` from a
+  bare `int()`. Both variables now exit non-zero naming the variable and
+  the value they rejected, and an out-of-range port is rejected before the
+  bind rather than as a confusing "permission denied". Never a silent
+  fallback: a caller that asked for port 80 and got 4322 has been lied to.
 
 - **The tray waits for the build before reporting a refresh, and reports a failure as a failure (INV-23)** (LOTTO-0018)
   `POST /refresh` answers 202 = accepted, not finished — `serve.py::refresh()`

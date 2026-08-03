@@ -11,7 +11,8 @@ that: without it the check hangs instead of failing, and a hanging check reads
 as a broken test rather than a broken contract.
 
     python3 serve.py            # http://127.0.0.1:4322
-    LOTTO_PORT=5000 python3 serve.py
+    PORT=5000 python3 serve.py       # $PORT wins: the knob a process manager sets
+    LOTTO_PORT=5000 python3 serve.py # unchanged; used when $PORT is not set
 """
 
 import datetime
@@ -44,9 +45,13 @@ ALLOW = {"/": "GET", "/status": "GET", "/refresh": "POST", "/settings": "POST"}
 #
 # The paths and the reader live in supervise.py, which tray.py can import and
 # this file can too; writing stays here because POST /settings is a server
-# route. Rule 3: one reader, not two that will disagree.
+# route. Rule 3: one reader, not two that will disagree. The port bounds come
+# from there for the same reason - one pair of numbers, two different policies
+# about a bad value (resolve_port() below exits; Supervisor falls back).
 
 from supervise import (  # noqa: E402
+    MAX_PORT,
+    MIN_PORT,
     autostart_path,
     read_settings,
     settings_path,
@@ -461,8 +466,40 @@ def make_server(build_model_fn, token, port):
     return server, state
 
 
+def resolve_port(env=None):
+    """$PORT, then $LOTTO_PORT, then 4322 - and a bad value exits before the bind.
+
+    $PORT is the knob an external process manager sets, so it wins; $LOTTO_PORT
+    keeps working exactly as it did, and is what supervise.py writes into the
+    child (LOTTO-0013 §4.5). Unset and empty are not values - they mean "no
+    preference" and fall through to the next source.
+
+    **A value that was meant as a port and cannot be one is fatal**, for either
+    variable. Falling back would put the page on a port the caller was never
+    told about: a manager that asked for 80 and silently got 4322 has been lied
+    to, and the user who typed the variable one command ago is not looking at
+    4322 either. That is why this exits rather than warning, and why the message
+    names the value it rejected (LOTTO-0002 §6).
+    """
+    env = os.environ if env is None else env
+    for name in ("PORT", "LOTTO_PORT"):
+        raw = env.get(name)
+        if not raw:
+            continue
+        try:
+            port = int(raw)
+        except ValueError:
+            raise SystemExit(
+                f"{name}={raw!r} is not a number — expected {MIN_PORT}-{MAX_PORT}"
+            )
+        if not MIN_PORT <= port <= MAX_PORT:
+            raise SystemExit(f"{name}={port} is outside {MIN_PORT}-{MAX_PORT}")
+        return port
+    return DEFAULT_PORT
+
+
 def main():
-    port = int(os.environ.get("LOTTO_PORT") or DEFAULT_PORT)
+    port = resolve_port()
     token = os.environ.get("LOTTO_TOKEN") or secrets.token_urlsafe(32)
     no_build = bool(os.environ.get("LOTTO_NO_BUILD"))
     try:

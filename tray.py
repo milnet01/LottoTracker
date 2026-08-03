@@ -6,6 +6,7 @@ lives in supervise.py, which is Qt-free so INV-20 can drive it from a headless
 exit-code script.
 
     python3 tray.py
+    LWSM_MANAGED=1 python3 tray.py   # no icon; the server, logged to stdout
 
 Four details are copied from the user's existing stats tray
 (Ants_Projects_Hub_Website/tray/ants-stats-tray.py), and each is load-bearing
@@ -25,6 +26,44 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ICON_RUNNING = os.path.join(HERE, "icons", "tray-running.svg")
 ICON_STOPPED = os.path.join(HERE, "icons", "tray-stopped.svg")
 POLL_MS = 5000  # bounds how long the icon can claim a dead server is running
+
+
+def managed():
+    """True when a process manager started us and owns the presentation.
+
+    A hint about whether an ICON is wanted, and nothing else. It is
+    unauthenticated, trivially forged, inherited by every child process and
+    readable out of /proc/<pid>/environ, so it may never grant, skip or relax
+    anything - no permission, no token, no lifecycle decision hangs off it.
+    Only "1" counts: absent, empty or anything else is the unchanged path.
+    """
+    return os.environ.get("LWSM_MANAGED") == "1"
+
+
+def run_headless(sup=None):
+    """Start the server, log to stdout, and wait - no icon, and no stop path.
+
+    Everything the tray does *to* the server hangs off the menu, and the one
+    menu item this file is warned about is "Quit (stops the server)". Under a
+    manager that stop is the wrong answer twice over: the manager owns the
+    process tree it started, and a reap it did not ask for looks to it like the
+    service dying. So this path never calls sup.stop() - not on a failed
+    readiness poll, not on the way out. wait() only collects the child's exit
+    status; it does not end it.
+
+    open_on_start is not honoured here either: a run with no icon has no desktop
+    session to open a browser into.
+    """
+    sup = supervise.Supervisor() if sup is None else sup
+    if sup.port_fallback:
+        print(sup.port_fallback, flush=True)
+    sup.start()
+    print(f"managed: no tray icon. serving on {sup.url}", flush=True)
+    # Reported, not acted on. A server that is slow to answer is still the
+    # manager's to restart, and the only alternative here would be to stop it.
+    if not sup.is_ready():
+        print("the server has not answered yet; still waiting", flush=True)
+    return sup.child.wait()
 
 
 # ------------------------------------------------------------ background jobs
@@ -197,6 +236,11 @@ class LottoTray(QSystemTrayIcon):
 
 
 def main():
+    # Before any Qt object exists: a managed run must not need a display, and
+    # must not reach the menu that can stop the server (INV-25).
+    if managed():
+        return run_headless()
+
     app = QApplication([])
     app.setApplicationName("Lotto Tracker")
     app.setQuitOnLastWindowClosed(False)  # dismissing a notification must not quit

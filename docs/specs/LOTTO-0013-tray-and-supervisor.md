@@ -5,8 +5,14 @@ INV-23 were added for ROADMAP LOTTO-0018 (the tray reporting a refresh before it
 has happened, and reporting a failure as a success), gated over three loops, and
 then built: `supervise.py` carries `status()`, `refresh()`, the four outcome
 constants and `REFRESH_MESSAGE`, `tray.py::refresh()` shows what the wait
-returns, and `tools/verify_page.py` runs eleven cases and sixteen breaks, green,
+returns, and `tools/verify_page.py` runs thirteen cases and twenty breaks, green,
 with all three of INV-23's breaks observed red.
+
+**Amended again 2026-08-03 for ROADMAP LOTTO-0024** (running under an external
+process manager): §4.2 pins both port variables in the child, §4.5 states the
+`$PORT` precedence that made that necessary, and a new **§4.7** and **INV-25**
+own the managed run — no tray icon, and no path that can stop a server the
+manager believes it owns. LOTTO-0002 holds the other half, INV-24.
 
 **Eight cold-eyes loops in all** — three before implementation (converged by cap
 and by the collateral trigger), two re-gate loops that the settings-reader
@@ -325,7 +331,8 @@ MIN_PORT, MAX_PORT = 1024, 65535
             cwd=HERE,                            # see below — not optional
             env={**os.environ,
                  "LOTTO_TOKEN": self.token,
-                 "LOTTO_PORT": str(self.port)})
+                 "LOTTO_PORT": str(self.port),   # both, and both this port
+                 "PORT": str(self.port)})        # — see §4.5
 ```
 
 **The channel is the environment**, and this is the second gap in §2 closed.
@@ -495,6 +502,24 @@ to the child alongside `LOTTO_TOKEN`, and exposes `url` for the tray to open.
 on every request** — the allowlist rejecting the very URL the tray just opened —
 which is a confusing failure to debug and a trivial one to prevent by reading
 the value once.
+
+**`serve.py` reads `$PORT` ahead of `$LOTTO_PORT`** (LOTTO-0002 §4.1, INV-24),
+and that is why §4.2 puts **both** variables in the child's environment, both
+set to the port this `Supervisor` already chose. A session that exports a `PORT`
+of its own — a shell where a manager was configured, an inherited value from
+whatever launched the tray — would otherwise send the child to a port the tray
+is not watching, which is precisely the 421 above, arriving through a variable
+neither file names. Pinning both costs one line and closes it.
+
+**The resolution rule here is unchanged, and deliberately differs from
+`serve.py`'s.** A `Supervisor` still reads `LOTTO_PORT` only, and still falls
+back rather than raising. The two policies are not in conflict because they fail
+into different places: a bad value in the standalone path reaches a terminal,
+and a bad value under the tray reaches nobody, so the same input must exit there
+and fall back here (§4.3's refusal to let a bad setting be the reason no icon
+appears). What the tray must *not* do is honour `$PORT` for itself while the
+child honours it too — two readers of the same variable, which is the shape
+§4.1 forbids for the settings file.
 
 **An unusable `LOTTO_PORT` reaching `Supervisor` falls back to 4322 and says
 so; it never raises.** (The standalone `python3 serve.py` path constructs no
@@ -684,12 +709,56 @@ success. The other three name what is *not* known — a failure, an unfinished
 build, someone else's build — and none of them may be phrased so that a user who
 reads only the first few words takes it for a completed refresh.
 
+### 4.7 A managed run has no icon, and no way to stop the server
+
+**`LWSM_MANAGED=1` runs `tray.py` with no tray icon**: it starts the server,
+logs to stdout, and waits on the child. Anything else — absent, empty, `0`,
+`true`, any other value — is the unchanged path, icon included. Only the exact
+string `1` counts, because a hint that anything truthy satisfies is one a stray
+`LWSM_MANAGED=0` switches on.
+
+The reason is not that a tray is unavailable under a manager; it is that it is
+**redundant**. The icon's whole job is to tell a person the server is running
+and let them stop, start and refresh it — all of which the manager already owns.
+A hand-started server keeps its tray, which is why *absence* is the unchanged
+path rather than the new one.
+
+**This variable has no security value, and nothing may be granted, skipped or
+relaxed on the strength of it.** It is unauthenticated, trivially forged,
+inherited by every child process, and readable out of `/proc/<pid>/environ` by
+the owning user — the same channel §4.2 uses for the token, and the reason that
+one is a *secret* rather than a *flag* is exactly what this one is not. The only
+thing it may change is whether an icon appears. It does not touch the token, the
+`Host` allowlist, `POST` authorisation, the port, or any decision about what
+gets started or stopped.
+
+**The managed path calls `stop()` at no point — not on a failed readiness poll,
+not on the way out.** This is the sharpest rule in the section, because the
+menu the managed run skips contains *Quit (stops the server)*, and the whole
+point of the section is that it is skipped. A manager that started this process
+owns the tree it started; a reap it did not ask for is indistinguishable, from
+its side, from the service dying. So a server that is slow to answer is
+**reported and left running** — the only alternative available to this path
+would be to stop it — and the wait is `child.wait()`, which collects the exit
+status and does not cause it. Termination comes from the manager, through the
+process group, which is the one place with the authority to decide it.
+
+`open_on_start` (§4.3) is not honoured here either: a run with no icon has no
+desktop session to open a browser into. The setting is read by `tray.py` on the
+path that has one.
+
+**What a managed run does not change:** `Supervisor` is constructed exactly as
+before, `port_fallback` is still surfaced (printed rather than notified — the
+same reason §4.6's wording lives in a Qt-free module), and the spawn, the token
+and `cwd=HERE` are §4.2's unchanged. The difference is the presentation layer
+and nothing under it.
+
 ## 5. Invariants
 
-This document holds INV-19, INV-20 and INV-23. LOTTO-0001 holds INV-1 to INV-6
-and INV-22, LOTTO-0009 INV-7 to INV-11, LOTTO-0014 INV-12 to INV-14 and INV-21,
-and LOTTO-0002 INV-15 to INV-18. CHANGELOG.md cites them unqualified, so the
-numbers do not move on a split.
+This document holds INV-19, INV-20, INV-23 and INV-25. LOTTO-0001 holds INV-1 to
+INV-6 and INV-22, LOTTO-0009 INV-7 to INV-11, LOTTO-0014 INV-12 to INV-14 and
+INV-21, and LOTTO-0002 INV-15 to INV-18 and INV-24. CHANGELOG.md cites them
+unqualified, so the numbers do not move on a split.
 
 - **INV-19** — Importing `serve.py` or `supervise.py` pulls in no Qt or PySide6
   module, starts no server and spawns no process.
@@ -840,6 +909,36 @@ numbers do not move on a split.
   user is told the thing they wanted to hear — and the third is silent until a
   build actually fails, which is four times in seven.
 
+- **INV-25** — With `LWSM_MANAGED=1`, `tray.py` constructs no Qt object and
+  reaches no path that stops the server; with any other value, or none, it takes
+  the tray path unchanged.
+  *Test:* `tools/verify_page.py`, case `tray_headless_when_managed` — a probe in
+  a **fresh interpreter**, for two reasons rather than one: importing `tray.py`
+  imports PySide6, and this suite's other twelve cases run in a process that
+  INV-19 requires to stay Qt-free. The probe replaces `supervise.Supervisor`
+  with a recording double and `tray.QApplication` with something that **raises**,
+  then calls `tray.main()` and reports what happened. Reaching Qt is therefore
+  the failure, not an assertion about it — there is no display to construct one
+  against, and no display is needed to prove it was not constructed.
+  With `LWSM_MANAGED=1` the case asserts: no error (nothing touched Qt), the
+  server was started, the child was waited on, `main()` returned the child's
+  exit code, and — the assertion the section exists for — **`stop()` was never
+  called**. Then six further runs, `LWSM_MANAGED` unset, empty, `0`, `true`,
+  `yes` and `2`, each of which must reach `QApplication` and must **not** have
+  started a server. Unset is passed as an explicit deletion rather than an empty
+  string, or the case would silently test the wrong thing in a shell that
+  exports the variable itself.
+  The probe runs with the real user `site-packages` on `PYTHONPATH`, captured at
+  import before §7's redirected `$HOME` hides it — on this machine PySide6 is
+  installed under `$HOME`, so without it the probe would report "no Qt" for the
+  wrong reason and pass.
+  *Breaks when:* the check is inverted or dropped so a managed run builds a tray
+  (`--break tray_icon_when_managed`), or a headless path stops the server
+  (`--break headless_stops_server`, which wraps `run_headless()` in a `stop()`
+  and is the defect §4.7's rule names). The first is loud under a manager and
+  the second is not: a stopped server looks to the manager like a service that
+  died on its own.
+
 ## 6. Failure modes
 
 - **No system tray on the desktop.** `QSystemTrayIcon.isSystemTrayAvailable()`
@@ -916,13 +1015,14 @@ numbers do not move on a split.
 
 ## 7. Tests
 
-All three of this spec's cases live in `tools/verify_page.py`, the script
+All four of this spec's cases live in `tools/verify_page.py`, the script
 LOTTO-0002 §7 introduces — **one script for all three parts of the split**, joining
 `tools/verify_privacy.py`, `tools/verify_sources.py`, `tools/verify_coverage.py`
 and `tools/verify_pools.py`. Exit code is the signal, as with the other four.
-One script rather than three because all eleven cases share their temporary-directory
+One script rather than three because all thirteen cases share their temporary-directory
 setup and their fixtures (nine also share the stub builder — `no_orphan_server`
-spawns a real child and `serve_is_headless` runs in a fresh interpreter), and
+and `port_from_environment` spawn real children, and `serve_is_headless` and
+`tray_headless_when_managed` run in fresh interpreters), and
 because CLAUDE.md's
 verification block — five commands — is what a contributor actually runs.
 
@@ -931,11 +1031,12 @@ verification block — five commands — is what a contributor actually runs.
 | `serve_is_headless` | INV-19 |
 | `no_orphan_server` | INV-20 |
 | `refresh_reports_the_build` | INV-23 |
+| `tray_headless_when_managed` | INV-25 |
 
-LOTTO-0002 §7 states the three constraints binding all eleven cases — no network,
+LOTTO-0002 §7 states the three constraints binding all thirteen cases — no network,
 no real data, and recomputing rather than importing the judgement under test —
-and names its own four cases; LOTTO-0014 §7 names the other four. Three points
-apply to this document's three cases specifically:
+and names its own five cases; LOTTO-0014 §7 names the other four. Four points
+apply to this document's four cases specifically:
 
 - **`no_orphan_server` spawns a real child**, which is the one case that does
   not use the stub-builder seam. `LOTTO_NO_BUILD` is what keeps it cheap *and*
@@ -950,8 +1051,17 @@ apply to this document's three cases specifically:
   `LOTTO_NO_BUILD` is the *additional* guard that `cwd=HERE` makes necessary,
   covering the one thing a redirected `$HOME` does not — the repository's own
   data files.
+- **`tray_headless_when_managed` must run in a fresh interpreter too**, and for
+  a second reason on top of that one: it is the only case that imports
+  `tray.py`, which imports PySide6, and doing that in the suite's own process
+  would put Qt in the very interpreter INV-19 is about. It is also the only case
+  in the suite that requires PySide6 to be installed at all — the other twelve
+  run on the standard library, and this one is what the tray-only requirement in
+  README.md and CLAUDE.md costs the test suite. It spawns no server: the
+  `Supervisor` is a double, so the case costs one interpreter start per run and
+  makes no socket.
 - **`serve_is_headless` must run in a fresh interpreter**, not in the one
-  running the suite. By the time the other ten cases have run, the suite's own
+  running the suite. By the time the other twelve cases have run, the suite's own
   process has imported whatever they needed — including `supervise`, which
   `no_orphan_server` drives directly — so asserting on `sys.modules` there would
   measure the test harness rather than the modules under test.
@@ -979,8 +1089,8 @@ and `notify_on_202`, which must fail on one specific assertion out of five:
 **The breakages are named flags, not hand edits** — `tools/verify_page.py
 --break <name>` applies one deliberate defect and asserts the named case goes
 red, and `--list` prints them. LOTTO-0002 §7 owns the reasoning; what matters
-here is that this document's three cases are covered by `qt_import`,
-`terminate_only` and INV-23's three, and that adding a case means adding its
+here is that this document's four cases are covered by `qt_import`,
+`terminate_only`, INV-23's three and INV-25's two, and that adding a case means adding its
 break in the same change. **Two of the bullets below are deliberately not
 flags** — the `SIGTERM`-handler variant and the exit-immediately server are
 one-off manual confirmations, stated because they are what makes the two flagged
@@ -1099,10 +1209,13 @@ without shipping a second `serve.py`.
 | §4.6 a child that dies mid-build being reported rather than waited out | **nothing** — INV-23's case drives a `Supervisor` that owns no child, precisely so it needs no spawn, so it cannot reach the branch. Loud at run time: the notification arrives in seconds instead of at the 300 s budget |
 | §4.3 `tray.py` reading `open_on_start`, and its fallback on a corrupt file | **nothing mechanical** — needs a tray and a session. The fallback is what stops a bad settings file hiding the icon, so it is verified by writing a malformed `settings.json` and starting the tray once |
 | §4.1 one reader, with no second copy of it in `serve.py` or `tray.py` | **nothing** — a duplicate that agrees on the day it is written passes every case in `tools/verify_page.py`, because agreeing readers are indistinguishable from one reader until one of them is edited. Found once, by reading, in shipped code (§13) |
-| §4.5 the port being read once and agreeing end to end | **nothing** — a disagreement surfaces as a 421 on every request, which is loud at run time and invisible to a check that supplies the port itself |
+| §4.5 the port being read once and agreeing end to end | `tools/verify_page.py::port_from_environment` (LOTTO-0002 INV-24) — its second half starts a `Supervisor` while the session exports a *different* `$PORT` and asserts the child answers on the supervisor's port. That covers the disagreement §4.2's pinning prevents; a disagreement arising some other way is still only loud at run time, as a 421 on every request |
+| INV-25 a managed run has no icon and no path that stops the server | `tools/verify_page.py::tray_headless_when_managed` — and it is the first `tray.py` rule in this table with a checker at all, because the managed path is the one branch of that file with no Qt on it |
+| §4.7 `LWSM_MANAGED` granting nothing — no token, no allowlist, no authorisation decision hanging off it | **nothing** — it is a rule about code that does not exist, and no case can prove an absence. Code review only; the mitigation is that the variable is read in exactly one place, `tray.py::managed()`, which a grep confirms |
+| §4.7 the managed run's stdout actually being read by a manager | **nothing** — it needs a manager. Verified once by hand: `LWSM_MANAGED=1 python3 tray.py` prints the URL and no icon appears |
 | §6 the tray exiting non-zero with no system tray | **nothing mechanical** — depends on the session's tray implementation; verified by running it under a session with no tray |
 
-Eighteen rows, thirteen `nothing`. (§4.2's environment channel for the token is not
+Twenty-one rows, fourteen `nothing`. (§4.2's environment channel for the token is not
 tabulated here — LOTTO-0014 §11 owns that row, since the rule it states is the
 token's, and a rule tabulated twice becomes two rules that disagree.)
 
@@ -1162,6 +1275,20 @@ INV-23:**
 - `CLAUDE.md` — the verification block runs the same five commands, but names
   `tools/verify_page.py`'s range as `INV-12..INV-21` and counts its breaks; both
   go stale with an eleventh case and three more breaks.
+
+**Added by the LOTTO-0024 amendment (2026-08-03), which introduced §4.7 and
+INV-25:**
+
+- `docs/specs/LOTTO-0002-local-web-page.md` — **a contract change, not a count
+  edit.** Its §4.1 environment table gains `PORT`, its §5 gains INV-24, and its
+  §6's "a traceback is an acceptable answer here" bullet is replaced: the
+  standalone path now exits with a message naming the rejected value. The case
+  counts in its §7 move again, as do LOTTO-0014's two citations of them.
+- `CHANGELOG.md` — `Added` and `Fixed` entries citing LOTTO-0024.
+- `ROADMAP.md` — LOTTO-0024's bullet, filed and flipped to shipped.
+- `CLAUDE.md` — the verification block's `INV-12..INV-21` range and its break
+  count go stale again; `README.md` gains nothing, the managed run having no
+  user-facing surface beyond the variable.
 
 ## 13. Cold-eyes loop log
 

@@ -155,7 +155,13 @@ class Supervisor:
             env={
                 **os.environ,
                 "LOTTO_TOKEN": self.token,
+                # BOTH port variables, both set to the port this object already
+                # decided on. serve.py::resolve_port() reads $PORT first, and a
+                # $PORT inherited from the session would otherwise send the
+                # child somewhere the tray is not looking - which is the 421 on
+                # every request that §4.5 exists to prevent.
                 "LOTTO_PORT": str(self.port),
+                "PORT": str(self.port),
             },
         )
 

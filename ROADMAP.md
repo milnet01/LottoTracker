@@ -432,6 +432,39 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   reference identifies a real ticket, and putting one in a search box invites it
   into the places INV-21 exists to keep it out of.
 
+- ✅ [LOTTO-0024] **The server takes its port from $PORT, and the tray runs without an icon under a process manager.**
+  Two knobs, both read at startup, and one live bug fixed on the way.
+
+  `serve.py::resolve_port()` — `$PORT`, then `$LOTTO_PORT`, then 4322.
+  `$PORT` is the name a process manager already sets, so it wins; the
+  `$LOTTO_PORT` path is what it was. A value that is *set* and cannot be
+  a port (non-numeric, or outside 1024-65535) now exits non-zero naming
+  the variable and the value, for BOTH variables — the bug being that
+  `LOTTO_PORT=abc python3 serve.py` died with an unhandled `ValueError`
+  traceback. Never a silent fallback: a manager that asked for port 80
+  and got 4322 has been told nothing (LOTTO-0002 INV-24, §6).
+
+  `supervise.py` now pins `PORT` alongside `LOTTO_PORT` in the child, both
+  to the port it already chose. Without that, a session exporting its own
+  `$PORT` would send the child somewhere the tray is not watching — the
+  421-on-every-request failure LOTTO-0013 §4.5 exists to prevent.
+
+  `tray.py::managed()` — `LWSM_MANAGED=1` runs it with no tray icon,
+  logging to stdout and waiting on the child. Anything else is the
+  unchanged path, icon included. No headless path calls `stop()`: the
+  menu it skips contains "Quit (stops the server)", and a manager that
+  started the process owns the tree. The variable is a presentation hint
+  with no security value — unauthenticated, forgeable, inherited, and
+  readable from a process's environ — so nothing else hangs off it
+  (LOTTO-0013 §4.7, INV-25).
+
+  Two cases added to `tools/verify_page.py`, `port_from_environment` and
+  `tray_headless_when_managed`, with four breaks; all thirteen cases and
+  the other four verifiers green.
+  **Layman:** An external manager can now put the page on whatever port it likes, and start it without an icon appearing next to the clock.
+  Kind: feature.
+  Source: user-request-2026-08-03.
+
 ## Hardening
 
 - 📋 **LOTTO-0004** Automated guard that no SMS content can be committed.

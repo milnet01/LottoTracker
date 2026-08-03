@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Eleven cases, one per invariant INV-12 to INV-21 and INV-23, for the local
-page and the tray that drives it.
+"""Thirteen cases, one per invariant INV-12 to INV-21 and INV-23 to INV-25, for
+the local page and the tray that drives it.
 
 Joins tools/verify_privacy.py, verify_sources.py, verify_coverage.py and
 verify_pools.py. Exit code is the signal, as with the other four.
 
-    python3 tools/verify_page.py            # all eleven
+    python3 tools/verify_page.py            # all thirteen
     python3 tools/verify_page.py --list
     python3 tools/verify_page.py --break host_endswith   # RED-TEST: must FAIL
 
-Three constraints, inherited from LOTTO-0002 §7 and binding on all eleven:
+Three constraints, inherited from LOTTO-0002 §7 and binding on all thirteen:
 
   * No network. The seam is the BUILDER, not the model: make_server takes a
     callable, so POST /refresh has something to invoke.
@@ -29,6 +29,7 @@ import http.client
 import json
 import os
 import shutil
+import site
 import socket
 import subprocess
 import sys
@@ -45,6 +46,10 @@ import serve  # noqa: E402
 import supervise  # noqa: E402
 
 SENTINEL = "VAS00000000000"
+# Read at import, while $HOME is still the real one: temp_home() moves $HOME for
+# every case, and on this machine PySide6 lives in the USER site-packages under
+# it — so the tray probe would find no Qt at all and report the wrong reason.
+USER_SITE = site.getusersitepackages()
 BREAK = os.environ.get("LOTTO_BREAK") or ""
 
 
@@ -1030,6 +1035,241 @@ def nothing_in_the_url():
         srv.shutdown()
 
 
+def _child_on(env_extra, port, timeout=15.0):
+    """True once a `python3 serve.py` spawned with these variables answers on
+    `port`. The seam is the PROCESS, not resolve_port(): the question this half
+    of INV-24 asks is what main() actually binds. LOTTO_NO_BUILD keeps it off
+    the network."""
+    child = subprocess.Popen(
+        [sys.executable, os.path.join(ROOT, "serve.py")],
+        cwd=ROOT,
+        env={**os.environ, "LOTTO_NO_BUILD": "1", **env_extra},
+    )
+    try:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if child.poll() is not None:
+                return False       # it exited; it is not serving anywhere
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=1)
+                return True
+            except urllib.error.HTTPError:
+                return True        # any status is an answer; 421 is still a bind
+            except (urllib.error.URLError, OSError):
+                time.sleep(0.1)
+        return False
+    finally:
+        child.terminate()
+        try:
+            child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait(timeout=5)
+
+
+def port_from_environment():
+    """INV-24 — $PORT wins, $LOTTO_PORT is unchanged, and a value meant as a
+    port that cannot be one exits instead of binding something else."""
+    temp_home()
+    real = serve.resolve_port
+    if broken("port_silent_fallback"):
+        # RED-TEST: the exact shape the invariant forbids — a bad value falls
+        # back to 4322, which every caller reads as "it did what I asked".
+        def lenient(env=None):
+            try:
+                return real(env)
+            except SystemExit:
+                return serve.DEFAULT_PORT
+
+        serve.resolve_port = lenient
+    if broken("lotto_port_wins"):
+        # RED-TEST: precedence the other way round. Indistinguishable from
+        # correct on every machine where only one of the two is ever set.
+        def swapped(env=None):
+            env = os.environ if env is None else env
+            flip = dict(env)
+            flip["PORT"] = env.get("LOTTO_PORT") or ""
+            flip["LOTTO_PORT"] = env.get("PORT") or ""
+            return real(flip)
+
+        serve.resolve_port = swapped
+
+    # Explicit dicts, never the ambient environment: a case that reads os.environ
+    # passes or fails according to how the developer's shell happens to be set.
+    try:
+        for env, want, why in (
+            ({}, serve.DEFAULT_PORT, "neither variable set"),
+            ({"PORT": "", "LOTTO_PORT": ""}, serve.DEFAULT_PORT, "both empty"),
+            ({"LOTTO_PORT": "5001"}, 5001, "LOTTO_PORT alone"),
+            ({"PORT": "5999"}, 5999, "PORT alone"),
+            ({"PORT": "5999", "LOTTO_PORT": "5001"}, 5999, "PORT must win"),
+            ({"PORT": "", "LOTTO_PORT": "5001"}, 5001, "an empty PORT is no value"),
+        ):
+            got = serve.resolve_port(env)
+            need(got == want, f"{why}: resolved to {got}, expected {want}")
+
+        # Both variables, because the unhandled ValueError this replaces was in
+        # the LOTTO_PORT path and fixing only the new one leaves it there.
+        for name, value in (
+            ("PORT", "abc"), ("PORT", "80"), ("PORT", "0"), ("PORT", "65536"),
+            ("PORT", "-1"), ("PORT", "4322.0"),
+            ("LOTTO_PORT", "abc"), ("LOTTO_PORT", "80"),
+        ):
+            try:
+                got = serve.resolve_port({name: value})
+            except SystemExit as exc:
+                need(
+                    value in str(exc),
+                    f"the {name}={value} message does not name the value: {exc}",
+                )
+                need(str(exc).strip() != "", f"{name}={value} exits with no message")
+            else:
+                raise Fail(
+                    f"{name}={value} resolved to {got} rather than exiting — "
+                    "a caller that asked for a port it cannot have was told nothing"
+                )
+    finally:
+        serve.resolve_port = real
+
+    # End to end, twice: the resolved port is the port that gets bound, and a
+    # supervised child lands on the port the tray is watching even when the
+    # session exports a PORT of its own (LOTTO-0013 §4.5's 421).
+    port = supervise.free_port()
+    need(_child_on({"PORT": str(port)}, port), f"no server answered on PORT={port}")
+
+    decoy, wanted = supervise.free_port(), supervise.free_port()
+    os.environ["PORT"] = str(decoy)
+    sup = supervise.Supervisor(port=wanted)
+    os.environ["LOTTO_NO_BUILD"] = "1"
+    try:
+        sup.start()
+        need(
+            sup.is_ready(15),
+            f"the child ignored the supervisor's port {wanted}; an inherited "
+            f"PORT={decoy} would 421 every request the tray makes",
+        )
+    finally:
+        sup.stop()
+        os.environ.pop("PORT", None)
+        os.environ.pop("LOTTO_NO_BUILD", None)
+
+
+# The probe runs in its own process because importing tray.py imports PySide6,
+# and this file must stay importable by the four headless tools beside it.
+# Qt is never CONSTRUCTED here: QApplication is replaced with something that
+# raises, so reaching it at all is the failure.
+TRAY_PROBE = r'''
+import json, os, sys
+sys.path.insert(0, {root!r})
+import supervise, tray
+
+calls = []
+
+
+class FakeChild:
+    def wait(self, timeout=None):
+        calls.append("wait")
+        return 0
+
+    def poll(self):
+        return None
+
+
+class FakeSup:
+    port_fallback = None
+    url = "http://127.0.0.1:65000"
+
+    def __init__(self, port=None):
+        self.child = FakeChild()
+
+    def start(self):
+        calls.append("start")
+
+    def is_ready(self, timeout=10.0):
+        calls.append("is_ready")
+        return True
+
+    def stop(self, timeout=5.0):
+        calls.append("stop")
+
+
+def explode(*a, **k):
+    raise RuntimeError("constructed a Qt object")
+
+
+supervise.Supervisor = FakeSup
+tray.QApplication = explode
+
+brk = os.environ.get("LOTTO_BREAK") or ""
+if brk == "tray_icon_when_managed":
+    tray.managed = lambda: False
+if brk == "headless_stops_server":
+    inner = tray.run_headless
+
+    def stopper(sup=None):
+        sup = supervise.Supervisor() if sup is None else sup
+        sup.stop()
+        return inner(sup)
+
+    tray.run_headless = stopper
+
+out = {{"calls": calls, "error": None, "rc": None}}
+try:
+    out["rc"] = tray.main()
+except BaseException as exc:
+    out["error"] = "{{}}: {{}}".format(type(exc).__name__, exc)
+out["calls"] = calls
+print(json.dumps(out))
+'''
+
+
+def _tray_probe(env_extra):
+    # A None value means UNSET, not empty: the absent case must be absent even
+    # in a shell that exports LWSM_MANAGED itself.
+    env = {**os.environ, **{k: v for k, v in env_extra.items() if v is not None}}
+    for key, value in env_extra.items():
+        if value is None:
+            env.pop(key, None)
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in (USER_SITE, env.get("PYTHONPATH")) if p
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", TRAY_PROBE.format(root=ROOT)],
+        cwd=ROOT, capture_output=True, text=True, timeout=60, env=env,
+    )
+    need(out.returncode == 0, f"the tray probe died: {out.stderr.strip()[:400]}")
+    return json.loads(out.stdout.strip().splitlines()[-1])
+
+
+def tray_headless_when_managed():
+    """INV-25 — LWSM_MANAGED=1 runs the tray with no icon and no path that can
+    stop the server; every other value is the unchanged tray."""
+    temp_home()
+    run = _tray_probe({"LWSM_MANAGED": "1"})
+    need(run["error"] is None, f"the managed run reached Qt: {run['error']}")
+    need("start" in run["calls"], "the managed run never started the server")
+    need("wait" in run["calls"], "the managed run did not wait on the child")
+    need(
+        "stop" not in run["calls"],
+        "a headless path stopped a server the manager believes it owns",
+    )
+    need(run["rc"] == 0, f"the managed run returned {run['rc']}, expected the child's 0")
+
+    # Absence is the unchanged path, and so is every value that is not "1" - a
+    # presentation hint that anything truthy satisfies is one a stray
+    # LWSM_MANAGED=0 turns on.
+    for value in (None, "", "0", "true", "yes", "2"):
+        other = _tray_probe({"LWSM_MANAGED": value})
+        need(
+            other["error"] is not None and "Qt" in other["error"],
+            f"LWSM_MANAGED={value!r} did not take the tray path: {other}",
+        )
+        need(
+            "start" not in other["calls"],
+            f"LWSM_MANAGED={value!r} started a server on the headless path",
+        )
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -1042,6 +1282,8 @@ CASES = [
     ("no_orphan_server", "INV-20", no_orphan_server),
     ("nothing_in_the_url", "INV-21", nothing_in_the_url),
     ("refresh_reports_the_build", "INV-23", refresh_reports_the_build),
+    ("port_from_environment", "INV-24", port_from_environment),
+    ("tray_headless_when_managed", "INV-25", tray_headless_when_managed),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -1062,6 +1304,10 @@ BREAKS = {
     "notify_on_202": "refresh_reports_the_build",
     "stale_is_success": "refresh_reports_the_build",
     "success_wording": "refresh_reports_the_build",
+    "port_silent_fallback": "port_from_environment",
+    "lotto_port_wins": "port_from_environment",
+    "tray_icon_when_managed": "tray_headless_when_managed",
+    "headless_stops_server": "tray_headless_when_managed",
 }
 
 
