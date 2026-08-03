@@ -31,10 +31,18 @@ POLL_MS = 5000  # bounds how long the icon can claim a dead server is running
 def managed():
     """True when a process manager started us and owns the presentation.
 
-    A hint about whether an ICON is wanted, and nothing else. It is
-    unauthenticated, trivially forged, inherited by every child process and
-    readable out of /proc/<pid>/environ, so it may never grant, skip or relax
-    anything - no permission, no token, no lifecycle decision hangs off it.
+    A hint about whether an ICON is wanted. It is unauthenticated, trivially
+    forged, inherited by every child process and readable out of
+    /proc/<pid>/environ, so **no authorisation may hang off it** - not the
+    token, not the Host allowlist, not a POST check, not the port.
+
+    It does decide process lifetime, and that is not an exception: with no menu
+    there is no Quit and no aboutToQuit, so the managed path REMOVES the ability
+    to stop the server rather than granting anything (LOTTO-0013 §4.7). A branch
+    that takes a capability away needs only to be correct; a branch that lets
+    something through on the strength of a forgeable string is the one this
+    docstring forbids.
+
     Only "1" counts: absent, empty or anything else is the unchanged path.
     """
     return os.environ.get("LWSM_MANAGED") == "1"
@@ -254,6 +262,11 @@ def main():
     sup = supervise.Supervisor()
     tray = LottoTray(sup)
     tray.show()
+    # A NOTIFICATION, never a print. supervise.py falls back on an unusable
+    # $PORT or $LOTTO_PORT rather than exiting (its docstring says why), and a
+    # fallback nobody sees is the silent substitution that policy exists to
+    # avoid - an autostarted tray has no terminal for a print to land in. After
+    # show(), because showMessage() needs a visible icon to hang off.
     if sup.port_fallback:
         tray.note(sup.port_fallback)
 

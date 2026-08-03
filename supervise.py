@@ -105,23 +105,50 @@ def read_settings():
 
 
 def _port_or_default(port):
-    """A bad $LOTTO_PORT falls back; it never raises.
+    """$PORT, then $LOTTO_PORT, then 4322 - and a bad value FALLS BACK, saying so.
 
-    A ValueError out of the constructor means no icon appears at all, which is
-    the same outcome refused for a corrupt settings.json. Below 1024 a non-root
-    tray cannot bind, so accepting it only defers the failure to a confusing
-    "port in use". Returns (port, fallback_message_or_None).
+    Same precedence as serve.py::resolve_port(), deliberately: one predictable
+    knob across the project, so a tool setting $PORT does not also have to learn
+    this project's own variable name.
+
+    **The behaviour on a bad value diverges from serve.py's, and that divergence
+    is deliberate. Do not "unify" these two functions.**
+
+      * `serve.py` is MACHINE-facing. An external process manager must never be
+        silently handed a port other than the one it asked for, so an unusable
+        value is fatal there.
+      * this is HUMAN-facing. A tray that exits just vanishes - no window, no
+        terminal, no icon - so a typo in a shell profile would look exactly like
+        the application being broken. It falls back and says so instead, the
+        same rule read_settings() follows for a corrupt settings.json.
+
+    That asymmetry is safe rather than merely tolerable, because the fallback
+    cannot deceive a manager: a manager range-checks a port before it sets it,
+    and it launches `serve.py` directly - so the unusable case is unreachable on
+    the managed path, and the path where it IS reachable is the one with a human
+    reading the notification. Below 1024 a non-root tray cannot bind, so
+    accepting it only defers the failure to a confusing "port in use".
+
+    Returns (port, fallback_message_or_None). The message names whichever source
+    was bad, and tray.py raises it as a NOTIFICATION - never a print, which an
+    autostarted tray has no terminal to carry (LOTTO-0013 §4.5).
     """
-    raw = port if port is not None else os.environ.get("LOTTO_PORT")
+    if port is not None:
+        source, raw = "port", port
+    else:
+        source, raw = next(
+            ((n, os.environ[n]) for n in ("PORT", "LOTTO_PORT") if os.environ.get(n)),
+            ("PORT", None),
+        )
     if raw in (None, ""):
         return DEFAULT_PORT, None
     try:
         n = int(raw)
     except (TypeError, ValueError):
-        return DEFAULT_PORT, f"LOTTO_PORT={raw!r} is not a number; using {DEFAULT_PORT}"
+        return DEFAULT_PORT, f"{source}={raw!r} is not a number; using {DEFAULT_PORT}"
     if not MIN_PORT <= n <= MAX_PORT:
         return DEFAULT_PORT, (
-            f"LOTTO_PORT={n} is outside {MIN_PORT}-{MAX_PORT}; using {DEFAULT_PORT}"
+            f"{source}={n} is outside {MIN_PORT}-{MAX_PORT}; using {DEFAULT_PORT}"
         )
     return n, None
 

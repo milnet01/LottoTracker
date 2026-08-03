@@ -8,6 +8,16 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The tray resolves the port the same way the server does.** (LOTTO-0024)
+  `supervise.py` reads `$PORT`, then `$LOTTO_PORT`, then 4322 — one knob
+  whichever way the page is started, so a shell that exports `$PORT` moves
+  a hand-started tray too. Only the behaviour on a *bad* value diverges,
+  deliberately and with the reasoning stated at both sites: `serve.py` is
+  machine-facing and exits, the tray is human-facing and falls back to
+  4322 with a notification, because a tray that exits just vanishes. That
+  is safe because a manager range-checks before it sets and launches
+  `serve.py` directly, so the fallback can never mislead one.
+
 - **`LWSM_MANAGED=1` runs the tray with no icon, logging to stdout.** (LOTTO-0024)
   For processes an external manager starts, where a tray icon is redundant.
   No headless path can stop the server — the menu it skips contains "Quit

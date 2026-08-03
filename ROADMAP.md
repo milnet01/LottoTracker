@@ -444,7 +444,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   traceback. Never a silent fallback: a manager that asked for port 80
   and got 4322 has been told nothing (LOTTO-0002 INV-24, §6).
 
-  `supervise.py` now pins `PORT` alongside `LOTTO_PORT` in the child, both
+  `supervise.py` resolves the same two variables in the same order (one
+knob whichever way the page is started) and diverges only on a BAD
+value, where it falls back to 4322 with a notification rather than
+exiting — a tray that exits just vanishes, and that is safe because a
+manager range-checks before it sets and launches serve.py directly. It
+pins both variables in the child, both
   to the port it already chose. Without that, a session exporting its own
   `$PORT` would send the child somewhere the tray is not watching — the
   421-on-every-request failure LOTTO-0013 §4.5 exists to prevent.

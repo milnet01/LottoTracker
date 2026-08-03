@@ -1109,6 +1109,10 @@ def port_from_environment():
             ({"PORT": "5999"}, 5999, "PORT alone"),
             ({"PORT": "5999", "LOTTO_PORT": "5001"}, 5999, "PORT must win"),
             ({"PORT": "", "LOTTO_PORT": "5001"}, 5001, "an empty PORT is no value"),
+            # Resolution SHORT-CIRCUITS: nothing looked at the bad one, so it is
+            # not an error. An implementation that validates both eagerly exits
+            # here, and passes every other assertion in this case.
+            ({"PORT": "5999", "LOTTO_PORT": "abc"}, 5999, "a bad LOTTO_PORT behind a valid PORT"),
         ):
             got = serve.resolve_port(env)
             need(got == want, f"{why}: resolved to {got}, expected {want}")
@@ -1140,6 +1144,68 @@ def port_from_environment():
                 )
     finally:
         serve.resolve_port = real
+
+    # The tray resolves the same two variables in the same order — one knob
+    # across the project — and differs only in what a BAD value does: it falls
+    # back with a message where serve.py exits (LOTTO-0013 §4.5). Both halves
+    # are asserted, because the fallback is what makes the shared precedence
+    # safe rather than a second silent substitution.
+    saved = {k: os.environ.get(k) for k in ("PORT", "LOTTO_PORT")}
+    real_pod = supervise._port_or_default
+    if broken("supervisor_ignores_port"):
+        # RED-TEST: the tray reads its own variable only — the shape before
+        # LOTTO-0024, where a $PORT set for the whole project is silently
+        # ignored on the one path a human starts by hand.
+        def lotto_only(port):
+            if port is None and not os.environ.get("LOTTO_PORT"):
+                return supervise.DEFAULT_PORT, None
+            return real_pod(port)
+
+        supervise._port_or_default = lotto_only
+    if broken("tray_silent_fallback"):
+        # RED-TEST: it still falls back, and stops saying so. The fallback is
+        # only defensible while the user is told — otherwise it is the silent
+        # substitution serve.py exits to avoid, with no terminal to notice it in.
+        def mute(port):
+            return real_pod(port)[0], None
+
+        supervise._port_or_default = mute
+    try:
+        for env, want, fallback, why in (
+            ({}, supervise.DEFAULT_PORT, False, "neither set"),
+            ({"LOTTO_PORT": "5001"}, 5001, False, "LOTTO_PORT alone"),
+            ({"PORT": "5999"}, 5999, False, "PORT alone"),
+            ({"PORT": "5999", "LOTTO_PORT": "5001"}, 5999, False, "PORT must win"),
+            ({"PORT": "", "LOTTO_PORT": "5001"}, 5001, False, "an empty PORT is no value"),
+            ({"PORT": "abc"}, supervise.DEFAULT_PORT, True, "a bad PORT falls back"),
+            ({"PORT": "80"}, supervise.DEFAULT_PORT, True, "an out-of-range PORT"),
+            ({"LOTTO_PORT": "abc"}, supervise.DEFAULT_PORT, True, "a bad LOTTO_PORT"),
+        ):
+            for key in ("PORT", "LOTTO_PORT"):
+                os.environ.pop(key, None)
+            os.environ.update(env)
+            sup = supervise.Supervisor()
+            need(sup.port == want, f"the tray, {why}: got {sup.port}, expected {want}")
+            need(
+                bool(sup.port_fallback) == fallback,
+                f"the tray, {why}: port_fallback is {sup.port_fallback!r}",
+            )
+            if fallback:
+                # Named, or the notification cannot say what was ignored - and a
+                # fallback nobody can act on is the silent substitution again.
+                name, value = next(iter(env.items()))
+                need(
+                    f"{name}={value}" in sup.port_fallback
+                    or f"{name}={value!r}" in sup.port_fallback,
+                    f"the fallback message does not name {name}={value}: "
+                    f"{sup.port_fallback}",
+                )
+    finally:
+        supervise._port_or_default = real_pod
+        for key, value in saved.items():
+            os.environ.pop(key, None)
+            if value is not None:
+                os.environ[key] = value
 
     # End to end, three children: the resolved port is the port that gets bound;
     # a REJECTED value ends the process rather than binding something else; and a
@@ -1343,6 +1409,8 @@ BREAKS = {
     "success_wording": "refresh_reports_the_build",
     "port_silent_fallback": "port_from_environment",
     "lotto_port_wins": "port_from_environment",
+    "supervisor_ignores_port": "port_from_environment",
+    "tray_silent_fallback": "port_from_environment",
     "tray_icon_when_managed": "tray_headless_when_managed",
     "headless_stops_server": "tray_headless_when_managed",
 }

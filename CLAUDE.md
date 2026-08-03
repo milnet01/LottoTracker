@@ -47,7 +47,7 @@ display.
 defect and asserts the named case goes red. That is not a debugging aid: these
 three items are greenfield, so there was no pre-fix code to red-test against,
 and the flag is what makes "every case observed failing" reproducible rather
-than a one-off hand edit. `--list` shows the twenty breaks. It caught a real
+than a one-off hand edit. `--list` shows the twenty-two breaks. It caught a real
 defect in a *case* rather than in the code — see CHANGELOG.
 
 Exit code is the signal, not the printed counts (`&& echo PASS`). Counts in the
@@ -90,12 +90,19 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   `check.py::amount()` has two pricing paths.
 - **`check.py`** scores and prices. Prize divisions are read from the live
   source, never hardcoded (INV-5).
-- **The port is `$PORT`, else `$LOTTO_PORT`, else 4322** (`serve.py::resolve_port()`,
-  INV-24). `$PORT` is the knob an external process manager sets, which is why it
-  wins. Unset and empty mean "no preference" and fall through; a *non-empty*
-  value that cannot be a port — not an integer, or outside 1024–65535 — ends the
-  process naming the variable and the value. Never a silent fallback, because a
-  caller that asked for port 80 and got 4322 has been lied to.
+- **The port is `$PORT`, else `$LOTTO_PORT`, else 4322** — the same precedence in
+  `serve.py::resolve_port()` and `supervise.py::_port_or_default()`, so there is
+  one knob whichever way the page is started. `$PORT` is the name an external
+  process manager already sets, which is why it wins. Unset and empty mean "no
+  preference" and fall through.
+  **On a bad value the two deliberately diverge, and must not be "unified"** —
+  each says so at its own site. `serve.py` is machine-facing and **exits**
+  naming the variable and the value: a manager that asked for port 80 and got
+  4322 has been lied to. The tray is human-facing and **falls back to 4322 with
+  a notification**, because a tray that exits just vanishes, and a typo in a
+  shell profile must never be indistinguishable from the app being broken. That
+  is safe only because a manager range-checks before it sets and launches
+  `serve.py` directly, so the fallback can never mislead one (LOTTO-0013 §4.5).
 - **`serve.py`** is `check.py`'s second consumer and adds no third opinion: a
   wrong number on the page is a bug in its rendering or in LOTTO-0001/0009,
   never a separate calculation. It does **all** the I/O; **`page.py`** is a pure

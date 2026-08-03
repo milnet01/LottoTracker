@@ -480,6 +480,14 @@ def resolve_port(env=None):
     to, and the user who typed the variable one command ago is not looking at
     4322 either. That is why this exits rather than warning, and why the message
     names the value it rejected (LOTTO-0002 §6).
+
+    **supervise.py::_port_or_default() reads the same two variables in the same
+    order and FALLS BACK instead of exiting. Do not "unify" the two.** This one
+    is MACHINE-facing - an external manager must never be silently handed a port
+    other than the one it asked for. That one is HUMAN-facing, where exiting
+    means a tray that vanishes with no window and no terminal to explain itself,
+    so it falls back and raises a notification instead. Two behaviours for one
+    input, on purpose; that docstring carries the other half of the reasoning.
     """
     env = os.environ if env is None else env
     for name in ("PORT", "LOTTO_PORT"):
