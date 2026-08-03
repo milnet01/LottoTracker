@@ -90,7 +90,13 @@ fail() {  # fail <label> <reason>
 
 # --- the CI lane -----------------------------------------------------------
 # Everything here runs identically on a runner and on this machine.
-echo "local-CI: CI lane"
+#
+# The versions are printed because the first local-vs-runner comparison
+# disagreed on exactly this: ruff 0.15.11 here against 0.16.1 there, whose
+# wider default rule set reported 71 errors that no one had opted into.
+# ruff.toml pins the RULES so the verdict no longer depends on the release,
+# and this line makes the remaining difference visible rather than latent.
+echo "local-CI: CI lane   [$(ruff --version 2>/dev/null || echo 'ruff MISSING'), $(python3 -V 2>&1)]"
 run "ruff check"        ruff check .
 run "syntax (compileall)" python3 -m compileall -q .
 run "verify_page.py"    python3 tools/verify_page.py

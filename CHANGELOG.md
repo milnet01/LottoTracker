@@ -149,6 +149,21 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The lint rule set is stated in `ruff.toml` instead of inherited from whichever ruff is installed.** (LOTTO-0025)
+  Found by the new CI on its first run, which is the whole point of it.
+  `ruff` was unpinned, so the runner resolved 0.16.1 against 0.15.11
+  locally, and 0.16 widened its default rule set to include SIM, EXE,
+  RUF, FURB, DTZ, PLW, B, PIE and I. Identical bytes, 71 errors there,
+  zero here — one shared script guarantees one list of checks, not one
+  set of tools. `ruff.toml` now states the selection every module here
+  was written against (`E4`, `E7`, `E9`, `F`, ruff's pre-0.16 default),
+  verified clean under both 0.15.11 and 0.16.1, so a linter release can
+  no longer change the verdict. The gate header prints the ruff and
+  Python versions so the next divergence is visible rather than latent.
+  The 71 findings were not adopted: they are style opinions on working
+  code and deserve their own diff, not arrival as a side effect of
+  `pip install`.
+
 - **A non-numeric port variable died with a traceback instead of a message.** (LOTTO-0024)
   `LOTTO_PORT=abc python3 serve.py` raised an unhandled `ValueError` from a
   bare `int()`. Both variables now exit non-zero naming the variable and

@@ -1,0 +1,23 @@
+# Lint contract for this project. Stated explicitly, on purpose.
+#
+# Ruff's DEFAULT rule set is not stable across releases, and relying on it made
+# local-CI.sh and the GitHub runner disagree the first time they were compared:
+# ruff 0.15.11 here reported nothing, 0.16.1 on the runner reported 71 errors,
+# because 0.16 widened the defaults to include SIM, EXE, RUF, FURB, DTZ, PLW,
+# B, PIE and I. None of those were ever chosen for this project - they arrived
+# because a version changed. A gate whose verdict depends on which release
+# happens to be installed is not a gate.
+#
+# So the selection below is the contract. It is ruff's pre-0.16 default
+# (pycodestyle import/statement/runtime errors plus pyflakes), which is what
+# every module here was already written against, and it now means the same
+# thing on both machines. Verified 2026-08-03 under 0.15.11 and 0.16.1: clean
+# on both.
+#
+# Widening this is a deliberate decision with its own diff, not a side effect
+# of `pip install ruff`. The 71 findings above are style opinions on working
+# code and closing them is a real change, so if a family is wanted, add it here
+# and fix what it reports in the same commit.
+
+[lint]
+select = ["E4", "E7", "E9", "F"]

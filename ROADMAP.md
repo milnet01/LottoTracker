@@ -511,6 +511,21 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   red on all four data-dependent checks including the degraded-privacy
   assertion; `--ci` in the same clone goes green; a docs-only commit skips; a
   docs+code commit does not; and `--force` overrides the skip.
+
+  **The first real run went red, and the cause was this item's own blind
+  spot.** One shared script guarantees one *list of checks*; it does not
+  guarantee one *set of tools*. `ruff` was unpinned, so the runner installed
+  0.16.1 against 0.15.11 here — and 0.16 widened its default rule set to
+  include SIM, EXE, RUF, FURB, DTZ, PLW, B, PIE and I. 71 errors there, zero
+  here, on identical bytes. The fix is `ruff.toml` stating the selection the
+  project was actually written against (`E4`, `E7`, `E9`, `F` — ruff's
+  pre-0.16 default), verified clean under both versions, so the verdict no
+  longer depends on which release `pip` resolves. The version pair is now
+  printed in the gate's header so a future divergence is visible rather than
+  latent. Deliberately *not* fixed by adopting the new defaults: all 71 are
+  style opinions on working code, and closing them is a real change that
+  deserves its own diff rather than arriving as a side effect of a linter
+  release.
   **Layman:** One command now checks everything before your work leaves the machine, and GitHub runs the half it is allowed to see.
   Kind: chore.
   Source: user-request-2026-08-03.
