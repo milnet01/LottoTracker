@@ -526,6 +526,14 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   style opinions on working code, and closing them is a real change that
   deserves its own diff rather than arriving as a side effect of a linter
   release.
+
+  Left open deliberately: `ruff.toml` locks the *rules*, but the two machines
+  still run different ruff *builds* (0.15.11 here, whatever `pip` resolves
+  there). Pinning the version would satisfy "identical" more literally at the
+  cost of a pin that rots; the rule lock is what makes the verdict identical,
+  and the version pair printed in the gate header is what makes any residual
+  difference visible. Revisit if a release ever diverges *within* the selected
+  rule families.
   **Layman:** One command now checks everything before your work leaves the machine, and GitHub runs the half it is allowed to see.
   Kind: chore.
   Source: user-request-2026-08-03.
@@ -602,10 +610,51 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   in a href rather than skipping the row;
   (c) INV-5's grep sees only a double-quoted `"MATCH <digit>` literal — it
   cannot see the label grammar in `api_label()`/`site_label()`, so a
-  feed-side rename of `MATCH n` would drop every win silently;
+  feed-side rename of `MATCH n` would drop every win silently.
+  **Superseded 2026-08-03 by LOTTO-0026, which owns the runtime half** —
+  this bullet describes a blind spot in a *check*, and the same grammar has
+  a matching hole in the *code* that is the more serious of the two. Close
+  them together; do not fix the grep alone and read (c) as done;
   (d) Multiplay expansion is Lotto-only; a >6-number PowerBall or Daily
   board would silently collapse to one line (no such ticket exists today);
   (e) §8's "~30 lookups a month" is not recomputed from §10's request model.
+
+- 📋 **LOTTO-0026** A feed-side rename of `MATCH n` scores every line as a loss.
+  Kind: fix. Source: in-session-2026-08-03; approach approved by the user
+  before the CI work interrupted it.
+  Layman: if the lottery site renames its prize categories, every win would
+  quietly turn into "you didn't win" — with no error anywhere.
+
+  **This is the cardinal rule broken by shipped code on a money path**, and
+  the direct sibling of LOTTO-0007(a): the same failure, one function
+  earlier. `check.py::check()` decides a line won by
+  `label = api_label(...)` then `if label not in pays: continue`. `pays`
+  comes from `paying_combinations()`, which raises when a pool has no recent
+  draw — but *not* when the division table parses into labels that simply do
+  not match. Rename `MATCH 3` to anything else upstream and `pays` is full
+  of valid keys, every lookup misses, every line `continue`s, and the run
+  reports zero wins with no diagnostic. **INV-22 cannot reach this**:
+  `amount()` runs only after a match, so the 2026-08-02 guard never fires —
+  there is nothing to price because nothing was recognised as a win.
+  LOTTO-0001 §11 already carries the row (`§4.4 label grammar | **nothing**`).
+
+  Agreed approach, in this order:
+  1. Amend `docs/specs/LOTTO-0001-lottery-ticket-tracker.md` — a new
+     invariant for the grammar check, its §6 failure mode, and the §11 rows
+     (542 for INV-5, 547 for the label grammar). Gate with `/cold-eyes`
+     before implementing, per the cold-eyes-then-implement ordering.
+  2. Implement the guard in `paying_combinations()`, mirroring its existing
+     raise: a division table that parses but yields **no** label conforming
+     to the grammar means the grammar moved — raise rather than return a
+     dict guaranteed to match nothing. Red-test first.
+  3. Widen INV-5's grep so it can see the f-string grammar in
+     `api_label()`/`site_label()`, closing LOTTO-0007(c). Mind the glob:
+     §5 restricts it to production modules because `tools/` holds two
+     legitimate `"MATCH <digit>` literals, one of them INV-22's own probe.
+
+  **Do not "fix" this by returning `{}` or a default** — that is the exact
+  failure the guard exists to prevent, and `paying_combinations()`'s
+  docstring already says so for the no-draw case.
 
 - 📋 **LOTTO-0006** Backfill results earlier than 2025-01-01.
   Kind: enhancement. Source: in-session-2026-08-01; re-valued 2026-08-02.
