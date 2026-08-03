@@ -30,6 +30,13 @@ this machine cannot drift apart — there is no second list of checks to forget.
 A documentation-only push (every changed file `.md`) skips the gate
 automatically; `--force` overrides.
 
+Make it structural rather than remembered — **once per clone**, because git
+does not track hooks and `core.hooksPath` is local config:
+
+```bash
+git config core.hooksPath .githooks   # .githooks/pre-push then runs the gate
+```
+
 The two lanes are **not** equal and must not be made so. Three verifiers need
 `lotto_sms_raw.txt` and the scraped archive, neither of which may reach a public
 runner, and `verify_privacy.py` drops to a weaker pattern-only mode without the
