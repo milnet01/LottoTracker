@@ -1035,16 +1035,21 @@ def nothing_in_the_url():
         srv.shutdown()
 
 
+def _serve_child(env_extra, **kw):
+    return subprocess.Popen(
+        [sys.executable, os.path.join(ROOT, "serve.py")],
+        cwd=ROOT,
+        env={**os.environ, "LOTTO_NO_BUILD": "1", **env_extra},
+        **kw,
+    )
+
+
 def _child_on(env_extra, port, timeout=15.0):
     """True once a `python3 serve.py` spawned with these variables answers on
     `port`. The seam is the PROCESS, not resolve_port(): the question this half
     of INV-24 asks is what main() actually binds. LOTTO_NO_BUILD keeps it off
     the network."""
-    child = subprocess.Popen(
-        [sys.executable, os.path.join(ROOT, "serve.py")],
-        cwd=ROOT,
-        env={**os.environ, "LOTTO_NO_BUILD": "1", **env_extra},
-    )
+    child = _serve_child(env_extra)
     try:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -1118,11 +1123,16 @@ def port_from_environment():
             try:
                 got = serve.resolve_port({name: value})
             except SystemExit as exc:
+                # The JOINED form, not the bare value: the message also carries
+                # the bounds, so `"0" in msg` is satisfied by the 0 in "1024"
+                # and asserts nothing for the value most likely to be mishandled.
+                # Either spelling of the value - the non-numeric path reprs it,
+                # which is what makes `PORT=' 5999 '` readable.
+                joined = (f"{name}={value}", f"{name}={value!r}")
                 need(
-                    value in str(exc),
-                    f"the {name}={value} message does not name the value: {exc}",
+                    any(j in str(exc) for j in joined),
+                    f"the message does not name {name}={value}: {exc}",
                 )
-                need(str(exc).strip() != "", f"{name}={value} exits with no message")
             else:
                 raise Fail(
                     f"{name}={value} resolved to {got} rather than exiting — "
@@ -1131,11 +1141,38 @@ def port_from_environment():
     finally:
         serve.resolve_port = real
 
-    # End to end, twice: the resolved port is the port that gets bound, and a
+    # End to end, three children: the resolved port is the port that gets bound;
+    # a REJECTED value ends the process rather than binding something else; and a
     # supervised child lands on the port the tray is watching even when the
     # session exports a PORT of its own (LOTTO-0013 §4.5's 421).
     port = supervise.free_port()
     need(_child_on({"PORT": str(port)}, port), f"no server answered on PORT={port}")
+
+    # Not redundant with the resolution half above: an implementation whose
+    # main() caught the SystemExit and bound DEFAULT_PORT anyway passes every
+    # assertion up there while doing exactly what port_silent_fallback does.
+    idle = supervise.free_port()
+    bad = _serve_child(
+        {"PORT": "abc", "LOTTO_PORT": str(idle)},
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        _out, err = bad.communicate(timeout=30)
+    except subprocess.TimeoutExpired:
+        bad.kill()
+        bad.wait(timeout=5)
+        raise Fail("a rejected PORT left a server running instead of exiting")
+    need(bad.returncode != 0, f"a rejected PORT exited {bad.returncode}, expected non-zero")
+    need("PORT='abc'" in err, f"the exit message does not name the value: {err.strip()[:200]}")
+    # The valid LOTTO_PORT is the trap: a fallback would have bound it happily.
+    probe = socket.socket()
+    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        probe.bind(("127.0.0.1", idle))
+    except OSError:
+        raise Fail(f"a rejected PORT fell back and bound {idle}")
+    finally:
+        probe.close()
 
     decoy, wanted = supervise.free_port(), supervise.free_port()
     os.environ["PORT"] = str(decoy)

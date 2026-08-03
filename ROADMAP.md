@@ -438,7 +438,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   `serve.py::resolve_port()` — `$PORT`, then `$LOTTO_PORT`, then 4322.
   `$PORT` is the name a process manager already sets, so it wins; the
   `$LOTTO_PORT` path is what it was. A value that is *set* and cannot be
-  a port (non-numeric, or outside 1024-65535) now exits non-zero naming
+  a port (non-empty, and either non-numeric or outside 1024-65535) now exits non-zero naming
   the variable and the value, for BOTH variables — the bug being that
   `LOTTO_PORT=abc python3 serve.py` died with an unhandled `ValueError`
   traceback. Never a silent fallback: a manager that asked for port 80

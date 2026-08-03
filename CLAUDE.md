@@ -92,9 +92,10 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   source, never hardcoded (INV-5).
 - **The port is `$PORT`, else `$LOTTO_PORT`, else 4322** (`serve.py::resolve_port()`,
   INV-24). `$PORT` is the knob an external process manager sets, which is why it
-  wins. A value that is *set* and cannot be a port ends the process naming it —
-  never a silent fallback, because a caller that asked for port 80 and got 4322
-  has been lied to.
+  wins. Unset and empty mean "no preference" and fall through; a *non-empty*
+  value that cannot be a port — not an integer, or outside 1024–65535 — ends the
+  process naming the variable and the value. Never a silent fallback, because a
+  caller that asked for port 80 and got 4322 has been lied to.
 - **`serve.py`** is `check.py`'s second consumer and adds no third opinion: a
   wrong number on the page is a bug in its rendering or in LOTTO-0001/0009,
   never a separate calculation. It does **all** the I/O; **`page.py`** is a pure

@@ -200,9 +200,11 @@ Request` and no body. This is exactly the CVE in §2; the Glances fix answers
 is used here because it is the status that means "this host is not one I serve",
 a distinction that matters when reading a log.
 
-The port in that allowlist is the one `serve.py` bound, read once from
-`LOTTO_PORT`. LOTTO-0013 §4.5 owns that variable and states what a disagreement
-about it costs.
+The port in that allowlist is the one `serve.py` bound — the single value
+LOTTO-0002 §4.1's `resolve_port()` returns (`$PORT`, then `$LOTTO_PORT`, then
+4322), not either variable read separately. Building the allowlist from one
+while binding the other 421s every request; LOTTO-0013 §4.5 states what that
+costs.
 
 `localhost:<port>` is allowlisted alongside the numeric form because that is
 what a user types, even though the socket binds `127.0.0.1` only; on a host
