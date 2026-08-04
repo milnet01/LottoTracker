@@ -308,10 +308,9 @@ publishes must be *reachable* by a label this project can build, and the
 converse must not be asserted. **INV-26 owns that rule**, including its
 direction, its domain and why the converse is false; it is stated in full
 there.
-`tools/verify_pools.py` checks the reachable direction over every pool the dump
-reaches; making `paying_combinations()` raise on an unreachable division at run
-time is LOTTO-0026 step 2 — **not yet built**; INV-26 states the pending
-half in full.
+`check.py::paying_combinations()` raises on an unreachable division at run time,
+and `tools/verify_pools.py` checks the same direction ahead of a run over every
+pool the dump reaches; INV-26 states both halves in full.
 
 **Whether a line paid at all is gated by the *current* division set, in both
 eras** — `check.py::check()` tests the match label against
@@ -507,7 +506,9 @@ the project, not the next free number in this file.
   §4.4's silent-drop case, tracked by LOTTO-0023.
   *Test:* `python3 tools/verify_pools.py` (repo root, after `backfill.py`) →
   `division-label reach: 6 live pools, 0 unreachable divisions, 0 vacuous`
-  (2026-08-03). Six is also the **ceiling**: `history.py::POOL_NAMES` holds
+  (2026-08-03) for the sweep, and
+  `unnameable-division guard: 3 probes, 0 unguarded` (2026-08-04) for the
+  raise. Six is also the **ceiling**: `history.py::POOL_NAMES` holds
   seven pools and `daily/1` can never pass `reaches()`, so unlike every other
   count in this document the pool count cannot grow — it can only fall, and
   falling is what the floor below exists to catch.
@@ -519,18 +520,20 @@ the project, not the next free number in this file.
   whose division set is empty. Without that, §7's demotion of the `6 live
   pools` count to a non-asserted figure would leave nothing asserting the check
   ran at all.
-  **The runtime half is LOTTO-0026 step 2 and is NOT YET BUILT.** As shipped,
-  `paying_combinations()` raises only when a pool has no recent draw at all;
-  it does not inspect the division table it just built for unreachable labels,
-  so today this invariant is asserted by `tools/verify_pools.py` over the pools
-  the dump reaches and by nothing else. Step 2 adds the raise, and the probe
-  driving `paying_combinations()` against a doubled division table carrying an
-  unbuildable label. **The raise aborts the run**, like the no-recent-draw
+  **The invariant is asserted twice, and the two halves are not
+  interchangeable.** `check.py::paying_combinations()` inspects the division
+  table it has just built and raises on any label outside
+  `check.py::buildable_labels()`, so a grammar move is caught inside the run
+  that would otherwise have mis-scored it, for whatever pool that run touches
+  and whether or not anyone ran a verifier first. `tools/verify_pools.py`
+  sweeps ahead of a run instead, which names the pool and the offending label
+  rather than aborting — but only over the pools the dump reaches, and only
+  when someone runs it. Shipped 2026-08-04 as LOTTO-0026 step 2.
+  **The raise aborts the run**, like the no-recent-draw
   raise beside it and for the same reason: nothing catches `RuntimeError`, a
   grammar that moved for one pool has almost certainly moved for its siblings,
   and a run that pressed on would report a partial win list indistinguishable
-  from a complete one. Do not read the three places above as describing
-  shipped behaviour until this paragraph goes.
+  from a complete one.
   **The domain is bounded, and the bound is part of the contract** — an
   unbounded sweep weakens the guard silently while too narrow a one raises on
   healthy pools. `hits` runs `0` to the pool's main-ball count (Lotto 6,
@@ -631,18 +634,19 @@ the project, not the next free number in this file.
   looking healthy (INV-26). A rename reaching only *some* labels is the shape
   to expect — it is the one that happened (§4.4, LOTTO-0027) — so the test is
   whether every published division is reachable, not whether the set as a whole
-  still looks like the grammar. **As shipped there is no raise here**: this is
-  LOTTO-0026 step 2 and is not yet built (INV-26 owns the detail), so the
-  failure is currently caught before the fact by `tools/verify_pools.py` over
-  the pools the dump reaches, and not at all for a pool nobody holds a ticket
-  in.
+  still looks like the grammar. `paying_combinations()` raises on it (INV-26
+  owns the detail), which covers every pool a run scores including one no
+  ticket in the dump reaches, and `tools/verify_pools.py` catches the same
+  thing before the fact over the pools the dump does reach.
 
 ## 7. Tests
 
 **Every count in this document is a dated measurement, and most of them grow
 over time** —
 §5's expected outputs are as of 2026-08-01, INV-22's of 2026-08-02, and INV-4's
-and INV-26's of 2026-08-03; the figures in §2 and §4.2 are of 2026-08-01, and
+of 2026-08-03. INV-26's are dated in two parts: its sweep line is of
+2026-08-03 and its probe line of **2026-08-04**, when the runtime half
+shipped. The figures in §2 and §4.2 are of 2026-08-01, and
 §10's of 2026-08-01 with the caveat it carries. §4.4 is dated in two parts: its
 86-wins and 69-archive figures are INV-22's measurement of **2026-08-02**,
 taken before LOTTO-0027, and only its 53-dropped-PowerBall-wins figure is
@@ -705,8 +709,13 @@ exit 1); and INV-26's anti-vacuity floor on both branches (2026-08-03) —
 `reaches()` forced false gives `0 live pools, 0 unreachable divisions,
 1 vacuous`, exit 1, and an emptied division table gives six pools each
 reporting NO DIVISIONS, exit 1, where before the floor both states printed
-`0 unreachable` and passed. INV-26's runtime raise has no red test because it
-has no implementation yet (step 2). Three further assertions have no red test:
+`0 unreachable` and passed; and INV-26's runtime raise on both of its own
+failure directions (2026-08-04) — with the guard disabled, two probes report
+`NO RAISE`, exit 1, and with its direction reversed to set equality the subset
+probe reports `FALSE RAISE` while three of the six live pools report six
+unreachable divisions between them, exit 1, which is the "raises on every pool
+on day one" the invariant's direction paragraph warns of, observed rather than
+argued. Three further assertions have no red test:
 INV-1, INV-5, and INV-3's agreement half — the sources have agreed on every
 run.
 
@@ -795,7 +804,7 @@ the figure is a lower bound until it is re-measured.
 | §4.3 special-ball-is-last | `tools/verify_sources.py` — catches a change on either source alone; blind only if both change the same way together |
 | §4.4 expiry / `CLAIM_DAYS` | **nothing** — no test covers the 365-day boundary, and nothing tracks the gap |
 | §4.4 current-era pay gate | **nothing** — a pre-handover-only division is dropped silently |
-| INV-26 §4.4 label grammar reachable | `tools/verify_pools.py` — every division the live feed publishes must be reachable by a label `api_label()` builds. The check reads only the pools the dump reaches, so a pool nobody holds a ticket in is **currently checked by nothing**: the runtime raise that would cover it from the moment a ticket for it is scored is LOTTO-0026 step 2 and is not yet built, and its probe does not exist either. That division of labour is the design, not the state |
+| INV-26 §4.4 label grammar reachable | `check.py::paying_combinations()`, which raises on a division no label `api_label()` builds can equal, and `tools/verify_pools.py`, which sweeps the same rule ahead of a run plus three probes driving the raise itself. The sweep reads only the pools the dump reaches; the raise covers whatever pool a run scores, so a pool nobody holds a ticket in is checked from the moment one is. That division of labour is the design |
 | INV-22 unpriceable win raises | `tools/verify_pools.py` — four blind-lookup probes (empty and unrecognised division tables, both branches), plus the converse that a source-stated R0.00 still prices as 0.0 |
 | archive payout scrape | `tools/verify_pools.py` (INV-22) — an unscrapable payout page now raises instead of pricing an archive win at R0.00. What remains unchecked is narrower: a page that parses into a **wrong** table, which is well-formed and not detectably wrong from inside |
 | `backfill.py` date parsing | **nothing** — an abbreviated month in a href raises `KeyError`, not an empty result |

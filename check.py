@@ -17,6 +17,9 @@ from tickets import load
 
 CLAIM_DAYS = 365  # SA prizes expire a year after the draw
 
+# Main balls drawn per game, which bounds INV-26's reach domain below.
+MAINS = {"lotto": 6, "powerball": 5, "daily": 5}
+
 _struct = {}
 
 
@@ -26,6 +29,9 @@ def paying_combinations(game, plus_flag=0, pool_id=100):
     Per pool, not per game: Lotto 5 Max and PowerBall XTRA do not share the
     base pool's division set, so one lookup applied to all of them would drop
     a genuine win whose division exists only in the pool it was won in.
+
+    Raises on both ways this can fail to be a complete answer: no draw to read
+    the divisions from, and a division read but unnameable (INV-26).
     """
     key = (game, plus_flag, pool_id)
     if key not in _struct:
@@ -38,10 +44,23 @@ def paying_combinations(game, plus_flag=0, pool_id=100):
                 f"no recent draw for {game} plusFlag={plus_flag}: cannot "
                 f"establish which divisions pay, so nothing can be scored"
             )
-        _struct[key] = {
+        table = {
             lvl["matches"].upper().strip(): lvl["winLevelName"]
             for lvl in divisions(game, rows[0]["wagerIssue"], pool_id, plus_flag)
         }
+        # INV-26. check()'s pay gate is a string join, so a division no label
+        # this project can build will ever equal is a hole that scores exactly
+        # its own winners as losers and leaves every other division looking
+        # healthy - the same silent drop as the empty set above, one step
+        # finer. A table with a hole in it is not a partial answer to return.
+        if strays := sorted(set(table) - buildable_labels(game)):
+            raise RuntimeError(
+                f"{game} plusFlag={plus_flag} pool {pool_id} pays "
+                f"{', '.join(repr(s) for s in strays)}, which no label this "
+                f"project builds can equal: the feed's division grammar moved, "
+                f"so every win in those divisions would be scored as a loss"
+            )
+        _struct[key] = table
     return _struct[key]
 
 
@@ -64,13 +83,31 @@ def api_label(game, hits, special):
     in full where this built an abbreviation, and it names the PowerBall-only
     division with no digit and no plus sign at all, where this built both. 53
     wins read as losses. tools/verify_pools.py asserts that every division the
-    feed publishes is reachable from here, which is what caught it.
+    feed publishes is reachable from here, which is what caught it, and
+    paying_combinations() now raises on one that is not (INV-26).
     """
     if not special:
         return f"MATCH {hits}"
     if game == "lotto":
         return f"MATCH {hits} + BONUS"
     return "MATCH POWERBALL" if hits == 0 else f"MATCH {hits} + POWERBALL"
+
+
+def buildable_labels(game):
+    """Every division label api_label() can return for this game (INV-26).
+
+    The domain is bounded on purpose, and both bounds carry weight: sweeping
+    wider than the game's main-ball count weakens the guard silently, and
+    trying a special hit for Daily Lotto would too - match() returns
+    special=False for it unconditionally, so "MATCH 3 + POWERBALL" is a label
+    daily can never produce in production and must not count as buildable.
+    """
+    specials = (False, True) if game in ("lotto", "powerball") else (False,)
+    return {
+        api_label(game, hits, special)
+        for hits in range(MAINS[game] + 1)
+        for special in specials
+    }
 
 
 def site_label(game, hits, special):

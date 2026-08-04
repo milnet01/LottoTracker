@@ -283,12 +283,29 @@ def main(argv=()):
         vacuous += 1
     for game, plus_flag, pool_id in pools:
         # (False, True) only where match() can report a special hit at all.
+        # Derived here rather than imported from check.buildable_labels(), for
+        # the reason the header gives about the price table: that function is
+        # what decides whether the runtime raise fires, so importing it would
+        # let a domain widened by mistake pass this check as well. A domain
+        # narrowed by mistake shows up the other way, as a raise below on a
+        # healthy pool.
         buildable = {
             check.api_label(game, hits, special)
             for hits in range(mains[game] + 1)
             for special in ((False, True) if game in ("lotto", "powerball") else (False,))
         }
-        published = check.paying_combinations(game, plus_flag, pool_id)
+        try:
+            published = check.paying_combinations(game, plus_flag, pool_id)
+        except RuntimeError as exc:
+            # INV-26's runtime half got there first, which is the design. It is
+            # reported rather than allowed to abort, so the remaining pools are
+            # still swept and the exit code stays the signal. Tagged by what
+            # happened rather than by which raise it was: the other one a live
+            # pool can hit is "no recent draw", which is also a pool that could
+            # not be swept, and the message below names which it was.
+            print(f"  RAISED {game}/{plus_flag} pool {pool_id}: {exc}")
+            unreachable += 1
+            continue
         if not published:
             print(
                 f"  NO DIVISIONS {game}/{plus_flag} pool {pool_id}: the division "
@@ -307,6 +324,56 @@ def main(argv=()):
         f"divisions, {vacuous} vacuous"
     )
 
+    # INV-26's runtime half (LOTTO-0026 step 2): paying_combinations() must
+    # refuse a division table it cannot fully name, rather than returning one
+    # with a hole in it. The sweep above only sees the pools the dump reaches,
+    # and only when someone runs this; the raise covers whatever pool a scoring
+    # run touches, in the run that would otherwise have mis-scored it.
+    #
+    # Driven with doubles for the same reason the unpriceable-win probes above
+    # are: the live feed is healthy, so real data cannot exercise any of it.
+    unguarded = 0
+    real_draws, real_divs = check.draws, check.divisions
+    reach_probes = [
+        # The state that actually shipped until 2026-08-03: api_label() built
+        # "MATCH 5 + PB" against a feed paying "MATCH 5 + PowerBall", and 53
+        # wins read as losses (LOTTO-0027). Read from the feed's side here.
+        ("powerball pays a division this project cannot name",
+         "powerball", ["MATCH 5 + PB"], True),
+        # The converse, which must NOT raise: the direction is one-way, and a
+        # feed publishing fewer divisions than api_label() can build is the
+        # normal case, not a grammar move. Reversing this raises on every pool.
+        ("lotto publishes a subset of the buildable labels",
+         "lotto", ["MATCH 6", "MATCH 5 + BONUS", "MATCH 3"], False),
+        # The domain bound. The same string is buildable for powerball and not
+        # for daily, because match() never reports a special hit for daily.
+        ("daily pays a division outside its own domain",
+         "daily", ["MATCH 3 + POWERBALL"], True),
+    ]
+    try:
+        for name, game, labels, want_raise in reach_probes:
+            check.draws = lambda *a, **k: [{"plusFlag": 0, "wagerIssue": 1}]
+            check.divisions = lambda *a, **k: [
+                {"matches": lbl, "winLevelName": lbl} for lbl in labels
+            ]
+            check._struct.clear()  # the answer is memoised per pool
+            try:
+                check.paying_combinations(game, 0, 100)
+                raised = False
+            except RuntimeError:
+                raised = True
+            if raised != want_raise:
+                print(f"  {'NO RAISE' if want_raise else 'FALSE RAISE'}: {name}")
+                unguarded += 1
+    finally:
+        check.draws, check.divisions = real_draws, real_divs
+        check._struct.clear()
+
+    print(
+        f"unnameable-division guard: {len(reach_probes)} probes, "
+        f"{unguarded} unguarded"
+    )
+
     return (
         0
         if bad == 0
@@ -315,6 +382,7 @@ def main(argv=()):
         and not unpriceable
         and not unreachable
         and not vacuous
+        and not unguarded
         else 1
     )
 

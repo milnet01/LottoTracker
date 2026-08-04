@@ -149,6 +149,35 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A feed-side division rename no longer scores every win in that division as a loss** (LOTTO-0026)
+  `check.py::check()` decides a line won by joining `api_label()`'s string
+  against the division table `paying_combinations()` read from the feed. A
+  division this project cannot name is therefore a hole that scores exactly
+  its own winners as losers while every other division goes on looking
+  healthy — which is what happened on 2026-08-03, when the feed's
+  `MATCH 5 + PowerBall` met a built `MATCH 5 + PB` and 53 wins read as
+  losses (LOTTO-0027).
+  `paying_combinations()` now subtracts the new `check.py::buildable_labels()`
+  from the table it just built and raises on anything left over, aborting the
+  run like the no-recent-draw raise beside it: a grammar that moved for one
+  pool has almost certainly moved for its siblings, and a run that pressed on
+  would report a partial win list indistinguishable from a complete one. The
+  domain is bounded by `check.py::MAINS` and by which games `match()` can
+  report a special hit for at all, and the rule is one-way — every division
+  the feed publishes must be buildable, never the converse, since Daily Lotto
+  publishes nothing for the `MATCH 0` and `MATCH 1` that `api_label()` still
+  builds.
+  `tools/verify_pools.py` gains three probes driving the raise (the `+ PB`
+  state that shipped, the daily-domain bound, and the converse that a subset
+  must not raise) and keeps its own transcription of the domain rather than
+  importing the new function, so a domain widened by mistake still fails the
+  sweep. Red-tested both ways: guard disabled → 2 probes `NO RAISE`, exit 1;
+  direction reversed to set equality → `FALSE RAISE` plus six unreachable
+  divisions across three live pools, exit 1. Scoring is unchanged on live
+  data (R2,731.60 claimable, as before).
+  Completes LOTTO-0026 step 2; INV-26's pending markers come off LOTTO-0001
+  §4.4, §5, §6 and §11, and §7 records the red test.
+
 - **Cold-eyes loop 7 on LOTTO-0001: 19 findings verified, 19 fixed, and the reach check no longer passes vacuously** (LOTTO-0026)
   All 19 distinct findings across the loop's two lanes were verified
   against current files and every one was true, so none was dropped. The

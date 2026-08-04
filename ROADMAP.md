@@ -619,7 +619,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   board would silently collapse to one line (no such ticket exists today);
   (e) §8's "~30 lookups a month" is not recomputed from §10's request model.
 
-- 🚧 **LOTTO-0026** A feed-side rename of `MATCH n` scores every line as a loss.
+- ✅ **LOTTO-0026** A feed-side rename of `MATCH n` scores every line as a loss.
   Kind: fix. Source: in-session-2026-08-03; approach approved by the user
   before the CI work interrupted it.
   Layman: if the lottery site renames its prize categories, every win would
@@ -726,9 +726,24 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   finding in **all three loops** (a false exception, then the hazard written
   backwards, then the wrong scripts). It is now a four-row table. Prose that
   fails three independent cold reads is a shape problem, not a wording one.
-  **Still owed by this item: step 2 only** — the runtime raise in
-  `paying_combinations()`, plus its probe, plus removing the pending markers
-  INV-26 now carries. The contract for it is complete and gated.
+  Resolved (2026-08-04): **step 2 landed, and the item is closed.**
+  `check.py::paying_combinations()` now builds its division table, subtracts
+  `check.py::buildable_labels()` from it, and raises on anything left over —
+  the same abort as the no-recent-draw raise beside it, for the same reason.
+  The domain lives in `buildable_labels()` bounded by `check.py::MAINS` and by
+  which games `match()` can report a special hit for, exactly as INV-26 states.
+  `tools/verify_pools.py` keeps its own transcription of that domain rather
+  than importing the new function — the same reason its price table is
+  transcribed — so a domain widened by mistake still fails the sweep, and its
+  live-pool loop now catches the raise and reports it instead of aborting
+  mid-sweep. Three probes drive the raise itself: the `+ PB` state that
+  actually shipped, the daily-domain bound, and the converse that a feed
+  publishing a subset of the buildable labels must **not** raise.
+  Red-tested both ways (LOTTO-0001 §7): guard disabled → 2 probes `NO RAISE`,
+  exit 1; direction reversed to set equality → `FALSE RAISE` plus 6 unreachable
+  divisions across three live pools, exit 1. The pending markers are off §4.4,
+  §5, §6 and §11, and §7 now records the red test. `./local-CI.sh` PASS,
+  `python3 check.py` unchanged at R2,731.60 claimable.
 
 - ✅ **LOTTO-0027** The API's PowerBall division labels never matched, so 53 wins read as losses.
   Kind: fix. Source: in-session-2026-08-03, found while writing LOTTO-0026's
