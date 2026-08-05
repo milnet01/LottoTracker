@@ -1,6 +1,6 @@
 # LOTTO-0019 — Report what a build is doing, and what it found
 
-**Status:** spec draft (2026-08-05).
+**Status:** accepted (2026-08-05)
 **Kind:** feature.
 **Source:** ROADMAP LOTTO-0019 (in-session-2026-08-02).
 **Also covers:** LOTTO-0012 (retry the results API), LOTTO-0020 (show build
@@ -33,7 +33,8 @@ A build stops being opaque at both ends. While it runs, `GET /status` reports
 how many HTTP attempts it has made so far, and the opening page shows that
 number climbing instead of a static notice. When it finishes, `/status` reports
 whether it found anything the previous build did not, and the tray says so
-instead of the fixed string `REFRESH_MESSAGE[REFRESH_DONE]`. Underneath both, a
+rather than only the fixed `REFRESH_MESSAGE[REFRESH_DONE]`, which stays as the
+first sentence. Underneath both, a
 transport failure no longer kills the build on its first occurrence.
 
 ## 2. Problem
@@ -42,13 +43,14 @@ Three defects on one path, verified against current source 2026-08-05.
 
 1. **A single dropped connection aborts the whole build.**
    `results.py::_post()` calls `urllib.request.urlopen` once, inside a `with`,
-   with no retry. Every API request in the project reaches the network through
-   it — `results.py::draws()` and `results.py::divisions()` are its only
-   callers — so one `URLError` ends `check.py`, the page's build, and every
-   verifier that fetches. Not all of them do: `tools/verify_page.py` is
-   pinned no-network by its own docstring and `tools/verify_privacy.py`
-   compares tracked files against a local dump, so the ones at risk are the
-   ones that reach the API. LOTTO-0012 records the measurement: four of seven
+   with no retry. Every request to the **results API** goes through it —
+   `results.py::draws()` and `results.py::divisions()` are its only callers —
+   so one `URLError` ends `check.py`, the page's build, and any verifier that
+   fetches. Only some do: `tools/verify_page.py` is pinned no-network by its
+   own docstring and `tools/verify_privacy.py` compares tracked files against a
+   local dump. Other HTTP in the project does not pass through `_post()` at all
+   and is out of this item's reach — `backfill.py` scrapes the archive, and
+   `supervise.py` calls `urlopen` directly for its own `/status` probes. LOTTO-0012 records the measurement: four of seven
    build attempts failed with `URLError(SSL: UNEXPECTED_EOF_WHILE_READING)`
    while LOTTO-0002 was being written.
 
@@ -173,10 +175,13 @@ New module-level imports in `results.py`: `socket`, `time`, `urllib.error`.
 **Worst case, because this adds latency to a path that already has a
 deadline.** Three attempts at the existing 20 s timeout plus 1 s and 2 s of
 backoff is **63 s for one request that never succeeds**, against 20 s today.
-`Supervisor.refresh()`'s 300 s deadline is unchanged, so a build in which even
-five requests exhaust their retries now reports `REFRESH_RUNNING` where it
-would previously have reported a failure — a different answer, not a wrong one
-(§6). Two consequences that must land in the same change: `POST_TIMEOUT` stays
+`Supervisor.refresh()`'s 300 s deadline is unchanged, and what interacts with
+it is **retries that succeed**, not retries that exhaust: an exhausted request
+re-raises, `work()` catches it and `State.fail()` runs, so one exhaustion ends
+the whole build at ~63 s and is reported as `REFRESH_FAILED` (§6). The 300 s
+overrun path is instead a build where many requests each fail once or twice and
+then succeed — roughly fifteen such requests is the ceiling — which reports
+`REFRESH_RUNNING`. A different answer, not a wrong one. Two consequences that must land in the same change: `POST_TIMEOUT` stays
 30 s, because the POST is answered without touching the build; and
 `page.py::render()`'s building notice currently reads *"about half a minute"*,
 which a retrying build overshoots — §4.4 **qualifies** that estimate rather than
@@ -238,9 +243,20 @@ if path == "/status":
 view = dict(model or {})
 view.update({"built": built, "stale": stale, "error": error,
              "building": building, "requests": requests})   # <- the HTML view too
+if model is None and not error and not building:            # UNCHANGED, and
+    view["no_build"] = True                                 # must not be lost
 ```
 
-Three things follow, and the third is the one an implementer would otherwise
+The `no_build` line is carried in the block on purpose rather than elided: it is
+one of the three empty-page reasons the project's cardinal rule names, it sits
+immediately after the lines being changed, and a sketch that stopped one line
+early is how an implementer transcribes it away.
+
+`found` deliberately does **not** join the view: nothing in `page.py` renders
+it, so it would be a model key with no reader. It is `/status`-only, which is
+also what keeps it out of any serialised model a fixture might carry.
+
+Four things follow, and the last two are the ones an implementer would otherwise
 get wrong:
 
 - **`State.get()` returns a six-tuple**, ending in `found`. It is the only
@@ -251,17 +267,24 @@ get wrong:
   in `serve.py`; no `tools/verify_*.py` case unpacks `state.get()`. LOTTO-0002
   §4.2 sketches the five-tuple and moves with this (§12).
 - **`serve.py` imports `results` at module scope** to read the counter. It
-  currently imports it lazily inside `refresh()`'s `work()`; `results.py` pulls
-  in only `json`, `socket`, `time` and `urllib`, so this costs nothing and
-  breaks no invariant — LOTTO-0013 INV-19 forbids Qt, not stdlib.
+  currently imports it lazily inside `refresh()`'s `work()`, and that lazy
+  import stays — it is what `work()` clears the memos through. `results.py`
+  imports `json` and `urllib.request` today and gains `socket` and `time` from
+  §4.1, all stdlib, so a module-scope import costs nothing and breaks no
+  invariant: LOTTO-0013's INV-19 forbids Qt, not stdlib.
 - **The counter is reset in `refresh()` itself, between `state.begin()` and
   starting the thread** — not inside `work()`, which is the obvious home beside
   the three memo clears and is wrong. `begin()` sets `building` true and
   `refresh()` returns before `work()` has run, so a reset inside `work()` leaves
   a window in which `/status` reports `building: true` beside the *previous*
-  build's total. The page would render "31 lookups so far", then jump backwards
-  to 0 on the next poll — a counter going backwards on the one page this
-  feature exists for. Resetting before the thread starts closes it. The three
+  build's total — a wire value describing a build that is not the one it is
+  reported against, and the poll would show it going backwards to 0 on the next
+  tick. **The defect is in `/status`, not in the rendered page**, and the
+  distinction is worth stating because the obvious symptom is the one that
+  cannot happen: `page.py::render()`'s building branch is `building and not
+  built`, so the progress span is only ever rendered during the *first* build
+  of a process, which has no predecessor total to show. A second build's page
+  takes the `else` branch. Resetting before the thread starts closes it. The three
   memo clears stay where they are, on the worker thread — they satisfy
   LOTTO-0002 §4.2's "cleared before the build" either way, and moving them is a
   change this item does not need.
@@ -330,9 +353,8 @@ server process — which is what lets §4.5 give it a sentence that says so.
 §4.5 owns the sentence each state produces; it is not restated here, because a
 wording written in two places is two wordings.
 
-The first two rows are the cardinal rule. "Nothing was compared" and "nothing
-was found" are different facts and get different sentences; collapsing them
-would let a build that could not compare read as a build that found nothing.
+The first two rows are the cardinal rule: collapsing them would let a build
+that could not compare read as one that found nothing.
 
 The `no_dump` model (LOTTO-0002 §4.1) carries no `wins` key at all. `_compare`
 reads it through `.get("wins", ())`, so a dump appearing between two builds
@@ -366,19 +388,33 @@ better.
 <div class="notice"><strong>Checking your tickets…</strong> This takes about
   half a minute on the first run, longer if the operator's site is dropping
   connections. Nothing below is a result yet.
-  <span id="progress">{n} lookups so far.</span></div>
+  <span id="progress">{n} {lookup|lookups} so far.</span></div>
 ```
 
-`{n}` is `model.get("requests", 0)` interpolated at render time — normally `0`
-on the opening paint, and the previous build's total for the brief window §4.2
-describes.
+`{n}` and `{lookup|lookups}` are interpolated at render time from
+`model.get("requests", 0)`, using the **same** singular rule the poll applies
+(`s.requests===1?" lookup":" lookups"`). One string, one rule, two renderers —
+otherwise a first paint at `requests == 1` reads "1 lookups so far" until the
+next tick corrects it. `{n}` is: `0` for a
+browser that arrives before the build has issued anything, and the count so far
+for one that loads `/` partway through the opening build. It is never a previous
+build's total — §4.2's reset placement is what guarantees that, and the building
+branch only renders during the first build anyway.
 
-In `page.py::JS`, inside the existing `if(s.building)` arm:
+In `page.py::JS`, two arms of the existing poll. The `stale` arm is not
+optional — §6 says why: a browser open since the bind never re-renders, so
+without it a failed opening build leaves the counter frozen under a notice that
+still reads as in-flight.
 
 ```js
 if(s.building){var p=document.getElementById("progress");
                if(p)p.textContent=s.requests+(s.requests===1?" lookup":" lookups")+" so far.";
                setTimeout(poll,2000);return}
+...
+if(s.stale){var p=document.getElementById("progress");
+            if(p)p.textContent="";      // the build stopped; the count is not a result
+            ...existing refresh-button and msg() lines, unchanged...
+            return}
 ```
 
 "Lookups" rather than "requests" in user-facing text; the wire key stays
@@ -467,7 +503,7 @@ here, not per-spec.
   and is what `GET /status` reports as `requests` and `page.py::render()`
   interpolates into the building page.
   *Test:* `tools/verify_page.py::build_progress_is_visible`; breaks
-  `no_counter_reset` and `count_per_call`.
+  `no_counter_reset`, `reset_on_worker_thread` and `count_per_call`.
   *Breaks when:* the reset is omitted, so the second build in a process opens at
   the first one's total and every figure after it is cumulative; or it moves
   onto the worker thread, so `/status` reports the previous build's total while
@@ -488,8 +524,11 @@ here, not per-spec.
   0}` to one string, making "could not compare" indistinguishable from
   "compared, found nothing".
 
-- **INV-30** — The refresh notification body is composed from `found`'s two
-  integers, or from nothing at all when `found` is null. No ticket reference,
+- **INV-30** — The success notification `supervise.refresh_message()` composes
+  is built from `found`'s two integers, or from nothing at all when `found` is
+  null. (Scoped to that function: `tray.py`'s own `f"Refresh failed: {msg}"`
+  line carries an exception's text, is the one line the tray still composes
+  itself, and is out of this invariant's reach — §11 records that.) No ticket reference,
   board label, draw date or division name can reach it, whatever a win record
   beside it holds.
   *Test:* `tools/verify_page.py::notification_carries_no_ticket_data`; break
@@ -525,6 +564,30 @@ here, not per-spec.
   until `building` goes false, and `Supervisor.refresh()`'s deadline reports
   `REFRESH_RUNNING` rather than a failure. Retries lengthen the wait; they do
   not change which outcome is reported.
+- **The *opening* build fails, and the counter freezes mid-count.** This is the
+  one place the new element makes an existing state worse, so it is named rather
+  than left to be discovered. `State.fail()` sets `building` false, so a *fresh*
+  render takes the `else` branch and the progress span is gone. But the browser
+  that has been open since the bind does not re-render: `page.py`'s poll sees
+  `building` false and `stale` true, injects its failure line and stops — so the
+  page keeps the "Checking your tickets…" notice with the counter stopped at
+  whatever it reached. LOTTO-0020's bullet is explicit that a stalled counter
+  must never read as completion. It does not here, because the failure line sits
+  beside it; what it does read as is *still working*, which is why the poll's
+  `stale` arm must also blank or strike the progress span. That is one line in
+  the same `if(s.stale)` block, and it is required, not optional.
+- **A win is re-priced between builds.** `_win_key` excludes `amount_cents` on
+  purpose — a line is the same line whatever it paid — so a win first scored at
+  R0.00 and later priced when the operator publishes its division is *not* new
+  and is announced to nobody. That is the right silence for a summary counting
+  *new lines*, and the wrong one for a user whose R0.00 became R240. Named here
+  rather than fixed: changing it means the key carries an amount, which makes
+  every re-price look like a new win. The page shows the real total either way.
+- **The dump vanishes between builds.** `current` is then the `no_dump` model,
+  `_compare` reads `.get("wins", ())` on it, and `found` is
+  `{"new_wins": 0, "new_cents": 0}` — "No new wins." That is true and it is not
+  the whole story; the page's own no-dump notice (LOTTO-0002 §6) is what says
+  why, and the notification deliberately does not duplicate it.
 - **A win record the comparison cannot key.** `_compare` runs inside
   `State.finish()`, which runs inside `work()`'s `try`, so a `KeyError` from a
   malformed win record would turn a *successful* build into `state.fail()` —
@@ -550,8 +613,8 @@ CLAUDE.md's "twenty-two breaks" both move.
 
 | Case | Invariant | Seam |
 |---|---|---|
-| `post_retries_transport_failure` | INV-27 | `results._post`'s opener stubbed to raise `URLError` a fixed number of times, then return a canned payload. Asserts three attempts then success, one attempt then re-raise on an `HTTPError`, and that the exception escaping after exhaustion is the *original* object. No socket. |
-| `build_progress_is_visible` | INV-28 | The same stub, plus a **stub builder that itself calls `results.draws()`** a known number of times. Driven twice through `serve.refresh()` + `wait_idle(5)`, reading `GET /status` after each. Asserts the second build's figure equals the first's, not double it, and that `page.render()` on a building view carries that figure in its `id="progress"` span — the *server-side* half of INV-28's rendering clause, which is assertable as a string. |
+| `post_retries_transport_failure` | INV-27 | `results._post`'s opener stubbed with **two** scripts in turn: raise `URLError` twice then return a canned payload, and raise on every attempt. Asserts three attempts then success, one attempt then re-raise on an `HTTPError`, and that the exception escaping after exhaustion is the *original* object. No socket. |
+| `build_progress_is_visible` | INV-28 | `serve.make_server()` on an ephemeral port, with the same transport stub plus a **stub builder that itself calls `results.draws()`** a known number of times and blocks on a `threading.Event` the case controls (LOTTO-0013's `serve_on()` shape). Driven twice through `serve.refresh()` + `wait_idle(5)`. Three assertions: `GET /status` read **while the second build is still blocked** reports 0, not the first build's total — which is what `reset_on_worker_thread` breaks and nothing else can see; the second build's finished figure equals the first's, not double it; and `page.render()` on a building view carries that figure in its `id="progress"` span, the *server-side* half of INV-28's rendering clause. |
 | `no_comparison_is_not_no_wins` | INV-29 | `serve.make_server()` with a builder returning a scripted sequence of models; `wait_idle(5)` after each refresh. Asserts `found` is `null` after build 1 and an object after build 2, and that `supervise.refresh_message()` returns three distinct strings for `None`, `{"new_wins": 0, "new_cents": 0}` and a positive count. |
 | `notification_carries_no_ticket_data` | INV-30 | `supervise.refresh_message(REFRESH_DONE, found)` driven with `found` widened to carry a win record's fields beside the two integers; asserts the result still matches the fixed shape below, and therefore that no extra field reached it. Driven for all three DONE states, so the pattern covers the null sentence too. |
 
@@ -569,13 +632,14 @@ SHAPE = re.compile(
 )
 ```
 
-Run against the three sentences §4.5 composes and three breaches, 2026-08-05:
-all four legitimate forms match (including the singular *"1 new winning
-line"*), and all three of `"…(VAS00000000000), R240.00."`, `"Your PowerBall
+Run 2026-08-05 against the three sentences §4.5 composes — four forms, the
+positive count having a singular — and three breaches: all four legitimate
+forms match, and all three of `"…(VAS00000000000), R240.00."`, `"Your PowerBall
 line B won on 2026-07-04…"` and a trailing `"Ref VAS00000000000."` are
 rejected.
 
-Three seam notes, without which the cases are wrong:
+Four seam notes, without which `post_retries_transport_failure` and
+`build_progress_is_visible` are wrong:
 
 - **The transport stub is process-global and must be restored in a `finally`.**
   `results.py` does `import urllib.request`, so `results.urllib.request.urlopen`
@@ -603,14 +667,16 @@ Three seam notes, without which the cases are wrong:
   `requests_made` would be 0 on every refresh and both of `build_progress_is_visible`'s
   breaks would be unobservable. It is the same trap INV-17 already documents for
   request-counting. The no-network and no-real-data constraints are untouched:
-  nothing here opens a socket or reads the dump.
+  nothing here reaches the operator's API or reads the dump. Binding an
+  in-process server on an ephemeral port is what the existing cases already do
+  and is not what "no network" forbids.
 
 Each case must be **observed failing** under its named `--break` before it is
 believed, per the project's own rule: these are greenfield, so there is no
-pre-fix code to red-test against. Seven new breaks: `no_retry`,
-`retry_http_error`, `no_counter_reset`, `count_per_call`,
-`found_on_first_build`, `null_found_reads_as_zero`, `summary_names_a_ticket` —
-taking the total from twenty-two to twenty-nine.
+pre-fix code to red-test against. Eight new breaks: `no_retry`,
+`retry_http_error`, `no_counter_reset`, `reset_on_worker_thread`,
+`count_per_call`, `found_on_first_build`, `null_found_reads_as_zero`,
+`summary_names_a_ticket` — taking the total from twenty-two to thirty.
 
 Both refreshing cases call `wait_idle(5)` before asserting, like every other
 refreshing case in the file: `refresh()` starts a daemon thread and returns at
@@ -625,15 +691,15 @@ begun (LOTTO-0002 §4.2).
   which `supervise.py::post()`'s own docstring states. A body composed at that
   moment can describe nothing the build found. Same reasoning LOTTO-0018
   already settled.
-- **Show "fetched N of 27".** Rejected under §3: 27 is a measurement, not a
-  constant, and a denominator that is wrong is worse than none — a bar that
-  reaches 100% and keeps working is a stalled counter reading as completion.
+- **Show "fetched N of 27".** Rejected for the reason §3 gives, plus one it
+  does not: a bar that reaches 100% and keeps working is a stalled counter
+  reading as completion.
 - **Diff the win totals rather than the win set.** Rejected: two wins of equal
   value, one replacing another, would net to zero and announce nothing. Set
   difference on `_win_key` costs one pass over the win list.
 - **Retry in each caller rather than in `_post()`.** Rejected for the reason
   LOTTO-0012 gives: one function serves `draws()`, `divisions()` and therefore
-  every script, and per-caller retries would be four copies that drift.
+  every script, and per-caller retries would be two copies that drift.
 - **Persist the comparison baseline to disk.** Rejected for the reason §3
   gives; tracked by LOTTO-0028.
 
@@ -654,7 +720,9 @@ One `int` in `results.py` and one `dict` of two `int`s in `State`. The
 comparison holds a set of tuples the size of the previous model's win list —
 bounded by the win count, itself bounded by the ticket dump, and discarded when
 `_compare` returns. No count is asserted here on purpose: the win list grows
-with the dump, so a figure measured today would be a ceiling nobody re-measures. No new file, no new on-disk state, no new external
+with the dump, so a figure measured today would be a ceiling nobody re-measures.
+
+No new file, no new on-disk state, no new external
 dependency, no new build target, no new thread and no new HTTP request: the
 progress figure rides the poll `page.py` already makes and the summary rides
 the poll `Supervisor.refresh()` already makes.
@@ -670,14 +738,17 @@ the poll `Supervisor.refresh()` already makes.
 | §4.1 the counter is safe without a lock (one writer) | **nothing** — the argument rests on `State.begin()`, which is checked, but no case asserts that only one thread writes the counter |
 | §4.2 `found` never takes a third shape (neither `{}` nor a zeroed object standing in for `null`) | **nothing** — INV-29's case asserts `null` against an object, so a malformed third shape would reach a cold reader and no further |
 | §4.4 the page's progress element being **updated by the poll** (its initial render is covered by INV-28's case) | **nothing** — `tools/verify_page.py` renders `page.render()` as a string and never executes its JavaScript. The same standing gap LOTTO-0002 §11's last row records for the poll itself; no roadmap id tracks it, and this item does not close it |
+| §4.4 the `stale` arm blanking the progress span, so a failed opening build stops reading as in-flight (§6) | **nothing** — same JavaScript limit as the row above, and this one has a user-visible consequence rather than a cosmetic one |
 | §4.5 the tray composing only the failure line, now that the success line comes from a function rather than a map lookup | **nothing** — `refresh_reports_the_build` (INV-23) drives `supervise.Supervisor.refresh()` and asserts over the `REFRESH_MESSAGE` *map*; it never imports `tray.py`, and INV-29's case asserts `refresh_message()`'s output rather than the tray's use of it |
 
-Eight rows, **four** with a bolded `nothing`. Two (§4.1, §4.4) are standing
-limits — nothing here executes browser JavaScript or counts threads. Two are
-narrower and closable: §4.2 wants a shape assertion on `/status`'s body, §4.5
-wants a case that reads `tray.py`'s composition. Neither is written, and saying
-so is the point of the row: a row naming a catcher that does not really catch is
-worse than a row that admits the gap.
+Nine rows, **five** with a bolded `nothing`. Three (§4.1 and both §4.4 rows) are
+standing limits — nothing here executes browser JavaScript or counts threads.
+Two are narrower and closable: §4.2 wants a shape assertion on `/status`'s body,
+§4.5 wants a case that reads `tray.py`'s composition. Neither is written, and
+saying so is the point of the row: a row naming a catcher that does not really
+catch is worse than a row that admits the gap. The count went **up** across this
+document's review, which is the honest direction — every rise was a row that had
+claimed a catcher which, checked, did not catch.
 
 ## 12. Cross-doc impact
 
@@ -687,9 +758,14 @@ worse than a row that admits the gap.
   its invariant range (`INV-12 to INV-21 and INV-23 to INV-25` gains
   `and INV-27 to INV-30`), and its scope sentence: it currently reads "for the
   local page and the tray that drives it", and INV-27/INV-28 are network-layer.
-- `docs/specs/LOTTO-0002-local-web-page.md` — §4.2's `State` sketch gains
-  `found`, and its `get()` line changes from a five- to a six-tuple
-  (`# -> (model|None, building, built, stale, error, found)`). Its §11 last row
+- `docs/specs/LOTTO-0002-local-web-page.md` — **two** sketches in its §4.2
+  move, not one. Its `State` sketch gains `found` and its `get()` line changes
+  from a five- to a six-tuple
+  (`# -> (model|None, building, built, stale, error, found)`); and its
+  `refresh(state, build_model_fn)` sketch gains the counter reset between
+  `state.begin()` and the thread start (§4.2). INV-17's "all three memos"
+  wording is untouched — the reset is a fourth thing `refresh()` does, not a
+  fourth memo. Its §11 last row
   already records the no-JavaScript gap this spec's §11 points back at.
 - `docs/specs/LOTTO-0013-tray-and-supervisor.md` — §4.6 describes
   `Supervisor.refresh()` and `REFRESH_MESSAGE`; `refresh_message()` joins them,
@@ -706,5 +782,6 @@ worse than a row that admits the gap.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 3 | 2026-08-05 | 3 (cold, identical packet) | 0 | 5 | 9 | 10 | **Converged by cap.** 24 verified, all fixed; 1 dismissed. Dimensions: dim4×8, dim5×5, dim10×4, dim7×3, dim15×3, dim1×3, dim2×3, dim6×2, dim12×1. Origin split ≈ 9 draft defects to 10 fix collateral — even for a second loop, so no split trigger fired. The sharpest finding was against loop 2's own reasoning: the reset-placement bullet justified itself with a page counting backwards, and `page.py::render()`'s building branch is `building and not built`, so it renders only during the *first* build and that symptom cannot occur — the defect is in `/status`'s wire value, and the bullet now says so. Two more collateral: §4.1 claimed five requests could exhaust their retries in one build, which contradicts its own re-raise and §6's first bullet (one exhaustion ends the build), and INV-28's third breaking input, added in loop 2, had no break name and no case that could see it — now `reset_on_worker_thread` plus a mid-build `/status` read, taking breaks from twenty-nine to thirty. Draft defects: the `do_GET` sketch silently dropped the `no_build` line one of the cardinal rule's three empty-page states depends on; §2 claimed *every* API request goes through `_post()` when `supervise.py` calls `urlopen` at three sites of its own; and §6 gained three failure modes nobody had written — a failed opening build freezing the counter under a live "Checking your tickets…" notice (which forces a `stale`-arm change in §4.4), a re-priced win being invisible by design, and the dump vanishing between builds. Dismissed for the third time: that LOTTO-0002 owns INV-19 — LOTTO-0013 line 118 says it owns it; the packet did not carry that passage, which is why lanes kept finding it. |
 | 2 | 2026-08-05 | 3 (cold, identical packet) | 0 | 5 | 8 | 12 | 25 verified, all fixed; 1 dismissed. Dimensions: dim5×6, dim4×5, dim2×4, dim15×4, dim10×3, dim6×3, dim13×2, dim1×2, dim7/dim11/dim12×1. Origin split ≈ 8 draft defects to 7 fix collateral — no stop trigger. Two of the five HIGHs were loop 1's own fixes biting: §4.1 said the building notice's "about half a minute" was reworded while §4.4's block kept it verbatim, and naming the reset site as `work()` created a window where `building` is true and the counter still holds the previous build's total, so the page would count backwards. Three were draft defects loop 1 missed: the `{"new_wins": 0}` fixture in §5 and §7 KeyErrors against §4.5's own unpack, `State.__init__` was never told to set `found`, and §4.3 blessed comparing against an empty `no_dump` predecessor while INV-29 named that same input a break — the real property is the predecessor's *existence*. The INV-30 regex was executed against all three sentences and three breaches before landing (4b-x). Dismissed: a lane's claim that LOTTO-0002 owns INV-19 — LOTTO-0013 line 118 says outright that it does. Resolved by lookup rather than fixed: INV-26 is in LOTTO-0001, `page.py::_rands()` formats identically, the `no_dump` model does omit `wins`, and `state.get()` has exactly one call site. |
 | 1 | 2026-08-05 | 3 (cold, identical packet) | 1 | 7 | 9 | 11 | 28 verified, all fixed; 3 dismissed as unverified. Dimensions: dim5×10, dim2×5, dim4×4, dim15×3, dim7×2, dim1×2, dim6×2, dim10×2, dim9/dim13/dim8×1. The CRITICAL and two of the HIGHs were one hole: `requests` and `found` were specified onto `GET /status`'s body and nowhere else, so `render()` would have raised on the opening build and `State.get()`'s five-tuple could not carry the summary at all. Two more HIGHs killed both new test seams — a builder stub never enters `_post()`, so the counter case asserted 0, and the privacy case was green by construction against a two-integer input. Dismissed: a missing TOC (no sibling has one), the `::case` citation style (LOTTO-0002 §11 uses exactly it) and the LOTTO-0012 measurement attribution (its bullet does carry it). One lane's *open question* became a real finding — §11 cited LOTTO-0007 for the no-JavaScript gap, and LOTTO-0007's (a)–(e) tail is not that. |
