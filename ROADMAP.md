@@ -482,6 +482,31 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: feature.
   Source: user-request-2026-08-03.
 
+- 📋 [LOTTO-0028] **Refresh on a schedule, so a win is found without the user clicking anything.**
+  Split out of LOTTO-0019 rather than folded into it. LOTTO-0019 makes a
+  refresh REPORT what it found; nothing in the project makes a refresh
+  HAPPEN on its own. `tray.py::refresh()` is wired to a menu action only —
+  verified 2026-08-05: `tray.py` constructs no QTimer and `supervise.py`
+  schedules nothing.
+  So after LOTTO-0019 the summary is real but only ever reaches a user who
+  was already opening the menu, which leaves most of the gap its own
+  headline names ("instead of waiting for them to come and look").
+  Two things to settle before building, neither guessable:
+  (a) the cadence, set against draw times rather than a round number of
+  hours — Daily Lotto draws nightly, Lotto and PowerBall twice a week, so
+  a fixed 6-hourly poll is mostly wasted requests against a free public
+  API;
+  (b) what a scheduled refresh does when it FAILS, since nobody is
+  watching it — LOTTO-0018's rule (a failure reported as a success is
+  worse than a blank) is harder to honour for a notification the user did
+  not ask for.
+  LOTTO-0019's comparison baseline is the other constraint: it lives in
+  the server process and is reset by a restart, so a scheduled refresh is
+  also what would make that baseline long-lived enough to be worth having.
+  **Layman:** The tray checks for new draws on its own, instead of only when you ask it to.
+  Kind: feature.
+  Source: in-session-2026-08-05 (split out while speccing LOTTO-0019).
+
 ## Hardening
 
 - ✅ [LOTTO-0025] **A pre-push gate, and the CI that mirrors it.**
