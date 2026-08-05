@@ -380,11 +380,7 @@ def render(model, token):
     """
     built = model.get("built")
     building = bool(model.get("building"))
-    head = (
-        f"<title>{TITLE}</title><style>{CSS}</style>"
-        if True
-        else ""
-    )
+    head = f"<title>{TITLE}</title><style>{CSS}</style>"
     if building and not built:
         # LOTTO-0019 §4.4. The half-minute estimate is KEPT and qualified, not
         # dropped: a retrying build (LOTTO-0012) overshoots it, and an estimate
