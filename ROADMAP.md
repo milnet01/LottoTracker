@@ -357,7 +357,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   `stale_is_success` (a patient lie is still a lie) and `success_wording`.
   This unblocks LOTTO-0019.
 
-- 📋 **LOTTO-0019** Tell the user they won, instead of waiting for them to come and look.
+- ✅ **LOTTO-0019** Tell the user they won, instead of waiting for them to come and look.
   Kind: feature. Source: in-session-2026-08-02.
   Layman: The icon pops up "2 new winning lines, R240" — the whole point of the app, delivered without you opening anything.
   The project exists to surface a win before it is discovered by accident, and
@@ -382,8 +382,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   finish.
   Blocked in practice on LOTTO-0018: a summary that arrives at the wrong moment
   is a more convincing wrong answer than the generic string it replaces.
+  Spec: `docs/specs/LOTTO-0019-build-reporting.md` — an umbrella covering this item, LOTTO-0012 and LOTTO-0020, because all three change `results.py::_post()` and `GET /status`'s body. Accepted 2026-08-05 after a 3-loop cold-eyes gate: 77 findings verified, 77 fixed, 5 dismissed, nothing deferred. Unblocked by LOTTO-0018. The scheduling half is split out as LOTTO-0028 — this item makes a refresh REPORT what it found; nothing yet makes one HAPPEN unasked.
+  Resolved 2026-08-05: `GET /status` carries `found` (new winning lines and their total) and `supervise.refresh_message()` turns it into the tray's sentence. Three DONE states kept distinct — "nothing was compared" never reads as "compared, found nothing" — and the body is two integers, no ticket data (INV-29, INV-30). Also fixed the counter freezing under a live "Checking your tickets…" notice when an opening build fails. Spec `docs/specs/LOTTO-0019-build-reporting.md`; 17/17 verifier cases green, 30/30 breaks red. Scheduling stays open as LOTTO-0028.
 
-- 📋 **LOTTO-0020** Show what the first build is actually doing instead of "building" for half a minute.
+- ✅ **LOTTO-0020** Show what the first build is actually doing instead of "building" for half a minute.
   Kind: enhancement. Source: in-session-2026-08-02.
   Layman: A page that says "checking draw 9 of 27" instead of sitting there looking broken for thirty seconds.
   `serve.py` binds before it builds (LOTTO-0002 §4.2), so the first page answers
@@ -407,6 +409,8 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   blank cell reading as R0.00.
   Small, self-contained, and touches no scoring. Worth doing alongside
   LOTTO-0012, whose retries make the wait longer and therefore worth narrating.
+  Specced under `docs/specs/LOTTO-0019-build-reporting.md` (umbrella; see LOTTO-0019). Resolved 2026-08-05: the figure ships with NO denominator — `check.py` fetches lazily, so this build's total is unknowable until it ends, and this bullet's own warning about 27 being a dated measurement is what rules it out. It counts HTTP *attempts*, which is what makes it move during the retry storms LOTTO-0012 introduces.
+  Resolved 2026-08-05: `GET /status` reports `requests` and the opening page interpolates it. No denominator — the bullet's own warning about 27 being a dated measurement is what ruled it out, and `check.py` fetches lazily so this build's total is unknowable until it ends. Counts ATTEMPTS, so it keeps moving through LOTTO-0012's retries. Holds INV-28; three breaks observed red, including `reset_on_worker_thread` for the window where a late reset would report the previous build's total.
 
 - 📋 **LOTTO-0021** Extend the page's filter beyond game, reusing the pattern already there.
   Kind: enhancement. Source: in-session-2026-08-02.
@@ -587,7 +591,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   it in the README as "catches copied content, not inferred identity", and keep
   the reviewer's eye on aggregates in any prose that quotes figures.
 
-- 📋 **LOTTO-0012** Retry the results API instead of dying on its first refusal.
+- ✅ **LOTTO-0012** Retry the results API instead of dying on its first refusal.
   Kind: fix. Source: in-session-2026-08-02.
   Layman: the lottery website drops connections a lot; try again instead of
   giving up.
@@ -604,6 +608,8 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   through the network layer.
   LOTTO-0002 §6 and INV-18 already specify the page's behaviour when this fails,
   so that item does not block on this one; this reduces how often it happens.
+  Specced under `docs/specs/LOTTO-0019-build-reporting.md` (umbrella; see LOTTO-0019), as INV-27. Bounded to 3 attempts with 1 s/2 s backoff, re-raising the ORIGINAL exception on exhaustion. `HTTPError` is never retried — the server answered. `socket.timeout` is caught explicitly because it is only an alias of `TimeoutError` from Python 3.10 and this project pins 3.8+.
+  Resolved 2026-08-05: `results.py::_post()` retries a transport failure up to 3 attempts with 1 s/2 s backoff and re-raises the ORIGINAL exception on exhaustion. `HTTPError` is caught first and never retried — the server answered. Holds INV-27; `tools/verify_page.py::post_retries_transport_failure` checks it, with `no_retry` and `retry_http_error` observed red.
 
 - 💭 **LOTTO-0005** Support other banks' ticket SMS formats.
   Kind: feature. Source: user-request-2026-08-01.

@@ -198,6 +198,11 @@ class Supervisor:
     url: str                        # "http://127.0.0.1:<port>" — what the tray opens
     token: Optional[str]            # minted by start(); None while stopped
     child: Optional[Popen]          # the server process; survives stop() (INV-20)
+    found: Optional[dict]           # LOTTO-0019 §4.5 — what the last refresh THIS
+                                    # Supervisor waited out found; None until one
+                                    # completes. Set only on the DONE/FAILED path,
+                                    # so REFRESH_BUSY (which returns without
+                                    # polling) never leaves it unassigned
     port_fallback: Optional[str]    # set when the requested port was unusable,
                                     # naming which source it came from — $PORT,
                                     # $LOTTO_PORT or the constructor argument,
@@ -224,6 +229,12 @@ REFRESH_DONE, REFRESH_FAILED, REFRESH_RUNNING, REFRESH_BUSY  # the four outcomes
 REFRESH_MESSAGE: dict    # outcome -> the sentence the tray shows. Here rather
                          # than in tray.py so INV-23's wording half is checkable
                          # without a display (§4.6).
+refresh_message(outcome, found=None) -> str
+                         # LOTTO-0019 §4.5. The sentence a user actually sees:
+                         # REFRESH_MESSAGE.get(outcome, outcome), plus - for
+                         # REFRESH_DONE only - what the build found. Three
+                         # distinct DONE sentences (INV-29). The .get()-not-[]
+                         # guard moved here from tray.py with the lookup.
 
 def free_port() -> int   # bind :0, read the number, close. Module-level, not a
                          # method: INV-20's case needs a port BEFORE it has a
@@ -426,8 +437,13 @@ out, the tray says so in a notification instead of opening a tab on a refused
 connection.
 
 **The Refresh item calls `Supervisor.refresh()` and shows
-`REFRESH_MESSAGE[outcome]`** — for each of the four outcomes it composes no
-message of its own and reads no HTTP status. §4.6 owns the outcomes, their wording and why the wait is
+`refresh_message(outcome, sup.found)`** — for each of the four outcomes it
+composes no message of its own and reads no HTTP status. (It read
+`REFRESH_MESSAGE[outcome]` directly until LOTTO-0019 §4.5; the map is still
+where the four sentences live, and `refresh_message()` is what appends the
+build summary to `REFRESH_DONE`'s. INV-23 is unchanged in property — the map
+stays total and only `REFRESH_DONE` reads as success — and extended in
+surface.) §4.6 owns the outcomes, their wording and why the wait is
 not written here. **The one message the tray does build is the raise path**: a
 403, a 500, a socket timeout or a dead child leaves `refresh()` with no outcome
 to return, and the exception's text becomes `Refresh failed: <msg>` through the

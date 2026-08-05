@@ -8,6 +8,36 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The tray says what a refresh found, instead of a flat "Results refreshed."** (LOTTO-0019)
+  `GET /status` gains `found` — how many winning lines the last completed
+  build found that its predecessor did not, and their total — and
+  `supervise.refresh_message()` turns it into a sentence: "2 new winning
+  lines, R240.00."
+  Three DONE states, and the first two are this project's cardinal rule in
+  notification form: `found: null` (nothing was compared — the first check
+  this session) must never read like `new_wins: 0` (compared, nothing new).
+  The first build of a process compares against no predecessor and reports
+  null rather than announcing every existing win as new.
+  The body is composed from two integers and nothing else — no ticket
+  reference, no board label, no draw date, no division — because a desktop
+  notification may be logged and synced off the machine, which is the
+  reasoning LOTTO-0014 INV-21 already applies to the URL.
+  Holds INV-29 and INV-30. Scheduling is deliberately not here: LOTTO-0019
+  makes a refresh REPORT what it found, and LOTTO-0028 is what would make one
+  HAPPEN unasked.
+
+- **The building page says how many lookups it has done, instead of nothing for half a minute** (LOTTO-0020)
+  `GET /status` gains `requests` — every HTTP attempt the build has made —
+  and the opening page's notice interpolates it and the poll keeps it moving.
+  No denominator: `check.py` fetches lazily, so this build's total is unknown
+  until it ends, and LOTTO-0002's 27 is a dated measurement rather than a
+  constant. It counts *attempts*, which is what makes it move during the
+  retry storms LOTTO-0012 introduces.
+  The counter resets in `serve.py::refresh()` before the worker thread
+  starts, not on it: `begin()` has already set `building`, so a later reset
+  leaves a window where `/status` reports the previous build's total for a
+  build in flight. Holds INV-28, with three breaks observed red.
+
 - **A pre-push gate, and a CI workflow that runs the same script.** (LOTTO-0025)
   `./local-CI.sh` runs before every push (wire it up with `git config
   core.hooksPath .githooks`); `.github/workflows/ci.yml` invokes
@@ -148,6 +178,25 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importing the derivation it is testing.
 
 ### Fixed
+
+- **A failed opening build no longer leaves a live-looking counter under "Checking your tickets…"** (LOTTO-0019)
+  A browser open since the bind never re-renders, so the poll's `stale` arm
+  now blanks the progress span as well as showing the failure line. Without
+  it the new counter would freeze mid-count under a notice that still reads
+  as in flight — the cardinal rule arriving through the one element this
+  change added.
+
+- **The results API is retried instead of dying on its first refusal** (LOTTO-0012)
+  `results.py::_post()` now makes up to three attempts with 1 s/2 s backoff
+  and re-raises the ORIGINAL exception on exhaustion. Four of seven measured
+  builds died on an SSL EOF, and one failure aborted the whole run — this is
+  the single funnel every caller reaches the network through, so bounding it
+  here fixes `check.py`, the page's build and the fetching verifiers at once.
+  An `HTTPError` is never retried: the server answered, and a retry gets the
+  same answer. `socket.timeout` is caught explicitly because it is only an
+  alias of `TimeoutError` from Python 3.10 and this project pins 3.8+.
+  Holds INV-27, checked by `tools/verify_page.py::post_retries_transport_failure`
+  with breaks `no_retry` and `retry_http_error` observed red.
 
 - **A feed-side division rename no longer scores every win in that division as a loss** (LOTTO-0026)
   `check.py::check()` decides a line won by joining `api_label()`'s string

@@ -416,7 +416,10 @@ tickets half of a refresh needs no invalidation at all.
 ```python
 class State:
     """The one mutable thing in the server. All access under one lock."""
-    def get(self):        ...  # -> (model|None, building, built, stale, error)
+    def get(self):        ...  # -> (model|None, building, built, stale, error, found)
+                               #    `found` added by LOTTO-0019 §4.3 - what the last
+                               #    COMPLETED build found that its predecessor did not,
+                               #    None when there was nothing to compare against
     def begin(self):      ...  # -> False if a build is already running (no concurrent builds)
     def finish(self, model):   # success: swap in, built=now, stale=False, building=False
     def fail(self, exc, pools=()):  # model UNTOUCHED; stale=True, building=False,
@@ -433,6 +436,11 @@ def refresh(state, build_model_fn):
     if not state.begin():
         return False  # already building; the route answers 409, not 202, so a
                       # second Refresh click is visibly declined, not silently lost
+    results.requests_made = 0  # LOTTO-0019 INV-28: SYNCHRONOUSLY, before the thread.
+                               # begin() has already set `building`, so a reset on the
+                               # worker thread leaves a window where /status reports
+                               # the PREVIOUS build's total. Not a fourth memo - the
+                               # three below still clear on the worker thread.
     def work():
         import check, history, results
         history._cache.clear()            # {(game, plus_flag): [draw, ...]}

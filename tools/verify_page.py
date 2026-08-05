@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Thirteen cases, one per invariant INV-12 to INV-21 and INV-23 to INV-25, for
-the local page and the tray that drives it.
+"""Seventeen cases, one per invariant INV-12 to INV-21, INV-23 to INV-25 and
+INV-27 to INV-30 — the local page, the tray that drives it, and (since
+LOTTO-0019) the results transport underneath both.
 
 Joins tools/verify_privacy.py, verify_sources.py, verify_coverage.py and
 verify_pools.py. Exit code is the signal, as with the other four.
 
-    python3 tools/verify_page.py            # all thirteen
+    python3 tools/verify_page.py            # all seventeen
     python3 tools/verify_page.py --list
     python3 tools/verify_page.py --break host_endswith   # RED-TEST: must FAIL
 
@@ -28,6 +29,7 @@ guards and watch it. Each break is named in the invariant's *Test:* clause.
 import http.client
 import json
 import os
+import re
 import shutil
 import site
 import socket
@@ -1373,6 +1375,430 @@ def tray_headless_when_managed():
         )
 
 
+# ------------------------------------------------- LOTTO-0019: build reporting
+#
+# INV-27, INV-28, INV-29, INV-30. Two of these install a TRANSPORT seam beside
+# the builder seam the other eleven cases use, which is a deliberate exception
+# to §7's inherited constraints: an inert stub builder never enters
+# results._post(), so requests_made would be 0 on every refresh and both of
+# build_progress_is_visible's counter breaks would be unobservable. The
+# no-network and no-real-data constraints are untouched — nothing here reaches
+# the operator's API or reads the dump.
+
+_OK_PAYLOAD = json.dumps({"code": 0, "data": {"list": []}}).encode()
+
+
+def _stub_transport(fail_first=0):
+    """Replace results' urlopen. Returns (restore, calls) — `calls` is a list
+    appended to per ATTEMPT, so len(calls) is the true attempt count.
+
+    PROCESS-GLOBAL and there is no narrower seam: results.py does
+    `import urllib.request`, so this attribute IS the shared module's, _post()
+    holds no opener object, and urllib.request.install_opener() is equally
+    global. While installed it also intercepts supervise.Supervisor.status()
+    and .post() — so every caller restores it in a `finally`. tools' req()
+    uses http.client and is unaffected.
+    """
+    import io
+
+    real = urllib.request.urlopen
+    calls = []
+
+    def stub(_req_or_url, *a, **k):
+        calls.append(1)
+        if len(calls) <= fail_first:
+            raise urllib.error.URLError("SSL: UNEXPECTED_EOF_WHILE_READING")
+        return io.BytesIO(_OK_PAYLOAD)
+
+    urllib.request.urlopen = stub
+
+    def restore():
+        urllib.request.urlopen = real
+
+    return restore, calls
+
+
+def post_retries_transport_failure():
+    """INV-27 — _post retries a transport failure, then re-raises the original.
+
+    Two stub scripts in turn: raise twice then succeed, and raise on every
+    attempt. An HTTPError is checked separately: it must cost exactly one.
+    """
+    import results
+
+    real_backoff = results.BACKOFF
+    real_attempts = results.ATTEMPTS
+    real_http = urllib.error.HTTPError
+    # Or the exhaustion path really sleeps 3 s, the way LOTTO-0013's INV-23
+    # case budgets its own poll interval down.
+    results.BACKOFF = 0.001
+    if broken("no_retry"):
+        # RED-TEST: the shipped behaviour before LOTTO-0012 — one attempt, and
+        # the first URLError aborts the caller.
+        results.ATTEMPTS = 1
+    if broken("retry_http_error"):
+        # RED-TEST: shadow the class the ordering rule depends on, so the
+        # `except HTTPError: raise` arm never fires and HTTPError — a URLError
+        # subclass — falls into the retry arm below it.
+        class _NeverMatches(Exception):
+            pass
+
+        urllib.error.HTTPError = _NeverMatches
+
+    restore, calls = _stub_transport(fail_first=2)
+    try:
+        results.requests_made = 0
+        got = results._post("/x", {})
+        need(got == {"list": []}, f"payload not returned after retries: {got!r}")
+        need(
+            len(calls) == 3,
+            f"took {len(calls)} attempts to survive 2 failures, expected 3",
+        )
+        need(
+            results.requests_made == 3,
+            f"counter says {results.requests_made} after 3 attempts (INV-28)",
+        )
+    finally:
+        restore()
+
+    # Script two: always raises. The ORIGINAL exception must escape, unwrapped.
+    restore, calls = _stub_transport(fail_first=99)
+    try:
+        try:
+            results._post("/x", {})
+        except urllib.error.URLError as exc:
+            need(
+                "UNEXPECTED_EOF" in str(exc),
+                f"exhaustion raised {exc!r}, not the original URLError",
+            )
+        else:
+            raise Fail("an always-failing transport did not raise")
+        need(
+            len(calls) == real_attempts,
+            f"exhaustion took {len(calls)} attempts, expected {real_attempts}",
+        )
+    finally:
+        restore()
+
+    # An HTTPError is an answer, not a transport failure: exactly one attempt.
+    import io
+
+    real_urlopen = urllib.request.urlopen
+    http_calls = []
+
+    def always_404(*a, **k):
+        http_calls.append(1)
+        raise real_http("http://x/", 404, "Not Found", {}, io.BytesIO(b""))
+
+    urllib.request.urlopen = always_404
+    try:
+        try:
+            results._post("/x", {})
+        except Exception:
+            pass
+        need(
+            len(http_calls) == 1,
+            f"a 404 cost {len(http_calls)} attempts, expected 1 — an HTTPError "
+            "is an answer and a retry gets the same one",
+        )
+    finally:
+        urllib.request.urlopen = real_urlopen
+        urllib.error.HTTPError = real_http
+        results.BACKOFF = real_backoff
+        results.ATTEMPTS = real_attempts
+
+
+class _CountingStub:
+    """A builder that really reaches results._post(), and blocks until released.
+
+    An inert stub cannot exercise the counter at all — that is why these two
+    cases add the transport seam.
+    """
+
+    def __init__(self, gate, fetches=2):
+        self.gate = gate
+        self.fetches = fetches
+        self.calls = 0
+
+    def __call__(self):
+        import results
+
+        self.calls += 1
+        # Blocks BEFORE fetching, not after: the counter's value at the moment
+        # the build is in flight but has issued nothing is the only observation
+        # that separates a reset made before the thread started from one made
+        # on it. Fetching first makes both readings converge on the same total.
+        self.gate.wait(10)
+        for _ in range(self.fetches):
+            results.draws("lotto", 1)
+        return fixture_model()
+
+
+def build_progress_is_visible():
+    """INV-28 — the counter counts attempts, resets before the thread starts,
+    and is what /status reports and page.render() interpolates."""
+    import threading
+
+    import results
+
+    temp_home()
+    real_backoff = results.BACKOFF
+    results.BACKOFF = 0.001
+    gate = threading.Event()
+    stub = _CountingStub(gate, fetches=2)
+    # fail_first=1: the first fetch costs TWO attempts, so attempts (3) exceed
+    # calls (2). Without a retry in the case the two are equal and
+    # count_per_call cannot be observed failing.
+    restore, _calls = _stub_transport(fail_first=1)
+    real_refresh, real_post = serve.refresh, results._post
+    srv = None
+
+    if broken("no_counter_reset") or broken("reset_on_worker_thread"):
+        late = broken("reset_on_worker_thread")
+
+        def rigged(state_, fn):
+            """RED-TEST: omit the reset entirely, or defer it onto the worker
+            thread — where it runs AFTER begin() has set `building`, so /status
+            reports the previous build's total while the new one is in flight."""
+            if not state_.begin():
+                return False
+
+            def work():
+                if late:
+                    # The window the spec names, made deterministic rather than
+                    # raced: the reset lives on the worker thread, and the
+                    # worker thread has not reached it yet while /status is
+                    # already answering `building: true`.
+                    gate.wait(10)
+                    results.requests_made = 0
+                try:
+                    state_.finish(fn())
+                except Exception as exc:  # noqa: BLE001
+                    state_.fail(exc)
+
+            threading.Thread(target=work, daemon=True).start()
+            return True
+
+        serve.refresh = rigged
+
+    if broken("count_per_call"):
+        # RED-TEST: count calls, not attempts — the figure then freezes during
+        # exactly the retry storm it exists to narrate.
+        def once_per_call(path, body):
+            before = results.requests_made
+            try:
+                return real_post(path, body)
+            finally:
+                results.requests_made = before + 1
+
+        results._post = once_per_call
+
+    try:
+        srv, state, port, _t = serve_on(stub)
+        host = f"127.0.0.1:{port}"
+
+        # --- build 1: let it run to completion -----------------------------
+        gate.set()
+        need(serve.refresh(state, stub), "refresh 1 was declined")
+        need(state.wait_idle(5), "build 1 did not finish within 5s")
+        first = json.loads(req(port, "GET", "/status", host=host)[2])["requests"]
+        need(
+            first == 3,
+            f"/status reported {first} requests for two fetches of which one "
+            "retried once — expected 3 ATTEMPTS, not 2 calls",
+        )
+
+        # --- build 2: read /status WHILE it is still blocked ----------------
+        # This is the assertion reset_on_worker_thread breaks and nothing else
+        # can see: after wait_idle() a late reset has already run.
+        gate.clear()
+        # The stub's failure script is reset, or build 2 sees no retry and its
+        # attempt count is legitimately lower than build 1's — a flaky
+        # assertion rather than a wrong one (LOTTO-0019 §7).
+        _calls.clear()
+        need(serve.refresh(state, stub), "refresh 2 was declined")
+        # Synchronous: refresh() resets before it starts the thread, so this
+        # holds the instant it returns, whatever the scheduler does next.
+        need(
+            results.requests_made == 0,
+            f"results.requests_made is {results.requests_made} the instant "
+            f"refresh() returned, which is build 1's total ({first}) — the "
+            "reset was omitted or deferred onto the worker thread (INV-28)",
+        )
+        answer = json.loads(req(port, "GET", "/status", host=host)[2])
+        need(answer["building"], "build 2 was not in flight while gated")
+        need(
+            answer["requests"] == 0,
+            f"/status reported {answer['requests']} requests for a build that "
+            f"has issued none — build 1's total ({first}) is leaking into the "
+            "build in flight (INV-28)",
+        )
+        gate.set()
+        need(state.wait_idle(5), "build 2 did not finish within 5s")
+        second = json.loads(req(port, "GET", "/status", host=host)[2])["requests"]
+        need(
+            second == first,
+            f"build 2 reported {second} requests against build 1's {first} — "
+            "the counter is accumulating across builds",
+        )
+
+        # --- the server-side half of the rendering clause -------------------
+        html = page.render({"building": True, "built": None, "requests": 7}, "tok")
+        need('id="progress"' in html, "the building page carries no progress span")
+        need(
+            "7 lookups so far" in html,
+            f"the building page does not interpolate the count: {html[:400]!r}",
+        )
+        one = page.render({"building": True, "built": None, "requests": 1}, "tok")
+        need("1 lookup so far" in one, "the count is not singularised at 1")
+    finally:
+        restore()
+        serve.refresh, results._post = real_refresh, real_post
+        results.BACKOFF = real_backoff
+        gate.set()
+        if srv is not None:
+            srv.shutdown()
+            srv.server_close()
+
+
+def no_comparison_is_not_no_wins():
+    """INV-29 — `found` is null when nothing was compared, an object with
+    new_wins 0 when it was, and the two never read as the same sentence."""
+    temp_home()
+    win = {
+        "ref": SENTINEL,
+        "game": "lotto",
+        "plus_flag": 0,
+        "pool_id": 100,
+        "line": "A",
+        "date": "2026-07-04",
+        "amount_cents": 24000,
+    }
+    other = dict(win, line="B", amount_cents=1000)
+
+    models = [
+        fixture_model(wins=[win]),
+        fixture_model(wins=[win]),
+        fixture_model(wins=[win, other]),
+    ]
+    seq = iter(models)
+    state = serve.State()
+
+    if broken("found_on_first_build"):
+        # RED-TEST: compare against an empty model rather than declining to
+        # compare — the first build then reports every existing win as new.
+        real_compare = serve._compare
+        serve._compare = lambda prev, cur: real_compare(prev or {}, cur)
+
+    try:
+        for i in range(3):
+            need(serve.refresh(state, lambda: next(seq)), f"refresh {i + 1} declined")
+            need(state.wait_idle(5), f"build {i + 1} did not finish within 5s")
+            found = state.get()[5]
+            if i == 0:
+                need(
+                    found is None,
+                    f"the FIRST build reported {found!r} — with no predecessor "
+                    "there is nothing to compare against, and reporting its "
+                    "wins as new tells the user they won today (INV-29)",
+                )
+            elif i == 1:
+                need(
+                    found == {"new_wins": 0, "new_cents": 0},
+                    f"an unchanged rebuild reported {found!r}, expected zeroes",
+                )
+            else:
+                need(
+                    found == {"new_wins": 1, "new_cents": 1000},
+                    f"one added win reported {found!r}",
+                )
+    finally:
+        if broken("found_on_first_build"):
+            serve._compare = real_compare
+
+    # The three sentences must be three sentences.
+    if broken("null_found_reads_as_zero"):
+        # RED-TEST: the cardinal rule in notification form — "could not
+        # compare" rendered exactly like "compared, found nothing".
+        real_msg = supervise.refresh_message
+        supervise.refresh_message = lambda outcome, found=None: real_msg(
+            outcome, found if found is not None else {"new_wins": 0, "new_cents": 0}
+        )
+    try:
+        said = [
+            supervise.refresh_message(supervise.REFRESH_DONE, None),
+            supervise.refresh_message(
+                supervise.REFRESH_DONE, {"new_wins": 0, "new_cents": 0}
+            ),
+            supervise.refresh_message(
+                supervise.REFRESH_DONE, {"new_wins": 2, "new_cents": 24000}
+            ),
+        ]
+        need(
+            len(set(said)) == 3,
+            "the three DONE states do not produce three distinct sentences — "
+            f"{said!r}",
+        )
+    finally:
+        if broken("null_found_reads_as_zero"):
+            supervise.refresh_message = real_msg
+
+
+# Every legitimate DONE sentence, and nothing else. Built from the two integers
+# alone, so a widened `found` cannot smuggle a reference into it (INV-30).
+NOTE_SHAPE = re.compile(
+    r"^Results refreshed\. ("
+    r"First check this session — nothing to compare against\."
+    r"|No new wins\."
+    r"|\d+ new winning lines?, R[\d,]+\.\d\d\."
+    r")$"
+)
+
+
+def notification_carries_no_ticket_data():
+    """INV-30 — the success notification is composed from found's two integers,
+    or from nothing when found is null. No ticket data can reach it."""
+    if broken("summary_names_a_ticket"):
+        # RED-TEST: the well-meant version — name the ticket and the draw.
+        real_msg = supervise.refresh_message
+
+        def chatty(outcome, found=None):
+            line = real_msg(outcome, found)
+            if found and found.get("new_wins") and found.get("ref"):
+                line += f" Your {found['game']} line {found['line']} won on {found['date']}."
+            return line
+
+        supervise.refresh_message = chatty
+    try:
+        # `found` widened to carry a whole win record beside the two integers:
+        # if anything but the integers is read, it has something to leak.
+        widened = {
+            "new_wins": 2,
+            "new_cents": 24000,
+            "ref": SENTINEL,
+            "game": "powerball",
+            "line": "B",
+            "date": "2026-07-04",
+            "matched": "MATCH 5 + PB",
+        }
+        for found in (None, {"new_wins": 0, "new_cents": 0}, widened,
+                      {"new_wins": 1, "new_cents": 24000}):
+            said = supervise.refresh_message(supervise.REFRESH_DONE, found)
+            need(
+                NOTE_SHAPE.match(said) is not None,
+                f"the notification is not the fixed shape: {said!r} — "
+                "something other than new_wins/new_cents reached it (INV-30)",
+            )
+            for leak in (SENTINEL, "powerball", "2026-07-04", "MATCH 5"):
+                need(
+                    leak not in said,
+                    f"the notification names {leak!r}: {said!r}",
+                )
+    finally:
+        if broken("summary_names_a_ticket"):
+            supervise.refresh_message = real_msg
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -1387,6 +1813,10 @@ CASES = [
     ("refresh_reports_the_build", "INV-23", refresh_reports_the_build),
     ("port_from_environment", "INV-24", port_from_environment),
     ("tray_headless_when_managed", "INV-25", tray_headless_when_managed),
+    ("post_retries_transport_failure", "INV-27", post_retries_transport_failure),
+    ("build_progress_is_visible", "INV-28", build_progress_is_visible),
+    ("no_comparison_is_not_no_wins", "INV-29", no_comparison_is_not_no_wins),
+    ("notification_carries_no_ticket_data", "INV-30", notification_carries_no_ticket_data),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -1413,6 +1843,14 @@ BREAKS = {
     "tray_silent_fallback": "port_from_environment",
     "tray_icon_when_managed": "tray_headless_when_managed",
     "headless_stops_server": "tray_headless_when_managed",
+    "no_retry": "post_retries_transport_failure",
+    "retry_http_error": "post_retries_transport_failure",
+    "no_counter_reset": "build_progress_is_visible",
+    "reset_on_worker_thread": "build_progress_is_visible",
+    "count_per_call": "build_progress_is_visible",
+    "found_on_first_build": "no_comparison_is_not_no_wins",
+    "null_found_reads_as_zero": "no_comparison_is_not_no_wins",
+    "summary_names_a_ticket": "notification_carries_no_ticket_data",
 }
 
 

@@ -349,10 +349,18 @@ function poll(){
  x.onreadystatechange=function(){
   if(x.readyState!==4)return;
   var s={};try{s=JSON.parse(x.responseText)}catch(e){}
-  if(s.building){setTimeout(poll,2000);return}
+  if(s.building){var p=document.getElementById("progress");
+                 if(p)p.textContent=s.requests+(s.requests===1?" lookup":" lookups")+" so far.";
+                 setTimeout(poll,2000);return}
   if(s.built&&s.built!==BUILT){location.reload();return}
   if(s.stale){var b=document.getElementById("refresh");
               if(b){b.disabled=false;b.textContent="Refresh results"}
+              // A browser open since the bind never re-renders, so a failed
+              // OPENING build would leave the counter frozen under a notice
+              // that still reads as in-flight. The build stopped; the count is
+              // not a result (LOTTO-0019 §6).
+              var p=document.getElementById("progress");
+              if(p)p.textContent="";
               msg("That refresh failed - the figures below are from an earlier fetch.");
               return}
   setTimeout(poll,2000);
@@ -378,12 +386,20 @@ def render(model, token):
         else ""
     )
     if building and not built:
+        # LOTTO-0019 §4.4. The half-minute estimate is KEPT and qualified, not
+        # dropped: a retrying build (LOTTO-0012) overshoots it, and an estimate
+        # the build silently exceeds is its own small version of a page that
+        # looks broken. Same singular rule as the poll, or a first paint at
+        # requests == 1 reads "1 lookups so far" until the next tick.
+        n = model.get("requests", 0)
         body = (
             f"<h1>{TITLE}</h1>"
             '<div class="notice"><strong>Checking your tickets…</strong> '
-            "This takes about half a minute on the first run, because every "
-            "pool's prize breakdown is fetched from the operator. Nothing "
-            "below is a result yet.</div>"
+            "This takes about half a minute on the first run, longer if the "
+            "operator's site is dropping connections. Nothing below is a "
+            "result yet. "
+            f'<span id="progress">{n} {"lookup" if n == 1 else "lookups"} '
+            "so far.</span></div>"
         )
     else:
         body = (

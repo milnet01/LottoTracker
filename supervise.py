@@ -57,6 +57,50 @@ REFRESH_MESSAGE = {
 }
 
 
+def refresh_message(outcome, found=None):
+    """The sentence for an outcome. Only REFRESH_DONE consults `found`.
+
+    LOTTO-0019 §4.5, INV-29/INV-30. Three distinct DONE sentences, and the
+    first two are this project's cardinal rule: "nothing was compared" and
+    "compared, found nothing" are different facts and must not collapse into
+    one string.
+
+    .get(), not [], for the reason tray.py::refresh() used to record at its own
+    call site: this is composed inside a Qt slot, where a KeyError kills the
+    tray mid-notification. That comment moved here with the lookup. INV-23
+    asserts the map is total, so the fallback is unreachable; it exists so that
+    if it ever were, the user sees a bare outcome word instead of nothing.
+
+    `found` is subscripted rather than .get()-ed on purpose: it is built by
+    serve.py::_compare() and crosses no process boundary, so a missing key is
+    a defect in this project's own code, not untrusted input.
+
+    The body is composed from the two integers and nothing else - no ticket
+    reference, no board label, no draw date, no division name. A desktop
+    notification may be logged and synced off the machine, so the reasoning
+    that keeps ticket data out of the URL (LOTTO-0014 INV-21) applies here
+    with more force.
+    """
+    line = REFRESH_MESSAGE.get(outcome, outcome)
+    if outcome != REFRESH_DONE:
+        return line
+    if found is None:
+        # DONE with nothing to compare means exactly one thing: the first
+        # successful build in this process. A failed build sets `stale` and is
+        # reported as REFRESH_FAILED, so it never reaches here.
+        return line + " First check this session — nothing to compare against."
+    n, cents = found["new_wins"], found["new_cents"]
+    if not n:
+        return line + " No new wins."
+    # Duplicates page.py::_rands() on purpose: this module is the Qt-free
+    # lifecycle the tray imports, and importing the renderer to format one
+    # number would couple the notification path to the page.
+    return (
+        f"{line} {n} new winning line{'' if n == 1 else 's'}, "
+        f"R{cents / 100:,.2f}."
+    )
+
+
 # --------------------------------------------------------------- settings I/O
 #
 # These live here rather than in serve.py because tray.py needs to READ them and
@@ -161,6 +205,13 @@ class Supervisor:
         self.url = f"http://127.0.0.1:{self.port}"
         self.token = None
         self.child = None
+        # What the last refresh THIS Supervisor waited out found (LOTTO-0019
+        # §4.5). Initialised here rather than on first use: refresh() returns
+        # REFRESH_BUSY on a 409 WITHOUT polling, so a first-ever refused
+        # refresh would otherwise reach an attribute that was never assigned -
+        # and an AttributeError inside a Qt slot is the failure refresh_message's
+        # .get() guards against one line further on. Only DONE consults it.
+        self.found = None
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -310,6 +361,10 @@ class Supervisor:
                     raise RuntimeError("the server stopped while refreshing")
             else:
                 if not answer.get("building"):
+                    # The build is over, so this poll's answer is the one that
+                    # describes it (LOTTO-0019 §4.5). BUSY and RUNNING never
+                    # reach here, so neither disturbs `found`.
+                    self.found = answer.get("found")
                     return REFRESH_FAILED if answer.get("stale") else REFRESH_DONE
             # The deadline is tested AFTER a poll attempt, never before, so this
             # is never returned about a build nothing tried to look at.

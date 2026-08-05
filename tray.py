@@ -199,12 +199,12 @@ class LottoTray(QSystemTrayIcon):
             # exception's text when not. The tray composes only the failure
             # line - the one path that has no outcome because nothing was
             # determined about the build (LOTTO-0013 §4.6, INV-23).
-            # .get() rather than [], because a KeyError raised here is inside a
-            # Qt slot. INV-23 asserts the map is total, so the fallback is
-            # unreachable; it exists so that if it ever were, the user sees a
-            # bare outcome word rather than the tray dying mid-notification.
+            # refresh_message() replaces the bare map lookup (LOTTO-0019 §4.5):
+            # a DONE refresh now says what it found. The .get()-not-[] guard
+            # that used to be explained here moved into that function with the
+            # lookup itself.
             self.note(
-                supervise.REFRESH_MESSAGE.get(msg, msg)
+                supervise.refresh_message(msg, self.sup.found)
                 if ok
                 else f"Refresh failed: {msg}"
             )

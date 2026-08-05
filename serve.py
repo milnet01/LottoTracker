@@ -25,6 +25,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import page
 
+# Module scope, not lazy inside refresh()'s work(): GET /status reads
+# results.requests_made on every poll, so it is needed outside a build too
+# (LOTTO-0019 §4.2). results.py is stdlib-only, so this starts nothing and
+# breaks no invariant - LOTTO-0013's INV-19 forbids Qt, not stdlib.
+import results
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_PORT = 4322
 MAX_BODY = 4096  # LOTTO-0014 §4.1: an unbounded rfile.read() is a hang
@@ -243,6 +249,35 @@ def build_model():
 # ------------------------------------------------------------------- state
 
 
+def _win_key(w):
+    """What makes two win records the same line (LOTTO-0019 §4.3).
+
+    `line` is a board LABEL - tickets.py builds boards as (label, numbers,
+    special) - so this key holds no drawn numbers.
+    """
+    return (w["ref"], w["plus_flag"], w["pool_id"], w["line"], w["date"])
+
+
+def _compare(previous, current):
+    """-> {"new_wins": int, "new_cents": int}, or None when there is nothing to
+    compare against.
+
+    The None is the contract, not a convenience: reporting a first build's every
+    win as `new` would tell a user who just opened the app that they had won
+    every prize the dump has ever held. The property is the predecessor's
+    EXISTENCE, never its emptiness - a no_dump predecessor genuinely held no
+    wins, so "everything is new" is true of it (INV-29).
+    """
+    if previous is None:
+        return None
+    was = {_win_key(w) for w in previous.get("wins", ())}
+    fresh = [w for w in current.get("wins", ()) if _win_key(w) not in was]
+    return {
+        "new_wins": len(fresh),
+        "new_cents": sum(w["amount_cents"] for w in fresh),
+    }
+
+
 class State:
     """The one mutable thing in the server. All access under one lock."""
 
@@ -254,10 +289,20 @@ class State:
         self.built = None
         self.stale = False
         self.error = None
+        # What the last COMPLETED build found that its predecessor did not, or
+        # None when there was nothing to compare against (LOTTO-0019 INV-29).
+        self.found = None
 
     def get(self):
         with self._lock:
-            return (self.model, self.building, self.built, self.stale, self.error)
+            return (
+                self.model,
+                self.building,
+                self.built,
+                self.stale,
+                self.error,
+                self.found,
+            )
 
     def begin(self):
         """True if this caller owns the build. Sets `building` before returning,
@@ -270,6 +315,8 @@ class State:
 
     def finish(self, model):
         with self._lock:
+            # BEFORE rebinding self.model - the diff is against the outgoing one.
+            self.found = _compare(self.model, model)
             self.model = model
             self.built = datetime.datetime.now().isoformat(timespec="seconds")
             self.stale = False
@@ -282,6 +329,9 @@ class State:
             # model UNTOUCHED - that is what INV-18 rests on.
             self.stale = True
             self.error = {"what": str(exc), "pools": list(pools)}
+            # A build that raised completed no comparison. Leaving an earlier
+            # refresh's summary here would outlive the build it describes.
+            self.found = None
             self.building = False
             self._idle.notify_all()
 
@@ -303,10 +353,17 @@ def refresh(state, build_model_fn):
     if not state.begin():
         return False
 
+    # SYNCHRONOUSLY, before the thread starts (LOTTO-0019 §4.2, INV-28).
+    # begin() has already set `building`, and this function returns before
+    # work() runs - so a reset inside work() would leave a window where
+    # /status reports building:true beside the PREVIOUS build's total.
+    # The three memo clears stay on the worker thread: they satisfy
+    # LOTTO-0002 §4.2's "cleared before the build" either way.
+    results.requests_made = 0
+
     def work():
         import check
         import history
-        import results
 
         history._cache.clear()
         results._divisions_cache.clear()
@@ -423,16 +480,35 @@ def make_server(build_model_fn, token, port):
             path = self._route("GET")
             if path is None:
                 return
-            model, building, built, stale, error = state.get()
+            model, building, built, stale, error, found = state.get()
+            requests = results.requests_made
             if path == "/status":
                 body = json.dumps(
-                    {"building": building, "built": built, "stale": stale}
+                    {
+                        "building": building,
+                        "built": built,
+                        "stale": stale,
+                        # LOTTO-0019 §4.2. `requests` is the build in flight (or
+                        # the last one); `found` is the last COMPLETED build.
+                        "requests": requests,
+                        "found": found,
+                    }
                 ).encode()
                 self._send(200, body, "application/json")
                 return
             view = dict(model or {})
             view.update(
-                {"built": built, "stale": stale, "error": error, "building": building}
+                {
+                    "built": built,
+                    "stale": stale,
+                    "error": error,
+                    "building": building,
+                    # The HTML view too, not just /status: the opening-build page
+                    # renders when model is None, so a key living only in the
+                    # model could never reach it. `found` deliberately does NOT
+                    # join it - nothing in page.py renders it (§4.2).
+                    "requests": requests,
+                }
             )
             if model is None and not error and not building:
                 view["no_build"] = True

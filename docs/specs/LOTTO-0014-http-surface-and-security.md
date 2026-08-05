@@ -78,7 +78,7 @@ Four routes, and nothing else — every other path is 404.
 | Method | Path | Returns | Changes state |
 |---|---|---|---|
 | GET | `/` | the page (HTML) | no |
-| GET | `/status` | `{"building": bool, "built": "<ISO>"\|null, "stale": bool}` | no |
+| GET | `/status` | `{"building": bool, "built": "<ISO>"\|null, "stale": bool, "requests": int, "found": {"new_wins": int, "new_cents": int}\|null}` | no |
 | POST | `/refresh` | 202 accepted, or 409 if one is already running | results only |
 | POST | `/settings` | 200 + the settings as now stored | writes or removes LOTTO-0002 §4.7's two files |
 
@@ -120,6 +120,9 @@ interpreter, which is not something a security boundary should volunteer.
 | Response | Header set |
 |---|---|
 | `200` on `GET /` | `Server`, `Date`, `Content-Type: text/html; charset=utf-8`, `Content-Length`, + the three below |
+<!-- `requests` and `found` added by LOTTO-0019 §4.2. Both are counts, never
+     ticket data: `/status` stays strictly a smaller disclosure than `GET /`. -->
+
 | `200` on `GET /status`, `POST /settings` | `Server`, `Date`, `Content-Type: application/json`, `Content-Length`, + the three below |
 | `202` / `409` on `POST /refresh` | `Server`, `Date`, `Content-Length: 0`, + the three below |
 | `400` / `403` / `413` / `500` | `Server`, `Date`, `Content-Length: 0`, + the three below |

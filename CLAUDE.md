@@ -55,10 +55,11 @@ python3 tools/verify_coverage.py  # INV-6: each entry scored over exactly its dr
 python3 tools/verify_privacy.py   # INV-4: no real SMS content is tracked by git
 python3 tools/verify_pools.py     # INV-7/INV-11: prices resolve; partly-checkable
                                   # tickets are never written off whole
-python3 tools/verify_page.py      # INV-12..INV-21 and INV-23..INV-25: the page,
-                                  # its security boundary, the tray's spawn-and-reap
-                                  # lifecycle, what it reports after a refresh, the
-                                  # port it binds, and the managed (no-icon) run
+python3 tools/verify_page.py      # INV-12..INV-21, INV-23..INV-25 and INV-27..INV-30:
+                                  # the page, its security boundary, the tray's
+                                  # spawn-and-reap lifecycle, what it reports after a
+                                  # refresh, the port it binds, the managed (no-icon)
+                                  # run, and the results transport underneath them
 ```
 
 `verify_page.py` is the one verifier that needs PySide6 installed — its
@@ -69,7 +70,7 @@ display.
 defect and asserts the named case goes red. That is not a debugging aid: these
 three items are greenfield, so there was no pre-fix code to red-test against,
 and the flag is what makes "every case observed failing" reproducible rather
-than a one-off hand edit. `--list` shows the twenty-two breaks. It caught a real
+than a one-off hand edit. `--list` shows the thirty breaks. It caught a real
 defect in a *case* rather than in the code — see CHANGELOG.
 
 Exit code is the signal, not the printed counts (`&& echo PASS`). Counts in the
