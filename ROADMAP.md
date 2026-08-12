@@ -880,6 +880,16 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   taken, is to re-date the clause rather than edit the figures — e.g. state the
   2026-08-03 numbers in the past tense and give the current ones separately.
   Cheap, and worth doing next time that file is open for another reason.
+  Progress (2026-08-12): a second documentation edge, surfaced while measuring
+  LOTTO-0029 and deliberately not fixed there.
+  (g) `docs/specs/LOTTO-0014` §351–353 carries an invariant-ownership map that
+  omits **INV-22** and **INV-26**. It was already stale before 2026-08-12, and
+  LOTTO-0023 adding **INV-31** makes it staler — three missing rows now. Unlike
+  (f) this is not a dated record and rewriting it would destroy nothing, so the
+  only reason it is deferred is cost: LOTTO-0014 is an authoring edit away from
+  re-arming its own `review-contract` gate, and a three-row map fix is not worth
+  a full cold-read loop on its own. Fold it into the next change that opens
+  LOTTO-0014 for another reason, and let the one gate cover both.
 
 - ✅ **LOTTO-0026** A feed-side rename of `MATCH n` scores every line as a loss.
   Kind: fix. Source: in-session-2026-08-03; approach approved by the user
