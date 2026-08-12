@@ -25,6 +25,14 @@ KEYWORDS = (
     "national lottery",
     "nationallottery",
     "jackpot",
+    # A payout SMS names no game at all — "The winnings of R<amount> for
+    # ticket ref: VAS00000000000 will be paid in your account…" — so every
+    # keyword above misses it, and note "lotto" is not a substring of
+    # "lottery". The VAS reference is what every lottery message has in
+    # common (all 575 in the dump carry one, `VAS00` + 9 digits), which
+    # makes it the one term that spans purchases, debits, failed
+    # transactions and payouts alike. LOTTO-0030.
+    "vas00",
 )
 
 BODY, ADDRS, DATE, THREAD = 1, 2, 3, 6

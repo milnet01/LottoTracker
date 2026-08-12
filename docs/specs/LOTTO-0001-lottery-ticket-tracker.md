@@ -80,13 +80,49 @@ only lottery messages ever cross to the PC:
 ```bash
 adb shell "content query --uri content://sms \
   --projection address:date:body \
-  --where \"body LIKE '%lotto%' OR body LIKE '%powerball%'\""
+  --where \"body LIKE '%lotto%' OR body LIKE '%powerball%' \
+            OR body LIKE '%VAS00%'\""
 ```
+
+**The third clause is the one that is not obvious, and it was missing until
+2026-08-12 (LOTTO-0030).** Filtering on game names alone silently excludes
+the payout SMS, whose wording — "The winnings of R*amount* for ticket ref:
+VAS00000000000 will be paid in your account…" — names no game anywhere; note
+also that `lotto` is not a substring of `lottery`. Every other message shape
+happens to name one (`Played R… Lotto Plus 2`, `… to VAS… LOTTO`, `Your lotto
+transaction was unsuccessful`), which is why the gap held for so long and why
+the dump could report "no payout messages exist" when the phone had them. The
+`VAS00` reference is the one term common to all four shapes — all 575 records
+in the dump carry one, formatted `VAS00` + 9 digits — so it is both the widest
+and the most precise clause of the three. It is also `Ticket.ref`, the join key
+scoring already uses, which is what makes a payout reconcilable at all
+(LOTTO-0010 / LOTTO-0029).
 
 KDE Connect cannot filter server-side — `activeConversations()` returns the
 newest message of every thread — so `find_lotto_sms.py` matches keywords
 locally and calls `requestConversation()` only for threads that hit. Its
-keyword list is deliberately narrow for the same reason.
+keyword list stays narrow for the same reason, and carries `vas00` for the
+reason above: one `matches()` drives both thread discovery and the
+within-thread filter, so widening the list is what lets an inspection run see
+a payout without dumping the rest of the inbox.
+
+**A caveat this path cannot design away:** matching runs against the *newest*
+message per thread, so a lottery thread whose latest message is an ordinary
+bank SMS is invisible to discovery. Adding `vas00` widens *what counts as a
+lottery message*, not *how far back the match looks*, so the limitation stands.
+Measured 2026-08-12 across the phone's 2,324 threads: the eight-keyword list
+matched 386, the nine-keyword list matches 560, and 149 of the additions are
+payouts. This path is inspection only and nothing in the pipeline depends on
+it, so the residue is accepted rather than engineered around.
+
+**Reading a count off this API is itself a trap, and it cost a wrong
+measurement on the day this section was written.** `requestAllConversationThreads()`
+populates `activeConversations()` ASYNCHRONOUSLY with no completion signal, so
+an early read returns a partial list that is indistinguishable from a complete
+one — a 6-second wait returned 25 threads where the phone has 2,324, which
+produced two confident and false conclusions (that discovery matched nothing,
+and that `requestConversation()` had stopped delivering). Sample at two
+different waits and compare before believing any figure taken from here.
 
 **Only the adb path feeds the pipeline in this spec.** `find_lotto_sms.py`
 prints; it writes no file, and `tickets.py::load()` reads only the adb dump

@@ -191,6 +191,21 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The SMS import filter matched game names, so it excluded every payout SMS** (LOTTO-0030)
+  The documented adb import filtered `body LIKE '%lotto%' OR body LIKE
+  '%powerball%'`, and a payout SMS ("The winnings of R<amount> for ticket
+  ref: VAS00000000000 will be paid in your account…") names no game — note
+  also that `lotto` is not a substring of `lottery`. Every other message
+  shape happens to name one, so the filter looked complete. Added a third
+  clause, `OR body LIKE '%VAS00%'`, to both copies of the command
+  (`README.md`, `docs/specs/LOTTO-0001` §4.1), and `vas00` to
+  `find_lotto_sms.py::KEYWORDS`, where one `matches()` drives both thread
+  discovery and the within-thread filter. Measured against the phone: the
+  old list matched 386 of 2,324 threads, the new one matches 560, and 149
+  of the additions are payout SMSes — each carrying an amount and a VAS
+  reference, 122 distinct refs, 2022-11-23 to 2026-01-14. Re-running the
+  import needs the USB cable, so the dump on disk is unchanged for now.
+
 - **A division the archive era paid and the current set cannot name is now reported, not dropped** (LOTTO-0023)
   `check()` gates every line against the division set of the pool's NEWEST
   draw, so a division retired at the June 2026 handover took all of its
