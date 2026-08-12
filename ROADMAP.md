@@ -223,6 +223,34 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
     out, compared to what the bank actually paid.
   Build it as `tools/verify_payouts.py` beside the other four, exit-code style.
   Feeds LOTTO-0011; upgrades LOTTO-0006 from low-value to test-bearing.
+  **Premise falsified 2026-08-12 — do not build from the description
+  above.** The 14 `Ref:VAS…` messages this item calls payouts are DEBITS.
+  Their text is "Standard Bank: R<amount> paid from Acc. NNNN to
+  VAS00000000000 LOTTO. Acl bal R<amount> <date>" — money leaving the
+  account to buy a ticket, with the direction stated in the message. They
+  are purchase receipts duplicating the ticket SMS, not the bank paying
+  winnings, so they are not external ground truth and they confirm nothing
+  about scoring. The word this item's measurement keyed on, "paid", appears
+  in both wordings and does not distinguish them.
+
+  Three conclusions above fall with it: "the bank paid out on 14 tickets
+  this project deliberately refuses to score"; "external confirmation of
+  INV-6 and of `history.py::scorable()`, and the only such confirmation
+  available"; and "it becomes a scoring check the moment LOTTO-0006 lands".
+  The zero-overlap finding survives only as a statement about purchases.
+
+  **The real payout SMSes exist and are not in the dump.** Wording is "The
+  winnings of R<amount> for ticket ref: VAS00000000000 will be paid in your
+  account within two business days." — no game name, so `find_lotto_sms.py`
+  line 87 drops it (LOTTO-0030). Sampled on the phone 2026-08-12, dated
+  inside the archive window that opens 2025-01-01, so they are scoreable
+  NOW and this item is not blocked behind LOTTO-0006 as claimed.
+
+  `tools/verify_payouts.py` is still the right shape and the VAS reference
+  is still the join. What changes is that it cannot be written until
+  collection is fixed, and that its inputs are messages the dump has never
+  held. Merged with LOTTO-0029 (same work, correct evidence); sequence is
+  LOTTO-0030 → LOTTO-0029/0010.
 
 - 📋 **LOTTO-0011** Stop saying "still claimable" — the bank pays automatically.
   Kind: fix. Source: user-correction-2026-08-02.
@@ -586,6 +614,120 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** If the lottery texts you when you win, that text is proof of the amount — better than any figure this project works out for itself.
   Kind: investigate.
   Source: user-request-2026-08-12.
+  Measured against the phone 2026-08-12, and the answer is the
+  opposite of the filing: **the payout SMSes exist.** Standard Bank sends
+  them, in the STDBANK thread, in one uniform shape — "Standard Bank: The
+  winnings of R<amount> for ticket ref: VAS00000000000 will be paid in your
+  account within two business days. T&C's apply. Query? 0860 123 000".
+  They carry the VAS ticket reference, so the join key to a Ticket is
+  already in the message; no fuzzy matching is needed.
+
+  **Why the filing measured negative, and it is not a counting error.**
+  `lotto_sms_raw.txt` is itself KEYWORDS-filtered at write time —
+  `find_lotto_sms.py` line 87 re-applies `matches()` before printing, so
+  only messages containing one of the eight keywords are ever written. A
+  payout SMS contains none of them; note "lotto" is not a substring of
+  "lottery". So the dump was never capable of holding one, and "zero payout
+  words in 2,492 lines" measured the keyword-matching subset of the thread
+  rather than the thread. The bullet's own two hypotheses were the right
+  pair — the second one holds, at the second filter rather than the first.
+
+  **Corrected in-session: the sender is NOT a single address.** A first pass
+  here claimed all 575 dump messages were `address=STDBANK`, generalised from
+  the file's first rows; the real census is 397 numeric senders and 178
+  STDBANK (in three spellings, one with a trailing space — matching the three
+  STDBANK threads the phone reports). Ticket-purchase SMSes arrive from
+  rotating numeric addresses whose BODY says "Standard Bank:", while the
+  payouts sit in the STDBANK-named threads. So "match the thread on its
+  sender" is not on its own a fix for LOTTO-0030(a) — there is no one sender
+  to match. Off the lottery path, the phone's other 25 threads carry only
+  retail marketing (rewards, airtime deals, store cards, couriers), so there
+  is no third-party payout sender to widen toward.
+
+  **The exact mechanism, now confirmed rather than inferred.** A purchase
+  debit reads "R<amount> paid from Acc. NNNN to VAS00000000000 LOTTO" — it
+  contains "LOTTO", so it clears the line-87 filter and lands in the dump. A
+  payout reads "The winnings of R<amount> for ticket ref: VAS00000000000" —
+  no game name anywhere, so it is fetched and dropped. That one word is the
+  whole difference between the 14 messages the dump has and the payouts it
+  has never held.
+
+  **Reconciled with LOTTO-0010, which is filed on a false premise.** That
+  item (2026-08-02) reads the dump's 14 `Ref:VAS…` messages as payouts and
+  builds its whole case on them: "the bank paid out on 14 tickets", all from
+  2023, therefore unscorable, therefore external confirmation of INV-6 and
+  worthless as a scoring check until LOTTO-0006 backfills to 2023. Every step
+  of that is wrong, because the 14 are debits — money leaving the account to
+  BUY a ticket, the direction stated in the message text — and they duplicate
+  what the purchase SMS already says. They confirm nothing about scoring. The
+  real payouts are the off-dump ones, and the two sampled so far are dated
+  2025-03-21 and 2026-01-14, i.e. INSIDE the archive window that starts
+  2025-01-01. So the payout source is immediately test-bearing and is NOT
+  blocked behind LOTTO-0006, which is the opposite of what LOTTO-0010
+  concludes. LOTTO-0010 and this item are one piece of work; do not build
+  `tools/verify_payouts.py` from LOTTO-0010's description.
+
+  Progress (2026-08-12): step 1 is done and the item survives it, upgraded
+  from investigate-whether to design-how. The open design question in the
+  body — authoritative vs verifier on disagreement — is untouched by this
+  and is still what blocks a parser. Two collection defects found on the way
+  are split out to LOTTO-0030 rather than carried here, because a parser is
+  worthless until collection is fixed: nothing can reach the dump today.
+
+- 📋 [LOTTO-0030] **SMS collection uses one keyword list for two different jobs, and today it collects nothing.**
+  **Layman:** The script that pulls lottery texts off the phone currently finds none, and stays quiet about it — it needs to say "I found nothing" loudly instead.
+  Kind: fix.
+  Source: in-session-2026-08-12.
+  Found while measuring LOTTO-0029 step 1 against the phone.
+  `find_lotto_sms.py` applies KEYWORDS twice, for two jobs that need
+  different rules, and it is wrong for both today.
+
+  **(a) Finding the thread. Zero of 25 threads match right now.**
+  `matches()` is applied to `activeConversations()`, which returns only the
+  NEWEST message per thread. Lottery messages arrive in several threads —
+  three named STDBANK plus rotating numeric addresses — and none of those
+  sender strings contains a keyword, so a thread is found only while its
+  newest message happens to be a lottery SMS. Any ordinary bank SMS arriving
+  after a ticket hides the whole thread. Measured 2026-08-12: 0 hits, so a
+  re-pull fetches nothing and prints "No lottery-looking threads" — which
+  reads as "no new tickets", the exact shape of the cardinal rule the page
+  is built around.
+
+  Matching on the sender is NOT sufficient on its own, and an early draft of
+  this bullet said it was: the dump's 575 messages come from 397 numeric
+  addresses and 178 STDBANK ones, so there is no stable sender to key on.
+  Thread discovery has to consider any message in a thread, not only the
+  newest, and identify a lottery thread by content across its history. The
+  narrower point stands regardless — whatever the rule, a run that finds
+  nothing must say so loudly rather than print a line that reads as "no new
+  tickets".
+
+  **(b) Selecting messages within the thread. This is what hid the payouts.**
+  Line 87 re-applies `matches()` before printing, so a message in an
+  already-identified lottery thread is discarded unless it too says
+  "lotto". Once the thread is known to be the lottery thread, that second
+  filter has no job to do and costs real data: it is why no payout SMS has
+  ever reached `lotto_sms_raw.txt` (LOTTO-0029). Widening KEYWORDS is the
+  wrong fix — it treats a scoping bug as a vocabulary gap and will fail
+  again on the next unanticipated wording.
+
+  **(c) Observed, unexplained, and blocking a re-pull.** In three probes
+  `requestConversation(thread, offset, n)` never delivered history:
+  `activeConversations()` kept returning exactly one message per thread
+  afterwards, at several offsets and waits up to 25s. The 575-message dump
+  proves this path worked once, so something has changed — a KDE Connect
+  version, or results arriving by signal rather than by re-read. Diagnose
+  before trusting any re-pull; a partial fetch that looks complete is worse
+  than a failed one.
+
+  Privacy note for whoever takes this: payout SMSes carry the VAS reference
+  and a rand amount, which per CLAUDE.md identify a ticket on their own. Use
+  the sentinel VAS00000000000 in every example, and re-run
+  `tools/verify_privacy.py` — widening what the dump holds widens what a
+  leak would expose.
+
+  Blocks LOTTO-0029: there is no point parsing a payout SMS that collection
+  cannot deliver.
 
 ## Hardening
 
