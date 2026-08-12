@@ -542,6 +542,51 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: feature.
   Source: in-session-2026-08-05 (split out while speccing LOTTO-0019).
 
+- 📋 [LOTTO-0029] **A payout SMS would be a third results source, and the dump does not carry one today.**
+  The user's point, and it is a good one: every ticket that paid out should
+  have a message announcing it, and a message stating the amount beats a
+  figure this project derives. It would be the only source authoritative
+  about this user's own WINNINGS rather than about the draw — a cross-check
+  on scoring, not merely another price feed, and it would price the archive
+  era with no payout-page scrape at all.
+
+  **Measured 2026-08-12 before filing, and the result is negative today.**
+  `lotto_sms_raw.txt` holds 2,492 lines and contains ZERO case-insensitive
+  matches for won, win, winner, winning, prize, congrat, claim, payout or
+  credit. The one keyword present is "paid", 14 times, in a single uniform
+  message shape — almost certainly the purchase wording, not a payout.
+
+  **That is not proof the messages do not exist, and the distinction is the
+  whole item.** `find_lotto_sms.py` filters on KEYWORDS (lotto, powerball,
+  power ball, ithuba, sizekhaya, national lottery, nationallottery, jackpot)
+  against body AND sender, then pulls FULL history for matching threads. So
+  a payout arriving in the same thread as a ticket confirmation would
+  already be in the dump, and its absence there is real evidence. A payout
+  from a DIFFERENT sender whose text contains none of those eight words
+  would never be fetched, and this project could not tell the two apart.
+
+  **Cheap next step, before any parser is written:** `find_lotto_sms.py`
+  already prints a "Senders seen" diagnostic. Run it and read the sender
+  list, or widen KEYWORDS once and re-pull, to separate "no such message
+  exists" from "the filter never looked". Only then is there anything to
+  parse. Filed as investigate rather than implement for that reason — the
+  parser is the easy half and it is downstream of a question nobody has put
+  to the phone yet.
+
+  **If the messages do exist, the design question is not how to parse
+  them.** It is what happens when the SMS and the scored result disagree.
+  This project's shape is that a wrong number is a bug in scoring or in a
+  source, never a second opinion (CLAUDE.md: `serve.py` adds no third
+  opinion) — so a payout SMS is either promoted to authoritative for its own
+  ticket, or it becomes a verifier that makes a disagreement loud. Decide
+  that before writing the parser.
+
+  Not needed to close LOTTO-0023, which shipped 2026-08-12 having
+  established that no archive-era division is unnameable.
+  **Layman:** If the lottery texts you when you win, that text is proof of the amount — better than any figure this project works out for itself.
+  Kind: investigate.
+  Source: user-request-2026-08-12.
+
 ## Hardening
 
 - ✅ [LOTTO-0025] **A pre-push gate, and the CI that mirrors it.**
