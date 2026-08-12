@@ -107,6 +107,18 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- ****A PyQt import into the server could pass the "no Qt" check** (LOTTO-0017)**
+  INV-19 says `serve.py` and `supervise.py` pull in no Qt at all — that is what
+  keeps the page servable with no desktop. Its check looked for the name
+  `PySide`, or a top-level package spelled exactly `Qt`, and `PyQt6.QtCore` is
+  neither: an import of it passed a check whose invariant reads "no Qt". PyQt6
+  is installed on this machine (6.10.2), so the wrong binding was one habit away.
+  The predicate now carries a third arm, `Qt|PyQt\d*` on the top-level package.
+  Observed failing before it was fixed, as the project requires: the new
+  `--break pyqt_import` appends a real `import PyQt6.QtCore` to `serve.py`, and
+  the case reported PASS before the widening and FAIL after. Thirty-one breaks
+  now, all red; 17/17 cases green.
+
 - **The local page's HTTP surface and security boundary** (LOTTO-0014)
   Four routes and nothing else. An exact, lowercased `Host` allowlist answering
   421 otherwise — a `127.0.0.1` bind stops the network but not the user's own

@@ -920,7 +920,7 @@ unqualified, so the numbers do not move on a split.
   in a **fresh interpreter** (not the suite's own, which by then has imported
   whatever the other cases needed) and asserts three things about that
   subprocess: that its `sys.modules` holds no name containing `PySide` and no
-  module whose **top-level package** is exactly `Qt`, that the import returns rather than blocking, and that it
+  module whose **top-level package** matches `Qt|PyQt\d*`, that the import returns rather than blocking, and that it
   spawned nothing — observed by having the subprocess read
   `/proc/self/task/*/children` after the import and print it, so the parent
   asserts on an empty list rather than on the absence of evidence. Everything
@@ -930,17 +930,19 @@ unqualified, so the numbers do not move on a split.
   a function body is invisible to it, and that limit is stated rather than
   papered over: what the case actually forbids is a module-level import, which
   is the shape the failure takes in practice.
-  **It is PySide-shaped, and that is a live gap rather than a theoretical
-  one.** A `PyQt6.QtCore` import satisfies neither test — the name contains no
-  `PySide`, and its top-level package is `PyQt6`, not `Qt` — so it would pass a
-  check whose invariant says "no Qt". Measured 2026-08-02: **PyQt6 6.x is
-  importable on this development machine** (`/home/ants/.local/lib/python3.13/
-  site-packages/PyQt6/`), so the breach is reachable today by anyone who reaches
-  for the wrong binding. §3 pins the project to PySide6, which is why nothing
-  imports PyQt now; the predicate should gain a `PyQt` arm, and until it does
-  this paragraph is what stands between the invariant's wording and its reach.
-  **Filed as ROADMAP LOTTO-0017**, which carries the fix and the red-test it
-  needs — it is a code change and does not belong in a documentation pass.
+  **It was PySide-shaped until 2026-08-12, and that was a live gap rather than
+  a theoretical one (ROADMAP LOTTO-0017, now closed).** A `PyQt6.QtCore` import
+  satisfied neither arm — the name contains no `PySide`, and its top-level
+  package is `PyQt6`, not `Qt` — so it passed a check whose invariant says "no
+  Qt". Not theoretical: **PyQt6 is importable on this development machine**
+  (6.10.2, measured 2026-08-12), so the breach was reachable by anyone reaching
+  for the wrong binding out of habit, and it was observed — `--break
+  pyqt_import` appends a real `import PyQt6.QtCore` to `serve.py` and the case
+  reported PASS. The predicate now carries a third arm, `PyQt\d*`, matched on
+  the top-level package so a submodule counts and an unrelated package merely
+  containing the letters does not. §3 still pins the project to PySide6; the
+  arm exists so the invariant's reach matches its wording rather than the
+  binding that happens to be in use.
   *Breaks when:* a shared helper grows a Qt import; `serve.py` imports `tray.py`
   for a constant such as the port default or an icon path; or `supervise.py`
   reaches for `QDesktopServices` instead of `webbrowser`. Invisible on a desktop
@@ -1394,7 +1396,7 @@ without shipping a second `serve.py`.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| INV-19 both modules Qt-free, and neither spawns on import | `tools/verify_page.py::serve_is_headless`, each module in a fresh interpreter — **except a `PyQt*` import**, which the predicate cannot see (§5, LOTTO-0017) |
+| INV-19 both modules Qt-free, and neither spawns on import | `tools/verify_page.py::serve_is_headless`, each module in a fresh interpreter — both bindings, red-tested by `--break qt_import` (PySide6) and `--break pyqt_import` (PyQt6); import-time depth only (§5) |
 | INV-20 no orphan server | `tools/verify_page.py::no_orphan_server` |
 | §4.1 `is_ready()` reporting readiness correctly | `tools/verify_page.py::no_orphan_server` — the case fails if the child never answers |
 | §4.1 the tray *gating* every browser open on `is_ready()` | **nothing** — the function is checked above, but that `tray.py` waits on it before opening a browser needs a display, like every other `tray.py` rule here |

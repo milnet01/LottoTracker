@@ -838,7 +838,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   parsing, pool derivation, matching and pricing this project can have.
   Do LOTTO-0010 first: without the reconciliation script the oracle is unread.
 
-- 📋 **LOTTO-0017** INV-19 says "no Qt" but cannot see a PyQt import.
+- ✅ **LOTTO-0017** INV-19 says "no Qt" but cannot see a PyQt import.
   Kind: fix. Source: cold-eyes-2026-08-02 (LOTTO-0013 re-gate, loop 4).
   Layman: A safety check has a blind spot: it would miss one of the two ways of importing the graphics library.
   `tools/verify_page.py::serve_is_headless` collects the child interpreter's
@@ -858,6 +858,17 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Documented meanwhile in LOTTO-0013's INV-19 clause, which names the gap
   rather than papering over it — so this item closes a stated gap, not a
   silent one.
+  Resolved 2026-08-12: the probe predicate gained a third arm —
+  `re.fullmatch(r'Qt|PyQt\d*', top_level)` — so a `PyQt6.QtCore` import in
+  `serve.py` or `supervise.py` now fails INV-19's case instead of passing it.
+  Observed failing first, per the project's rule: `--break pyqt_import` appends
+  a real `import PyQt6.QtCore` and the case reported PASS before the widening,
+  red after. PyQt6 measured at 6.10.2 on this machine, so the breach was live.
+  Two bullet claims did not survive checking and are corrected here: the break
+  count went from **thirty to thirty-one**, not thirteen to fourteen (LOTTO-0019
+  had added eight since this was written), and CLAUDE.md was already correct at
+  thirty. LOTTO-0013 §5 and §11 updated in the same change; the §11 row now
+  names both red-tests instead of naming the gap.
 
 - ✅ **LOTTO-0022** LOTTO-0001 owes a cold-eyes loop for INV-22.
   Kind: doc. Source: in-session-2026-08-02 (LOTTO-0007a).
@@ -925,3 +936,24 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** If an old ticket won in a prize category the lottery no longer runs, it vanishes from the report instead of being flagged — it looks exactly like a losing line.
   Kind: fix.
   Source: cold-eyes-2026-08-02 (LOTTO-0022 loop 6).
+  Costed 2026-08-12 while picking the next item, and NOT built — the note
+  is here so the next session does not redo the analysis. The bullet says the
+  extra per-draw lookup is "already memoised per draw"; it is not memoised in a
+  way that helps. `check.py::check()` drops a line at `if label not in pays`,
+  and separating a retired-division win from a loss means consulting **that
+  draw's own** division set. Every non-winning line reaches that branch, and a
+  losing label ("MATCH 1") is absent from both sets, so the lookup cannot be
+  bounded to near-wins — `buildable_labels(game) - set(pays)` contains every
+  losing label too. So the honest implementation fetches one division table per
+  (pool, draw) actually scored: `divisions()` for API draws, and
+  `backfill.payouts()` — a page scrape per draw DATE — for archive ones. Daily
+  Lotto alone draws nightly since 2025-01-01, so that is several hundred new
+  payout-page fetches on a cold cache, against today's zero (the table is
+  fetched only when a line has already won).
+  That does not kill the item, but it makes the scope question in the bullet a
+  real design decision with a fetch budget attached, not a "count is probably
+  the whole fix" tidy-up. Two ways out worth weighing first: confine the check
+  to archive-era draws (the handover is the only division-structure break known
+  to exist, and LOTTO-0026 already raises on a mid-API-era grammar move), or
+  compare division SETS per pool-era once rather than per line. Either wants
+  deciding before code.

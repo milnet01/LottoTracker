@@ -756,19 +756,31 @@ def failed_refresh_keeps_model():
 def serve_is_headless():
     """INV-19 — importing serve or supervise pulls in no Qt, blocks, or spawns."""
     root = ROOT
-    if broken("qt_import"):
-        # RED-TEST: a shared helper grows a Qt import. Copy the tree and add one.
+    # RED-TEST: a shared helper grows a Qt import. Copy the tree and add one.
+    # Two breaks, one per binding, because the predicate has to see both and a
+    # PySide-shaped one cannot prove it does: PySide6 is what §3 pins, PyQt is
+    # what a habit reaches for, and PyQt6 is importable on this machine
+    # (LOTTO-0017). Only one break is ever applied at a time.
+    if broken("qt_import") or broken("pyqt_import"):
+        binding = "PySide6.QtCore" if broken("qt_import") else "PyQt6.QtCore"
         root = tempfile.mkdtemp(prefix="lotto-qt-")
         for f in ("serve.py", "page.py", "supervise.py", "check.py", "history.py",
                   "tickets.py", "results.py", "backfill.py"):
             shutil.copy(os.path.join(ROOT, f), root)
         with open(os.path.join(root, "serve.py"), "a") as fh:
-            fh.write("\nimport PySide6.QtCore  # noqa: F401\n")
+            fh.write(f"\nimport {binding}  # noqa: F401\n")
 
     probe = (
-        "import sys, os, json\n"
+        "import sys, os, json, re\n"
         "import {mod}\n"
-        "qt = [m for m in sys.modules if 'PySide' in m or m.split('.')[0] == 'Qt']\n"
+        # Three arms, one per binding this could arrive as. The PyQt arm is
+        # LOTTO-0017: without it a `PyQt6.QtCore` import passes a check whose
+        # invariant reads "no Qt" - the name holds no 'PySide' and its
+        # top-level package is 'PyQt6', not 'Qt'. Matched on the top-level
+        # package so a submodule (PyQt6.QtWidgets) counts and an unrelated
+        # package merely containing the letters does not.
+        "qt = [m for m in sys.modules if 'PySide' in m "
+        "or re.fullmatch(r'Qt|PyQt\\d*', m.split('.')[0])]\n"
         "kids = []\n"
         "try:\n"
         "    import glob\n"
@@ -790,7 +802,7 @@ def serve_is_headless():
         data = json.loads(out.stdout.strip().splitlines()[-1])
         need(not data["qt"], f"importing {mod} pulled in Qt: {data['qt']}")
         need(not data["children"], f"importing {mod} spawned {data['children']}")
-    if broken("qt_import"):
+    if root != ROOT:
         shutil.rmtree(root, ignore_errors=True)
 
 
@@ -1832,6 +1844,7 @@ BREAKS = {
     "clear_after_build": "refresh_refetches",
     "clear_model_on_failure": "failed_refresh_keeps_model",
     "qt_import": "serve_is_headless",
+    "pyqt_import": "serve_is_headless",
     "terminate_only": "no_orphan_server",
     "url_pushstate": "nothing_in_the_url",
     "notify_on_202": "refresh_reports_the_build",

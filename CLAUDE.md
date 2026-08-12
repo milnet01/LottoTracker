@@ -70,7 +70,7 @@ display.
 defect and asserts the named case goes red. That is not a debugging aid: these
 three items are greenfield, so there was no pre-fix code to red-test against,
 and the flag is what makes "every case observed failing" reproducible rather
-than a one-off hand edit. `--list` shows the thirty breaks. It caught a real
+than a one-off hand edit. `--list` shows the thirty-one breaks. It caught a real
 defect in a *case* rather than in the code — see CHANGELOG.
 
 Exit code is the signal, not the printed counts (`&& echo PASS`). Counts in the
