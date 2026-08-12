@@ -105,6 +105,18 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   autostarted tray starts a server that finds none of the data files and shows
   an empty page.
 
+### Changed
+
+- **The SMS import now excludes prepaid-electricity messages** (LOTTO-0030)
+  The widened `VAS00` clause turned out to catch more than lottery: VAS is
+  the bank's value-added services platform, and prepaid electricity carries
+  an identically formatted reference. Added `AND body NOT LIKE '%kWh%' AND
+  body NOT LIKE '%Enter tokens%'` — two clauses, because the token
+  continuation SMS carries no `kWh`. First re-pull over USB: 951 records
+  (from 575), a strict superset, including 366 payout SMSes. `LOTTO-0001`
+  §4.1 no longer claims "only lottery messages ever cross to the PC", which
+  was never quite true and is now measurably not.
+
 ### Security
 
 - ****A PyQt import into the server could pass the "no Qt" check** (LOTTO-0017)**
@@ -190,6 +202,17 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importing the derivation it is testing.
 
 ### Fixed
+
+- **A ticket naming the rebranded game was silently never scored** (LOTTO-0031)
+  `tickets.py::GAME_MAP` had no entry for the June-2026 rebrand names, so
+  the first SMS to use one — a R200.00 ten-draw two-board `LOTTO 5 MAX`
+  ticket bought 2026-08-08 — parsed to `None` and was dropped without a
+  word. Three sibling tables (`PAYOUT_SLUG`, `POOL_NAMES`, the README game
+  list) were updated at the rebrand; this one was missed because no message
+  had used the new wording until now. Added `lotto 5 max` and `powerball
+  xtra` as aliases, keeping the old names for the archive era. Coverage went
+  from a red `PARSE GAP: 561 purchase SMSes, 560 parsed` to 561 tickets /
+  1,238 entries / 0 with wrong draw coverage.
 
 - **The SMS import filter matched game names, so it excluded every payout SMS** (LOTTO-0030)
   The documented adb import filtered `body LIKE '%lotto%' OR body LIKE

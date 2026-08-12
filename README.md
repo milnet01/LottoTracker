@@ -74,8 +74,10 @@ appear while the connection is charge-only. Approve the dialog, then:
 adb devices          # should say "device", not "unauthorized"
 adb shell "content query --uri content://sms \
   --projection address:date:body \
-  --where \"body LIKE '%lotto%' OR body LIKE '%powerball%' \
-            OR body LIKE '%VAS00%'\"" > lotto_sms_raw.txt
+  --where \"(body LIKE '%lotto%' OR body LIKE '%powerball%' \
+             OR body LIKE '%VAS00%') \
+            AND body NOT LIKE '%kWh%' \
+            AND body NOT LIKE '%Enter tokens%'\"" > lotto_sms_raw.txt
 ```
 
 **KDE Connect — best for picking up new tickets.** Install the KDE Connect app

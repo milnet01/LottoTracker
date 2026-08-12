@@ -38,6 +38,16 @@ GAME_MAP = {
     "lotto plus 2": ("lotto", 2, 102),
     "powerball": ("powerball", 0, 100),
     "powerball plus": ("powerball", 1, 101),
+    # The June 2026 rebrand renamed Lotto Plus 2 -> Lotto 5 Max and PowerBall
+    # Plus -> XTRA. Three tables were updated at the time (`PAYOUT_SLUG` in
+    # backfill.py, `POOL_NAMES` in history.py, and the README's game list);
+    # this one was not, because no SMS had used the new wording yet. The first
+    # arrived 2026-08-08 and parsed to None, so the ticket was silently never
+    # scored - the failure class this project exists to prevent. Aliases, not
+    # replacements: the old names are still all over the archive era.
+    # LOTTO-0031.
+    "lotto 5 max": ("lotto", 2, 102),
+    "powerball xtra": ("powerball", 1, 101),
     "daily lotto": ("daily", 0, 100),
     # No results source carries this pool, so it resolves to a pool with no
     # draws and is reported as uncheckable. Aliasing it onto plain Daily

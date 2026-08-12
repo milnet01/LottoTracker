@@ -745,9 +745,73 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   strength. Re-run it after the first widened import — this change widens
   what the dump holds, and so widens what a leak would expose.
 
-  **The dump is not re-pulled yet:** that needs the USB cable (no adb device
-  attached over LAN). Until it is, `lotto_sms_raw.txt` still holds the old
-  575 records and no payouts.
+  **Re-pulled over USB 2026-08-13, and the first pull found a false positive
+  worth recording.** `VAS` is not a lottery namespace — it is Standard Bank's
+  *value-added services* platform, and prepaid **electricity** rides on it with
+  an identically formatted reference (`VAS` + 11 digits, prefix `00`, on every
+  shape alike, so the reference cannot discriminate). The unrestricted `VAS00`
+  clause pulled 993 records, 42 of them electricity: a `U: <n>kWh` purchase
+  plus a token continuation reading "Enter tokens on SMS 1" that carries no
+  `kWh` at all, which is why one exclusion would not have been enough. Two
+  `NOT LIKE` clauses now bound it. **The pre-fix check missed this because it
+  was run against the wrong population** — five marketing messages that
+  happened to be to hand, rather than the phone's real corpus. A matcher is
+  only tested by the population it will actually run against.
+
+  **Final numbers:** 951 records (from 575), a strict superset — 0 of the
+  original 575 missing — spanning 2022-11-09 to 2026-08-10, carrying **366
+  payout SMSes**, far more than the 149 the KDE Connect probe suggested,
+  because that probe could only ever see the newest message per thread.
+  Deliberately KEPT: seven VAS messages naming neither a game nor a utility
+  (`R… purchased for VAS…`, `R… deposited into Acc. … from VAS…`) — they may
+  be lottery refunds, and if they are not, `parse()` returns `None` and they
+  are inert. So the honest guarantee is "no message without a lottery-or-VAS
+  marker crosses, and no known utility message crosses", NOT "only lottery
+  messages cross"; LOTTO-0001 §4.1 now says exactly that, having previously
+  claimed the stronger version.
+
+  The re-pull immediately exposed a latent parser bug (LOTTO-0031) that no
+  test could have caught while the dump was stale.
+
+- ✅ [LOTTO-0031] **The SMS wording adopted the rebrand names and GAME_MAP did not, so those tickets vanished.**
+  Found the moment the widened import brought fresh messages in, which is
+  the point of LOTTO-0030 and a good argument for re-pulling more often.
+
+  **The defect.** `tickets.py::GAME_MAP` translates the game name an SMS
+  prints into `(game, plus_flag, pool_id)`. `parse()` returns `None` for a
+  name the map does not hold, and `load()` drops a `None` silently. The June
+  2026 rebrand renamed Lotto Plus 2 to **Lotto 5 Max** and PowerBall Plus to
+  **XTRA**; three of the project's four name tables were updated at the time
+  — `PAYOUT_SLUG` (backfill.py), `POOL_NAMES` (history.py) and the README's
+  game list — and `GAME_MAP` was not, because until now no SMS had used the
+  new wording. The first one arrived **2026-08-08**: a R200.00 ten-draw
+  two-board `LOTTO 5 MAX` ticket, which parsed to `None` and was therefore
+  never scored, never counted and never shown. A silently-dropped ticket is
+  the failure class this project was built after hitting.
+
+  **Fix.** Two aliases, `"lotto 5 max"` and `"powerball xtra"`, carrying the
+  same values as the pre-rebrand names they replace. Aliases rather than
+  replacements: the old wording is all over the archive era and must keep
+  parsing. `entered_pools()` still derives the real pool set from the price
+  (INV-8/INV-9), so the map's `plus_flag`/`pool_id` remain the fallback they
+  always were — what the map is load-bearing for is the BASE GAME, which
+  drives board parsing and scoring, and both aliases keep it.
+
+  **Before:** `PARSE GAP: 561 purchase SMSes, 560 parsed` / 1 with wrong draw
+  coverage — `tools/verify_coverage.py` red.
+  **After:** 561 tickets, 1,238 entries, 0 with wrong draw coverage.
+  `./local-CI.sh` 9 checks PASS. Both symptoms were the one ticket.
+
+  **Worth carrying: the verifier caught this, and nothing else would have.**
+  No test failed before the re-pull because no message in the old dump used
+  the new wording — the bug was latent in the code and only a data refresh
+  could expose it. INV-6's coverage check is what turned a silent drop into a
+  red build. It also means the *next* wording change will be silent again
+  until someone re-pulls, which is an argument for LOTTO-0003 (automatic
+  ingest) beyond convenience: a stale dump hides parser rot.
+  **Layman:** A ticket bought on 8 August was quietly ignored, because the bank's text now calls the game "Lotto 5 Max" and the code only knew the old name. Fixed, and the ticket is now scored.
+  Kind: fix.
+  Source: in-session-2026-08-13 (surfaced by LOTTO-0030's first re-pull).
 
 ## Hardening
 

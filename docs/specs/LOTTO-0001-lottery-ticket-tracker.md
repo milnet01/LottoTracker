@@ -75,28 +75,45 @@ Two paths, because they solve different problems:
 | KDE Connect over Wi-Fi | `find_lotto_sms.py` | **inspection only** | on the PC |
 
 The adb query filters with a SQL `WHERE` clause executed on the device, so
-only lottery messages ever cross to the PC:
+the inbox at large never crosses to the PC (see the limits below the query):
 
 ```bash
 adb shell "content query --uri content://sms \
   --projection address:date:body \
-  --where \"body LIKE '%lotto%' OR body LIKE '%powerball%' \
-            OR body LIKE '%VAS00%'\""
+  --where \"(body LIKE '%lotto%' OR body LIKE '%powerball%' \
+             OR body LIKE '%VAS00%') \
+            AND body NOT LIKE '%kWh%' \
+            AND body NOT LIKE '%Enter tokens%'\""
 ```
 
-**The third clause is the one that is not obvious, and it was missing until
+**The `VAS00` clause is the one that is not obvious, and it was missing until
 2026-08-12 (LOTTO-0030).** Filtering on game names alone silently excludes
 the payout SMS, whose wording — "The winnings of R*amount* for ticket ref:
 VAS00000000000 will be paid in your account…" — names no game anywhere; note
-also that `lotto` is not a substring of `lottery`. Every other message shape
-happens to name one (`Played R… Lotto Plus 2`, `… to VAS… LOTTO`, `Your lotto
-transaction was unsuccessful`), which is why the gap held for so long and why
-the dump could report "no payout messages exist" when the phone had them. The
-`VAS00` reference is the one term common to all four shapes — all 575 records
-in the dump carry one, formatted `VAS00` + 9 digits — so it is both the widest
-and the most precise clause of the three. It is also `Ticket.ref`, the join key
-scoring already uses, which is what makes a payout reconcilable at all
-(LOTTO-0010 / LOTTO-0029).
+also that `lotto` is not a substring of `lottery`. Every shape the old filter
+*did* catch happens to name a game (`Played R… Lotto Plus 2`, `… to VAS…
+LOTTO`, `Your lotto transaction was unsuccessful`), which is why the gap held
+for so long and why the dump could report "no payout messages exist" when the
+phone held 366 of them. The `VAS00` reference is the one term common to every
+shape, and it is also `Ticket.ref`, the join key scoring uses — which is what
+makes a payout reconcilable at all (LOTTO-0010 / LOTTO-0029).
+
+**The two `NOT LIKE` clauses are the price of that width, and the honest
+statement of this filter is narrower than "only lottery messages".** `VAS` is
+Standard Bank's *value-added services* platform, not a lottery namespace:
+prepaid electricity is bought through it and its messages carry an identically
+formatted reference (`VAS` + 11 digits, prefix `00` — measured across all 993
+records on 2026-08-13, every shape alike, so the reference cannot discriminate).
+Electricity arrives as two SMSes, a `U: <n>kWh` purchase and a token
+continuation reading "Enter tokens on SMS 1"; the second carries no `kWh`,
+which is why one exclusion is not enough. What remains after both is a handful
+of VAS messages that name neither a game nor a utility — `R… purchased for
+VAS…`, `R… deposited into Acc. … from VAS…` — and these are deliberately KEPT:
+they may be lottery refunds, and if they are not, `tickets.py::parse()` returns
+`None` and they are inert. **So the guarantee this section can actually make is
+"no message without a lottery-or-VAS marker crosses, and no known utility
+message crosses" — not "only lottery messages cross".** Anything relying on the
+stronger reading is relying on something that was never true.
 
 KDE Connect cannot filter server-side — `activeConversations()` returns the
 newest message of every thread — so `find_lotto_sms.py` matches keywords

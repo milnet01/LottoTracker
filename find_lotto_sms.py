@@ -28,10 +28,15 @@ KEYWORDS = (
     # A payout SMS names no game at all — "The winnings of R<amount> for
     # ticket ref: VAS00000000000 will be paid in your account…" — so every
     # keyword above misses it, and note "lotto" is not a substring of
-    # "lottery". The VAS reference is what every lottery message has in
-    # common (all 575 in the dump carry one, `VAS00` + 9 digits), which
-    # makes it the one term that spans purchases, debits, failed
-    # transactions and payouts alike. LOTTO-0030.
+    # "lottery". The VAS reference is the one term spanning purchases,
+    # debits, failed transactions and payouts alike. LOTTO-0030.
+    #
+    # It is wider than lottery, though: VAS is the bank's value-added
+    # services platform, so prepaid electricity carries the same reference
+    # format. The adb import excludes those by shape (see LOTTO-0001 §4.1);
+    # this path is inspection only and does not, so an inspection run will
+    # show utility messages too. That is noise on the terminal, not data in
+    # the pipeline — `find_lotto_sms.py` writes no file.
     "vas00",
 )
 
