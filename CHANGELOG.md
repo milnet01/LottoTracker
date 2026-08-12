@@ -191,6 +191,25 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A division the archive era paid and the current set cannot name is now reported, not dropped** (LOTTO-0023)
+  `check()` gates every line against the division set of the pool's NEWEST
+  draw, so a division retired at the June 2026 handover took all of its
+  winners with it, before `amount()` could refuse — INV-22's omission form,
+  one step earlier. `check.py::retired_divisions()` now compares each pool's
+  archive-era division structure against the current set and reports any
+  gap; `tools/verify_pools.py` sweeps it with three probes (INV-31).
+  Per pool and one sampled payout page, not per line: every LOSING line
+  reaches the same branch, so a per-line answer meant a page scrape per
+  (pool, draw) scored — several hundred fetches to settle a structural
+  question that six answer.
+  Measured while building it: there is no retired division. All six live
+  pools compare clean. The bare `2` bottom row on some Lotto archive pages
+  is Division 8 spelled differently — both page shapes state "eight prize
+  divisions" and carry exactly eight rows — and reading it as a distinct
+  division would have reported a false gap on all three Lotto pools and
+  flagged every match-2-without-bonus line in the archive era as a possible
+  win, which is the cardinal failure inverted.
+
 - **A failed opening build no longer leaves a live-looking counter under "Checking your tickets…"** (LOTTO-0019)
   A browser open since the bind never re-renders, so the poll's `stale` arm
   now blanks the progress span as well as showing the failure line. Without

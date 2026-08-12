@@ -374,6 +374,75 @@ def main(argv=()):
         f"{unguarded} unguarded"
     )
 
+    # INV-31 (LOTTO-0023): the reach check above asks whether every division
+    # the feed publishes TODAY can be named. This asks the same question of the
+    # era that ended - a division the archive era paid and the current set does
+    # not carry drops every one of its winners at check()'s pay gate, one step
+    # before INV-22's money path can refuse.
+    #
+    # Live half first: no pool may currently carry such a gap. It passes today
+    # (measured 2026-08-12: six pools, none), which is exactly why the probes
+    # below exist - a check that can only ever print zero proves nothing about
+    # whether it can still see.
+    stale = 0
+    for game, plus_flag, pool_id in pools:
+        if gone := check.retired_divisions(game, plus_flag, pool_id):
+            print(
+                f"  RETIRED DIVISION {game}/{plus_flag} pool {pool_id}: archive "
+                f"draws paid {', '.join(repr(g) for g in gone)}, which the "
+                f"current set does not name - those wins are scored as losses"
+            )
+            stale += 1
+
+    # Both arms, because each fails in the opposite direction and only one of
+    # them is caught by the live half above.
+    #
+    # The ambiguous-label arm is not a hypothetical: all three Lotto pools
+    # sample a page whose bottom row reads "2" rather than "2 + Bonus", and
+    # both spellings are Division 8 (each page states "eight prize divisions"
+    # and carries eight rows). Read as a distinct "Match 2" division it would
+    # report a gap on every Lotto pool and flag every match-2-without-bonus
+    # line in the archive era as a possible win - a loss reading as a win,
+    # which is this project's cardinal failure inverted.
+    blind = 0
+    real_pays = check.paying_combinations
+    gap_probes = [
+        # A division the current set genuinely cannot name, in a pool whose
+        # archive pages do carry it. Must be reported.
+        ("a genuinely retired division", "MATCH 3 + BONUS", ["MATCH 3 + BONUS"]),
+        # The plain "2" key when the current set carries neither reading of it:
+        # no reading places it, so it is a real gap and must NOT be swallowed
+        # by the ambiguity rule.
+        ("the plain key when neither reading exists", "MATCH 2 + BONUS", ["MATCH 2"]),
+    ]
+    try:
+        for name, drop, want in gap_probes:
+            def _pays(g, pf=0, pid=100, _drop=drop):
+                table = dict(real_pays(g, pf, pid))
+                table.pop(_drop, None)
+                return table
+            check.paying_combinations = _pays
+            check._retired.clear()
+            got = check.retired_divisions("lotto", 0, 100)
+            if got != want:
+                print(f"  MISSED {name}: expected {want}, got {got}")
+                blind += 1
+        # The converse, and the arm that guards the live result above: with the
+        # real division set nothing may be reported, or every run cries wolf.
+        check.paying_combinations = real_pays
+        check._retired.clear()
+        if noise := check.retired_divisions("lotto", 0, 100):
+            print(f"  FALSE GAP on a healthy pool: {noise}")
+            blind += 1
+    finally:
+        check.paying_combinations = real_pays
+        check._retired.clear()
+
+    print(
+        f"retired-division guard: {len(pools)} live pools, {stale} carrying a "
+        f"retired division, {len(gap_probes) + 1} probes, {blind} blind"
+    )
+
     return (
         0
         if bad == 0
@@ -383,6 +452,8 @@ def main(argv=()):
         and not unreachable
         and not vacuous
         and not unguarded
+        and not stale
+        and not blind
         else 1
     )
 

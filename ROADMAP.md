@@ -945,7 +945,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   deletes a guard on the cardinal money rule. Both were found independently by
   both lanes. Loop 6 found no CRITICAL, confirming the fixes held.
 
-- 📋 [LOTTO-0023] **A win in a retired prize division is dropped silently, with no count.**
+- ✅ [LOTTO-0023] **A win in a retired prize division is dropped silently, with no count.**
   Found by a cold-eyes lane on LOTTO-0001 during the LOTTO-0022 gate, and
   verified against the code.
 
@@ -1001,3 +1001,39 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   to exist, and LOTTO-0026 already raises on a mid-API-era grammar move), or
   compare division SETS per pool-era once rather than per line. Either wants
   deciding before code.
+  Resolved (2026-08-12) as INV-31, after the user chose "flag it, don't
+  price it" over scoring such wins. `check.py::retired_divisions()` compares
+  each pool's archive-era division structure against the current set,
+  `retired_report()` names any gap, and `tools/verify_pools.py` sweeps every
+  live pool with three probes.
+  **The costing note above was right that a per-line answer is unaffordable,
+  and wrong about what the question is.** It is structural, not per-line:
+  what moves at a handover is a pool's division set, so the last archive
+  draw before the break samples the era that ended — six payout pages, one
+  per live pool, cached thereafter, against the several hundred a per-(pool,
+  draw) lookup needed. That reframing is what made the item buildable
+  without a scope decision about fetch budget.
+  **The finding that matters: there is no retired division.** All six live
+  pools compare clean. The premise LOTTO-0023 was filed on — "if one exists,
+  nothing says so" — held, but no instance existed, and now something says
+  so. That is why the report is pool-level: with no gap there are no dropped
+  lines to count, and counting them is the follow-up worth building once
+  there is something to count.
+  **A near-miss worth recording, because it nearly shipped backwards.**
+  Lotto archive pages spell Division 8 as `2 + Bonus` on some draws and a
+  bare `2` on others, and all three Lotto pools sample a bare-`2` page. Read
+  as a distinct "Match 2" division, the check reports a retired division on
+  every Lotto pool and flags every match-2-without-bonus line in the archive
+  era as a possible win — a loss reading as a win, the cardinal failure
+  inverted. Settled from the pages themselves rather than by reasoning: both
+  shapes state "eight prize divisions" in prose and carry exactly eight
+  rows, so it is one division inconsistently labelled. `amount()` already
+  leaned on that equivalence from the other direction, though its comment
+  described it as a structural difference rather than a labelling one.
+  Both failure directions were observed red before the case was believed: a
+  detector stubbed to return nothing misses both gap probes, and the
+  ambiguity rule deleted reports a false gap on all three Lotto pools.
+  `./local-CI.sh` PASS on both lanes.
+  **Gate owed:** LOTTO-0001 gained INV-31 and a rewritten §11 row, which is
+  an authoring edit under global rule 14, so `review-contract` on that spec
+  has not yet run.

@@ -21,6 +21,7 @@ CLAIM_DAYS = 365  # SA prizes expire a year after the draw
 MAINS = {"lotto": 6, "powerball": 5, "daily": 5}
 
 _struct = {}
+_retired = {}
 
 
 def paying_combinations(game, plus_flag=0, pool_id=100):
@@ -113,6 +114,66 @@ def buildable_labels(game):
 def site_label(game, hits, special):
     tag = " + Bonus" if game == "lotto" else " + PowerBall"
     return f"{hits}" + (tag if special else "")
+
+
+def retired_divisions(game, plus_flag=0, pool_id=100):
+    """Divisions this pool's ARCHIVE era paid that the current set cannot name.
+
+    paying_combinations() reads the division set from the pool's NEWEST draw,
+    and check() drops any line whose label is absent from it. A division that
+    existed before the June 2026 handover and has no current equivalent takes
+    every one of its winners with it, silently: the cardinal rule in its
+    omission form, one step earlier than INV-22's money path, where the line
+    never reaches pricing at all (INV-31, LOTTO-0023).
+
+    **Per pool, and one payout page - not one per draw.** What moves at a
+    handover is the pool's division STRUCTURE, so the last archive draw before
+    the break samples the era that ended. Asking the question per line instead
+    would scrape a payout page per (pool, draw) scored, because every LOSING
+    line reaches this same branch: hundreds of fetches to answer a structural
+    question six of them settle.
+
+    **The plain "<n>" key is the one thing the page does not say plainly, and
+    reading it wrong is worse than not asking.** Lotto archive pages spell
+    Division 8 as "2 + Bonus" on some draws and a bare "2" on others; both
+    shapes state "eight prize divisions" in prose and carry exactly eight
+    rows, so it is one division inconsistently labelled rather than two
+    (measured 2026-08-12 across 26 cached Lotto pages - amount() already leans
+    on the same equivalence from the other direction). A plain key whose
+    bonus-qualified sibling is absent is therefore read as whichever tier the
+    current set does carry, and only a key that no reading can place is
+    reported. Read the other way it would flag every match-2-without-bonus
+    line in the archive era as a possible win, which is this project's
+    cardinal failure inverted - a loss reading as a win.
+    """
+    key = (game, plus_flag, pool_id)
+    if key not in _retired:
+        old = [d for d in all_draws(game, plus_flag) if d["source"] == "archive"]
+        if not old:
+            _retired[key] = []
+            return _retired[key]
+        table = payouts(game, plus_flag, old[-1]["date"])
+        pays = paying_combinations(game, plus_flag, pool_id)
+        specials = (False, True) if game in ("lotto", "powerball") else (False,)
+        gap = set()
+        for hits in range(MAINS[game] + 1):
+            for special in specials:
+                if site_label(game, hits, special) not in table:
+                    continue
+                label = api_label(game, hits, special)
+                if label in pays:
+                    continue
+                # The ambiguous plain key: with no bonus-qualified sibling on
+                # the page, it names the tier the current set does carry.
+                if (
+                    not special
+                    and site_label(game, hits, True) not in table
+                    and api_label(game, hits, True) in pays
+                ):
+                    continue
+                gap.add(label)
+        _retired[key] = sorted(gap)
+    return _retired[key]
 
 
 def amount(ticket, plus_flag, pool_id, draw, hits, special):
@@ -260,6 +321,39 @@ def uncheckable_report(tickets):
     return lines, counts
 
 
+def retired_report(tickets):
+    """-> lines naming any pool whose archive era paid a division now unnameable.
+
+    Pool-level rather than line-level, and deliberately so: the pool and the
+    division label are what a reader can act on, and with no gap there are no
+    dropped lines to count. If a gap ever does appear, counting the lines it
+    swallows is the follow-up this makes possible - and it is only worth
+    building once there is something to count (LOTTO-0023).
+
+    A pool no source carries is skipped rather than reported here: nothing can
+    be compared against an absent division set, and uncheckable_report() already
+    owns that case (INV-11).
+    """
+    pools = sorted({(t.game, pf, pid) for t in tickets for pf, pid in t.pools})
+    lines = []
+    for game, plus_flag, pool_id in pools:
+        if not all_draws(game, plus_flag):
+            continue
+        if gone := retired_divisions(game, plus_flag, pool_id):
+            lines.append(
+                f"  {game}/{plus_flag} pool {pool_id}: archive draws paid "
+                f"{', '.join(repr(g) for g in gone)}, which the current "
+                f"division set does not name"
+            )
+    if lines:
+        lines.insert(
+            0,
+            "SOME ARCHIVE-ERA DIVISIONS HAVE NO CURRENT EQUIVALENT. Wins in "
+            "them are dropped below, and are NOT losses.",
+        )
+    return lines
+
+
 if __name__ == "__main__":
     all_tickets = load()
     wins = check(all_tickets)
@@ -280,6 +374,13 @@ if __name__ == "__main__":
     lines, _ = uncheckable_report(all_tickets)
     if lines:
         print("\n".join(lines))
+        print()
+
+    # Silent today by design: it prints only when a division actually went
+    # missing, and none has (INV-31).
+    gone_lines = retired_report(all_tickets)
+    if gone_lines:
+        print("\n".join(gone_lines))
         print()
 
     print(f"{len(wins)} winning lines total; {len(live)} still claimable\n")

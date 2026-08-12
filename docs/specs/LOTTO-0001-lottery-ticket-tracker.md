@@ -503,7 +503,7 @@ the project, not the next free number in this file.
   the invariant: `paying_combinations()` reads `rows[0]` and nothing else, so
   the reachable set and the set being checked are the same one table. A
   division retired before that draw is outside this invariant entirely — it is
-  §4.4's silent-drop case, tracked by LOTTO-0023.
+  §4.4's silent-drop case, and INV-31 below is what covers it.
   *Test:* `python3 tools/verify_pools.py` (repo root, after `backfill.py`) →
   `division-label reach: 6 live pools, 0 unreachable divisions, 0 vacuous`
   (2026-08-03) for the sweep, and
@@ -565,6 +565,56 @@ the project, not the next free number in this file.
   division is one whose winners are all reported as losers. It also breaks if
   a future edit "simplifies" the raise into skipping the unrecognised label,
   which is the same silent drop wearing a filter.
+
+- **INV-31** — Every division a pool's **archive era** paid is either named by
+  the current division set or **reported**. INV-26 asks that question of the
+  newest draw; a division retired at the June 2026 handover falls outside it,
+  and `check.py::check()`'s pay gate drops every one of its winners before
+  `amount()` is reached — the cardinal rule in its omission form, one step
+  earlier than INV-22's money path. Added 2026-08-12 by LOTTO-0023; the number
+  is the next free one project-wide, not the next free one in this file (§5's
+  opening paragraph).
+  **The unit is the pool, and the sample is one page — not one per draw.** What
+  moves at a handover is a pool's division *structure*, so the last archive
+  draw before the break samples the era that ended: six pages, one per live
+  pool, cached thereafter. Asking per line instead would scrape a payout page
+  per (pool, draw) scored, because every *losing* line reaches the same branch
+  and the question therefore cannot be narrowed to near-misses — several
+  hundred fetches to settle a structural question that six answer. That
+  costing, measured 2026-08-12, is why this is built as a structural comparison
+  and not as the per-line count LOTTO-0023's bullet first proposed.
+  **A bare `<n>` key on an archive payout page is ambiguous, and the resolution
+  is evidence rather than a default.** Lotto archive pages spell Division 8 as
+  `2 + Bonus` on some draws and a bare `2` on others; both shapes state *"eight
+  prize divisions"* in prose and carry exactly eight rows, so the two spellings
+  are one division (measured 2026-08-12 across 26 cached Lotto pages —
+  `check.py::amount()` already leans on the same equivalence from the other
+  direction). A bare key whose bonus-qualified sibling is absent from that page
+  is therefore read as whichever tier the current set does carry, and only a
+  key that **no** reading can place is reported. This is load-bearing, not
+  cosmetic: all three Lotto pools sample a bare-`2` page, so read the other way
+  the check reports a retired division on every one of them and flags every
+  match-2-without-bonus line in the archive era as a possible win — a loss
+  reading as a win, which is this project's cardinal failure inverted.
+  **Reported, not scored.** The report names the pool and the label; it prices
+  nothing and moves no total. Every archive draw predates 2026-06-01, so any
+  such prize is already past its 365-day claim window (§4.4) and a rand figure
+  would be unactionable. Counting the lines a real gap swallows is the
+  follow-up this makes possible, and is worth building once there is something
+  to count.
+  *Test:* `python3 tools/verify_pools.py` (repo root, after `backfill.py`) →
+  `retired-division guard: 6 live pools, 0 carrying a retired division, 3
+  probes, 0 blind` (2026-08-12). Zero is the entire live population today,
+  which is precisely why the three probes are part of the check rather than a
+  supplement to it: a detector that has gone blind and a set of healthy pools
+  print the same zero. Both directions were observed red before the case was
+  believed — a detector stubbed to return nothing misses both gap probes, and
+  the ambiguity rule deleted reports a false gap on all three Lotto pools.
+  *Breaks when:* the operator retires a division, or a payout page's label
+  grammar drifts so a tier no longer resolves. It also breaks if the ambiguity
+  rule above is deleted — which reports three false gaps — or inverted so that
+  an unplaceable key is swallowed, which is the original silent drop wearing a
+  tidier filter.
 
 ## 6. Failure modes
 
@@ -803,7 +853,7 @@ the figure is a lower bound until it is re-measured.
 | INV-6 | `tools/verify_coverage.py` |
 | §4.3 special-ball-is-last | `tools/verify_sources.py` — catches a change on either source alone; blind only if both change the same way together |
 | §4.4 expiry / `CLAIM_DAYS` | **nothing** — no test covers the 365-day boundary, and nothing tracks the gap |
-| §4.4 current-era pay gate | **nothing** — a pre-handover-only division is dropped silently |
+| INV-31 §4.4 current-era pay gate | `check.py::retired_divisions()`, swept per live pool by `tools/verify_pools.py` with three probes driving both failure directions. Was **nothing** until 2026-08-12 (LOTTO-0023). What remains unchecked is narrower: the sample is one archive page per pool, so a division retired *within* the archive era rather than at the handover is seen only if the sampled draw carries it |
 | INV-26 §4.4 label grammar reachable | `check.py::paying_combinations()`, which raises on a division no label `api_label()` builds can equal, and `tools/verify_pools.py`, which sweeps the same rule ahead of a run plus three probes driving the raise itself. The sweep reads only the pools the dump reaches; the raise covers whatever pool a run scores, so a pool nobody holds a ticket in is checked from the moment one is. That division of labour is the design |
 | INV-22 unpriceable win raises | `tools/verify_pools.py` — four blind-lookup probes (empty and unrecognised division tables, both branches), plus the converse that a source-stated R0.00 still prices as 0.0 |
 | archive payout scrape | `tools/verify_pools.py` (INV-22) — an unscrapable payout page now raises instead of pricing an archive win at R0.00. What remains unchecked is narrower: a page that parses into a **wrong** table, which is well-formed and not detectably wrong from inside |
