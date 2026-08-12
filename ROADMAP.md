@@ -290,8 +290,20 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Publishing from CI would add the first workflow to a repo that has none. The
   repo is public, so runner minutes are free, but say so when it lands — the
   project's push cadence currently assumes no workflows exist.
+  Correction (2026-08-12): three claims above have gone stale and the bullet
+  now contradicts the tree. LOTTO-0025 added `.github/workflows/ci.yml`, so
+  "no `.github/` at all" is false, "this item adds the first of both" is now
+  only about the packaging manifest, and "publishing from CI would add the
+  first workflow to a repo that has none" describes a repo that no longer
+  exists. The push-cadence warning at the end is spent for the same reason:
+  the workflow landed and the repo is public, so the free-minutes point was
+  already made. What survives unchanged is everything about the artifact —
+  the platform-bound entry points (`find_lotto_sms.py` cannot cross to
+  Windows), the requirement that the absent fetcher be NAMED in the UI, and
+  the rule that the local check must RUN the built artifact from outside the
+  repository rather than merely build it. Those are the parts to design to.
 
-- 📋 **LOTTO-0016** Run the CI locally before pushing, from the same script CI runs.
+- ✅ **LOTTO-0016** Run the CI locally before pushing, from the same script CI runs.
   Kind: chore. Source: user-request-2026-08-02.
   Layman: Catch the breakage on your own machine instead of finding it on GitHub.
   Pairs with LOTTO-0015, which adds the first workflow this repo has ever had.
@@ -314,6 +326,25 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   gitignored real data — so CI can run a subset the local script cannot, and
   vice versa. Decide that split explicitly; a check skipped for missing data
   must say so, not pass quietly.
+  Resolved (2026-08-12): shipped by LOTTO-0025, verified against the tree
+  rather than the record. `./local-CI.sh` holds the one list of checks and
+  `.github/workflows/ci.yml` invokes it as `./local-CI.sh --ci` with no second
+  copy of the steps — the structural property this bullet asked for. The
+  script is `local-CI.sh`, not the `tools/ci.sh` proposed here; the name is
+  the only thing that differs. The data split this bullet said to decide
+  explicitly is decided and stated in the script header: three verifiers need
+  the gitignored dump and archive, and `verify_privacy.py`'s degraded
+  pattern-only mode is asserted against locally instead of trusted, so a
+  skipped check cannot pass quietly.
+  Two sub-asks did NOT ship and are recorded here rather than dropped.
+  (a) There is no containerised `podman run --rm ubuntu:24.04` lane. The
+  tool-drift risk it was aimed at did occur — ruff 0.15.11 here vs 0.16.1 on
+  the runner, 71 errors against zero on identical bytes — and was closed by
+  `ruff.toml` pinning the rule selection, which fixes the verdict rather than
+  the image. The residual OS gap is narrow today: both lanes are Python 3.13.
+  Worth reopening only if a divergence appears that a rule lock cannot fix.
+  (b) "Print that the Windows half is uncovered" belongs to LOTTO-0015, which
+  has not shipped. There is no Windows lane yet to disclaim.
 
 - ✅ **LOTTO-0018** The tray says "Results refreshed." before the refresh has happened, and even when it fails.
   Kind: fix. Source: in-session-2026-08-02.
