@@ -649,6 +649,19 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   (d) Multiplay expansion is Lotto-only; a >6-number PowerBall or Daily
   board would silently collapse to one line (no such ticket exists today);
   (e) §8's "~30 lookups a month" is not recomputed from §10's request model.
+  Progress (2026-08-12): one more rough edge for the tail, found while
+  closing LOTTO-0017 and deliberately not fixed there.
+  (f) `docs/specs/LOTTO-0013-tray-and-supervisor.md` line 9 says
+  `verify_page.py` "runs **thirteen and twenty-two today**". It runs
+  **seventeen cases and thirty-one breaks**. The sentence is inside a dated
+  parenthetical about the LOTTO-0024 amendment ("...today, after the LOTTO-0024
+  amendment below"), so it was true when written on 2026-08-03 and went stale
+  when LOTTO-0019 added eight breaks and LOTTO-0017 a ninth. Left alone on
+  purpose: rewriting the number in place would back-date a record of what that
+  amendment did, which is the thing the loop log exists to preserve. The fix, if
+  taken, is to re-date the clause rather than edit the figures — e.g. state the
+  2026-08-03 numbers in the past tense and give the current ones separately.
+  Cheap, and worth doing next time that file is open for another reason.
 
 - ✅ **LOTTO-0026** A feed-side rename of `MATCH n` scores every line as a loss.
   Kind: fix. Source: in-session-2026-08-03; approach approved by the user
