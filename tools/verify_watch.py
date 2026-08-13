@@ -50,12 +50,18 @@ WHERE = (
 # sentinel reference. The last four are the ones the filter has to get right:
 # two utility shapes that must be excluded, a payout that names no game and must
 # be included, and a plain bank SMS that must not be.
+#
+# The prices are R99.00 throughout, and that is not decoration: R10.00 is a
+# real ticket price, so a "synthetic" body built with it matched the dump
+# verbatim and `tools/verify_privacy.py` refused the push. R99.00 is the amount
+# tickets.py's own docstring uses, already proven absent from real data. A
+# sample here must be impossible, not merely invented.
 BODIES = [
-    "Played R10.00 Lotto Plus 2 for 1 draw(s)\nDate 01/01/2020 to 01/01/2020\n"
+    "Played R99.00 Lotto Plus 2 for 1 draw(s)\nDate 01/01/2020 to 01/01/2020\n"
     "A: 07 11 19 23 31 44\nRef:VAS00000000000",
-    "Played R30.00 Powerball\nDate 01 Jan 2020 (for 10 draws)\n"
+    "Played R99.00 Powerball\nDate 01 Jan 2020 (for 10 draws)\n"
     "A: 08 14 27 33 41 -07\nRef:VAS00000000000",
-    "Played R5.00 LOTTO 5 MAX for 2 draws\nRef:VAS00000000000",
+    "Played R99.00 LOTTO 5 MAX for 2 draws\nRef:VAS00000000000",
     "Your lotto transaction was unsuccessful.",
     "R100.00 to VAS00000000000 LOTTO from Acc. 1234",
     # Included: names no game anywhere, which is what LOTTO-0030 was about.
@@ -103,7 +109,7 @@ def round_trip():
         # An SMS body is outside data. A body carrying a record header must not
         # become a second record with a date nobody sent.
         ("header inside the body", "Std Bank", 1767936736699,
-         "Played R10.00 Lotto for 1 draw(s)\nRow: 9 address=x, date=1, body=y"),
+         "Played R99.00 Lotto for 1 draw(s)\nRow: 9 address=x, date=1, body=y"),
     ]
     for name, address, date_ms, body in cases:
         row = watch_sms.format_row(0, address, date_ms, body)
