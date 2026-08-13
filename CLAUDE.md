@@ -115,7 +115,8 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
 ```
 
 - **`watch_sms.py`** is the cable-free collector (LOTTO-0003). It reads the
-  phone's conversation list once at start, then lives on `conversationUpdated`
+  phone's conversation list at start — polling it until it stops growing, which
+  is the completion signal D-Bus does not give — then lives on `conversationUpdated`
   signals. **`conversationCreated` fires only the first time the KDE Connect
   daemon learns of a conversation** — measured 202 signals on a first run and
   **zero** on every later one against the same 2,325 conversations — so nothing

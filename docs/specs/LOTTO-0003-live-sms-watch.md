@@ -190,6 +190,24 @@ match the filter now or are remembered as having matched before. If nothing
 moved, nothing is asked, which is the normal case. Measured on the live run of
 2026-08-13: 2,325 threads, **one** asked for history.
 
+**Two things about that bound are load-bearing and easy to get wrong.**
+
+**An empty dump has no high-water mark, and the bound deliberately opens.**
+`high_water()` returns `0` for a missing or empty file, so every matching
+thread — all 543 — is asked, once. That is the intended first run: a fresh
+clone with no dump must be able to rebuild history over Wi-Fi, and bounding it
+to nothing would make the cable mandatory again for exactly the case that has
+no other route. The bound is a steady-state economy, not a rule about the
+first run.
+
+**The high-water mark and the remembered set are both read BEFORE the snapshot
+is consumed** — `water = high_water(path)` and `known = set(watch.threads)`
+run before `watch.snapshot(conv)`, which appends. Read *after*, a thread that
+has just delivered a lottery SMS would have `date_ms == water` exactly, fail
+`date_ms > high_water`, and never be asked — losing §4.5's first left-over
+case, a thread that received two messages, in the very run that should have
+caught it. The fresher number is the wrong one.
+
 The remembered set lives in `sms_threads.json` beside the dump — 543 thread ids
 after the first full run, and no message content. It is gitignored anyway: it
 is a by-product of one phone and means nothing on another.
@@ -208,6 +226,14 @@ the rule `supervise.read_settings()` follows. But "it degrades quietly" was the
 wrong description, and a degradation this specific is a candidate for a visible
 warning rather than a silent fallback — recorded here, not built, because it
 was found by review after the code shipped.
+
+**Two forms, and `--once` is not "ask and exit".** The long-running form is
+what the tray starts and never exits on its own. `--once` does the same
+catch-up and then exits **after `QUIET` seconds with no signal** — it must
+wait, because `requestConversation()`'s answers arrive asynchronously as
+`conversationUpdated` (§4.1), so a run that asked and exited immediately would
+write none of the history it just requested. §7's live figure — two records
+written after one history request — depends on that wait.
 
 ### 4.6 A second child, reaped like the first
 
@@ -247,10 +273,11 @@ that did not happen. **When the server is stopped**, the notification says to
 use *Refresh results now* instead of claiming a refresh is running.
 
 **The check runs inside `sync()`, after its `if self.busy: return`**, so an
-arrival during a long refresh is not announced as it lands: it is noticed on
-the first tick after that action finishes, and announced then. That is the
-behaviour, and it is acceptable — five seconds late on a message the user has
-not looked for yet. The `self.busy` half of `check_new_tickets()`'s own guard
+arrival during a long refresh is not announced as it lands: it is announced the
+moment that action finishes, because `_end()` clears `busy` and calls `sync()`
+directly rather than waiting for the next tick. The announcement is *deferred*,
+not *delayed* — nothing needs adding to the `finished` callbacks to close a lag
+that `_end()` already closes. The `self.busy` half of `check_new_tickets()`'s own guard
 is therefore unreachable through the only caller it has; it is kept as a guard
 against a second caller, not as a path that runs today. An earlier draft of
 this section claimed a busy run produced the *Refresh results now* wording,
@@ -273,8 +300,12 @@ which it cannot.
 - **INV-35** — The thread state that makes catch-up possible round-trips, and
   reads as the empty set when missing or corrupt rather than raising. History
   is asked for exactly the threads that have moved since the dump's newest
-  record — never for every matching thread, and never for none of them when a
-  known thread's newest message has stopped matching.
+  record — never for every matching thread **once the dump holds a record**,
+  and never for none of them when a known thread's newest message has stopped
+  matching. An empty or absent dump has no high-water mark, and the first run
+  is then deliberately unbounded (§4.5); an invariant forbidding that would
+  make a fresh clone unable to rebuild anything over Wi-Fi, and would redden
+  `catch_up_targets`, which asserts the opposite.
 - **INV-36** — The watcher child is spawned, observed and reaped like the
   server; and a watcher that cannot start is reported in words that name what
   is lost, never silently.
@@ -390,11 +421,14 @@ unique across all 953.
 
 ## 10. Resource cost
 
-One extra Python process, idle in a GLib main loop. Startup reads the phone's
-conversation list once — 21 seconds against a warm KDE Connect daemon, up to
-about twelve minutes against a cold one that must fill it first (§4.1) — plus
-one 200-message history request per thread that has moved, usually zero or one
-(§4.5). Steady state is one D-Bus signal per incoming message and one 210 KB
+One extra Python process, idle in a GLib main loop. Startup **polls** the
+phone's conversation list every two seconds until it stops growing, then
+consumes it once — 21 seconds against a warm KDE Connect daemon, up to about
+twelve minutes against a cold one that must fill it first (§4.1), so five
+reads of the list warm and a few hundred cold — plus one 200-message history
+request per thread that has moved, usually zero or one (§4.5). **The exception
+is a first run against an empty dump, which asks every matching thread once —
+543 on this phone** (§4.5). Steady state is one D-Bus signal per incoming message and one 210 KB
 file read per accepted message. The tray's growth check is two integers every
 five seconds on a timer that already existed.
 
@@ -459,3 +493,4 @@ Recorded here so neither is mistaken for covered.
 | Loop | Date | Reviewer | Findings | Outcome |
 |------|------|----------|----------|---------|
 | 1 | 2026-08-13 | 2 cold lanes + `check-doc-facts` (by hand) | **Q1 5 · Q2 2 · Q3 0 · Q4 0** (verified 7 / dismissed 0), plus 1 mechanical | All fixed. Both lanes read the code and neither accepted the document's account of it. Q1: the state-file fallback claimed its only cost was slowness, where losing it makes a ticket under a newer non-matching message unreachable and the set does not self-heal; the two-watchers row claimed the second writer is harmless *because* de-duplication is against the file rather than a lock, which is the reason it is **not** harmless; §4.7 promised a notification the code cannot emit, its `busy` branch being unreachable through `sync()`; §10 omitted the dominant startup cost (one full dump read per matching snapshot entry, ~543 on this phone); §11 presented INV-36 as covered when only its watcher half is. Q2: INV-37 made re-scoring unconditional where the code guards on the server running, and INV-34's "always is" contradicted §4.3's drop-at-the-door. Mechanical: one path cited without its `tools/` prefix. Collateral: the same false state-file claim in `watch_sms.py`'s comment, and a ROADMAP line counting one gap where there are two. Two code changes were surfaced rather than applied — a single-instance guard, and batching the snapshot into one `append_new()`. |
+| 2 | 2026-08-13 | 2 cold lanes | **Q1 2 · Q2 0 · Q3 2 · Q4 0** (verified 4 / dismissed 1) | All fixed; **this is the cap for a spec, so the run ends here.** None of loop 1's seven findings resurfaced, which is what says those fixes held. Both lanes independently found INV-35 false of an empty dump: `high_water()` returns 0, so a first run asks every matching thread, which `catch_up_targets` *asserts* — the invariant and its own checker required opposite behaviour, and an implementer enforcing the invariant would have made a fresh clone unable to rebuild anything over Wi-Fi. Q3: the ordering that makes the bound work (high-water mark and remembered set read *before* the snapshot is consumed) was unstated, and reading the fresher number loses the two-messages-in-one-thread case; and `--once`'s exit condition was specified nowhere, so it would have been built as "ask and exit", writing none of the history it requested. Q1: loop 1's own fix to §4.7 introduced a wrong timing claim — `_end()` calls `sync()` directly, so an arrival is announced when the action finishes, not a tick later. Dismissed as immaterial but corrected in passing: §10 said the conversation list is read "once" where §4.1 polls it. Collateral: the same two claims in `CLAUDE.md`, `watch_sms.py`'s usage line and `pull_targets()`'s docstring. |

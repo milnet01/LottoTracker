@@ -8,7 +8,10 @@ unplugged. Both write one file, so both must agree on what belongs in it -
 see FILTER below, and INV-32.
 
     python3 watch_sms.py          # catch up, then listen until killed
-    python3 watch_sms.py --once   # catch up and exit (what a verifier drives)
+    python3 watch_sms.py --once   # catch up, wait for quiet, then exit. It must
+                                  # wait: requestConversation()'s answers arrive
+                                  # as signals, so exiting straight after asking
+                                  # would write none of the history it asked for
 
 Everything above "the phone" is importable WITHOUT `dbus-python`, so
 tools/verify_watch.py can drive the filter, the format and the de-duplication
@@ -190,7 +193,13 @@ def pull_targets(snapshot, known, high_water):
 
     The `known` half is not redundant with `matched`: a bank thread whose
     newest message is now an ordinary balance notice does not match, and its
-    lottery message underneath would be unreachable without it. INV-35.
+    lottery message underneath would be unreachable without it.
+
+    An EMPTY or absent dump has no high-water mark (high_water() returns 0), so
+    every matching thread is asked - and that is deliberate, not an escaped
+    edge case. A first run has no other way to rebuild history over Wi-Fi, and
+    a bound applied there would make the cable mandatory for the one case with
+    no alternative. The bound is a steady-state economy. INV-35.
     """
     return {
         thread
