@@ -974,6 +974,18 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   re-arming its own `review-contract` gate, and a three-row map fix is not worth
   a full cold-read loop on its own. Fold it into the next change that opens
   LOTTO-0014 for another reason, and let the one gate cover both.
+  Progress (2026-08-13): a third, found while writing LOTTO-0030/0031's entries.
+  (h) `CHANGELOG.md`'s `[Unreleased]` section is **out of Keep-a-Changelog
+  order and carries two `### Security` headings**. Current order is Added,
+  Changed, Security, Fixed, Security; canonical is Added, Changed, Deprecated,
+  Removed, Fixed, Security. Pre-existing — the duplicate predates 2026-08-13
+  and neither heading was created by this session's entries (`changelog_log`
+  created only `### Changed`, and placed it correctly). Deferred rather than
+  fixed because the two fixes differ in kind: reordering is mechanical and
+  `changelog_log op:"normalize"` does it in one call, but MERGING the duplicate
+  `### Security` blocks is an editorial judgement about which entries belong
+  together, and doing the first without the second leaves the file still
+  malformed while looking tidied. Do both in one pass, or neither.
 
 - ✅ **LOTTO-0026** A feed-side rename of `MATCH n` scores every line as a loss.
   Kind: fix. Source: in-session-2026-08-03; approach approved by the user
@@ -1318,3 +1330,14 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Gate owed:** LOTTO-0001 gained INV-31 and a rewritten §11 row, which is
   an authoring edit under global rule 14, so `review-contract` on that spec
   has not yet run.
+  **Still owed, and now larger — updated 2026-08-13.** The user was asked and
+  chose to defer it again, on the standing argument that the document is past
+  the size a cold read covers (its own loop-9 log says so). Since then §4.1 has
+  been substantially rewritten twice by LOTTO-0030: the adb `WHERE` clause and
+  its two `NOT LIKE` exclusions, the VAS-is-not-lottery reasoning, the
+  asynchronous-`activeConversations()` warning, and — the part that most wants
+  a cold read — a **weakened guarantee**, where "only lottery messages ever
+  cross to the PC" became the narrower claim the filter can actually make.
+  A downgraded guarantee is exactly the kind of change a gate exists to catch,
+  so whoever runs it should start there. The split argument is unchanged and
+  still the user's call.
