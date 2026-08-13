@@ -196,17 +196,35 @@ def parse(body, bought=None):
     )
 
 
-def load(path="lotto_sms_raw.txt"):
-    raw = open(path, errors="replace").read()
+def rows(raw):
+    """Split a dump into (address, date_ms, body) triples, unparsed.
+
+    The dump format's ONE reader. `watch_sms.py` appends to the same file and
+    has to know what is already in it to avoid writing a message twice, so the
+    split lives here rather than in load(): two readers of one format agree
+    today and drift later, and a drifted reader would silently duplicate every
+    record it failed to recognise (LOTTO-0003 INV-34).
+
+    A record runs from its `Row: N address=` header to the line before the next
+    one, so a body may span lines - 561 of the 951 records held on 2026-08-13
+    do. Rows that do not match the shape are dropped, as they always were.
+    """
     out = []
     for row in re.split(r"^Row: \d+ address=", raw, flags=re.M)[1:]:
         if m := re.match(r"([^,]*), date=(\d+), body=(.*)", row, re.S):
-            # Android's SMS timestamp, in milliseconds since the epoch. Local
-            # time on both sides of the era comparison: HANDOVER is a naive
-            # local datetime, and reading this as UTC would put a ticket bought
-            # between 00:00 and 02:00 SAST on handover day in the wrong era -
-            # the one case this field exists to get right.
-            bought = datetime.fromtimestamp(int(m.group(2)) / 1000)
-            if t := parse(m.group(3).strip(), bought):
-                out.append(t)
+            out.append((m.group(1), int(m.group(2)), m.group(3).strip()))
+    return out
+
+
+def load(path="lotto_sms_raw.txt"):
+    out = []
+    for _address, date_ms, body in rows(open(path, errors="replace").read()):
+        # Android's SMS timestamp, in milliseconds since the epoch. Local
+        # time on both sides of the era comparison: HANDOVER is a naive
+        # local datetime, and reading this as UTC would put a ticket bought
+        # between 00:00 and 02:00 SAST on handover day in the wrong era -
+        # the one case this field exists to get right.
+        bought = datetime.fromtimestamp(date_ms / 1000)
+        if t := parse(body, bought):
+            out.append(t)
     return out

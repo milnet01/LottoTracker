@@ -287,11 +287,32 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   case where a deadline would matter, and that is the case this project exists
   to catch.
 
-- 📋 **LOTTO-0003** Pick up new tickets automatically as the SMS arrives.
+- ✅ **LOTTO-0003** Pick up new tickets automatically as the SMS arrives.
   Kind: implement. Source: user-request-2026-08-01.
   Layman: new tickets appear by themselves, without plugging the phone in.
   KDE Connect emits `conversationCreated` / `conversationUpdated` over D-Bus;
   subscribe rather than polling.
+  Resolved (2026-08-13): `watch_sms.py` collects new lottery SMSes over
+  KDE Connect with no cable, `supervise.SmsWatch` owns it as a second
+  child of the tray, and the tray re-scores the page when the dump grows.
+  Specced in docs/specs/LOTTO-0003-live-sms-watch.md (INV-32..INV-37);
+  checked by tools/verify_watch.py, seven cases, all observed failing.
+  The roadmap line above said to subscribe rather than poll, and that is
+  half right in a way worth recording: `conversationCreated` fires only
+  the first time the daemon learns of a conversation - 202 signals on a
+  first run, ZERO on every run after, against the same 2,325
+  conversations. A discovery built on it works once per daemon lifetime,
+  and the first live run duly reported "0 new" against a phone holding
+  951 matching messages. Discovery now reads activeConversations()
+  directly and waits for it to stop GROWING; the signals carry live
+  arrivals and history answers, which they do reliably.
+  Live proof, cable unplugged: 2,325 threads read in 21s, one thread
+  asked for history, two new payout SMSes written (07:03 and 07:04 that
+  morning, both after the last cable pull). The 951 records already held
+  were left byte-identical.
+  Not done here: LOTTO-0028 (scheduled refresh) is less pressing now that
+  an arrival triggers one, and INV-37 is stated but unchecked - see
+  LOTTO-0003 §11 for why, and LOTTO-0007 for the deferred reconnect gap.
 
 - ✅ **LOTTO-0008** Record what each ticket cost, so prizes can be compared against spend.
   Kind: implement. Source: user-request-2026-08-01.

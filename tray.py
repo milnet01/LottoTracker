@@ -21,6 +21,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 import supervise
+import watch_sms  # for the dump's path only; nothing here imports dbus
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ICON_RUNNING = os.path.join(HERE, "icons", "tray-running.svg")
@@ -111,13 +112,25 @@ def run_async(fn, on_done):
 # -------------------------------------------------------------------- the tray
 
 
+def dump_size():
+    """Bytes in the SMS dump, or 0. LOTTO-0003's growth signal."""
+    try:
+        return os.path.getsize(watch_sms.DUMP)
+    except OSError:
+        return 0
+
+
 class LottoTray(QSystemTrayIcon):
-    def __init__(self, sup):
+    def __init__(self, sup, watch=None):
         super().__init__()
         self.sup = sup
+        self.watch = watch
         self.running_icon = QIcon(ICON_RUNNING)
         self.stopped_icon = QIcon(ICON_STOPPED)
         self.busy = False  # one long action at a time
+        # The baseline for "has a new ticket arrived?". Taken before the
+        # watcher is started, so the first thing it appends is noticed.
+        self.dump_size = dump_size()
 
         menu = QMenu()
         self.act_open = menu.addAction("Open page", self.open_page)
@@ -155,6 +168,34 @@ class LottoTray(QSystemTrayIcon):
         # asking to see a page is not asking to start something.
         self.act_refresh.setEnabled(on)
         self.act_open.setEnabled(on)
+        self.check_new_tickets()
+
+    def check_new_tickets(self):
+        """Notice what the watcher appended, say so, and score it (LOTTO-0003).
+
+        Size rather than a parse: `watch_sms.py` only ever appends, so a file
+        that grew holds records that were not there before, and comparing two
+        integers every five seconds costs nothing. A SHRUNK file is an adb
+        re-pull rewriting the dump, which is not new arrivals - it re-baselines
+        silently rather than announcing a win that may not exist.
+
+        The refresh is what makes the cable unnecessary in the way the user
+        actually meant it: a ticket that reaches the file but not the page has
+        not arrived as far as anyone can see. INV-37.
+        """
+        size = dump_size()
+        if size <= self.dump_size:
+            self.dump_size = size
+            return
+        self.dump_size = size
+        if self.busy or not self.sup.is_running():
+            # Never "refreshing" when nothing is: the wording has to survive
+            # the case where the server is stopped (LOTTO-0013 §4.6's rule).
+            self.note("A new lottery SMS arrived. "
+                      "Use “Refresh results now” to score it.")
+            return
+        self.note("A new lottery SMS arrived — refreshing the page.")
+        self.refresh()
 
     def note(self, body):
         self.showMessage("Lotto Tracker", body, self.running_icon, 5000)
@@ -240,6 +281,8 @@ class LottoTray(QSystemTrayIcon):
         # completes - orphaning the child that holds the port, which is exactly
         # what INV-20 forbids. A freeze of up to the stop() timeout is the cost.
         self.sup.stop()
+        if self.watch is not None:
+            self.watch.stop()
         QApplication.instance().quit()
 
 
@@ -260,7 +303,8 @@ def main():
         return 1
 
     sup = supervise.Supervisor()
-    tray = LottoTray(sup)
+    watch = supervise.SmsWatch()
+    tray = LottoTray(sup, watch)
     tray.show()
     # A NOTIFICATION, never a print. supervise.py falls back on an unusable
     # $PORT or $LOTTO_PORT rather than exiting (its docstring says why), and a
@@ -271,11 +315,27 @@ def main():
         tray.note(sup.port_fallback)
 
     sup.start()
+    # Started after the tray exists so a failure can be NOTIFIED rather than
+    # printed (LOTTO-0003). Without this child no new ticket ever reaches the
+    # dump, and the page would go on rendering an increasingly old set of
+    # tickets with nothing anywhere saying collection had stopped.
+    watch.start()
     tray.sync()
+
+    # died_early() waits up to three seconds for the child to fall over on its
+    # own imports (dbus-python absent, KDE Connect not running), and three
+    # seconds on the GUI thread is a frozen menu.
+    def watcher_checked(ok, msg):
+        if not ok or msg == "died":
+            tray.note("New tickets will NOT arrive on their own — the SMS "
+                      "watcher stopped. Import over the cable meanwhile.")
+
+    run_async(lambda: "died" if watch.died_early() else "", watcher_checked)
 
     # A session logout never clicks Quit, and that is the commonest way an
     # orphan would be created.
     app.aboutToQuit.connect(sup.stop)
+    app.aboutToQuit.connect(watch.stop)
 
     # open_on_start is read here because tray.py is the file that acts on it.
     # A missing, unreadable or malformed settings.json falls back to the default

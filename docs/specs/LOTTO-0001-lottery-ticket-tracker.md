@@ -67,12 +67,20 @@ things make manual checking impractical, and each shapes the design:
 
 ### 4.1 Getting messages off the phone
 
-Two paths, because they solve different problems:
+Three paths, because they solve different problems:
 
 | Path | Module | Use | Filtering happens |
 |------|--------|-----|-------------------|
 | adb over USB | shell `content query` | bulk history | on the phone |
 | KDE Connect over Wi-Fi | `find_lotto_sms.py` | **inspection only** | on the PC |
+| KDE Connect over Wi-Fi | `watch_sms.py` | **new messages, unattended** | on the PC |
+
+The third path was added 2026-08-13 (LOTTO-0003) and is specced in
+`docs/specs/LOTTO-0003-live-sms-watch.md`. It writes the same dump in the same
+format, which is why its filter is this section's `WHERE` clause re-expressed
+rather than a second opinion about what a lottery message is — LOTTO-0003
+INV-32 checks the two against SQLite. `find_lotto_sms.py` stays inspection
+only, and its wider keyword list stays wider.
 
 The adb query filters with a SQL `WHERE` clause executed on the device, so
 the inbox at large never crosses to the PC (see the limits below the query):
@@ -141,11 +149,15 @@ produced two confident and false conclusions (that discovery matched nothing,
 and that `requestConversation()` had stopped delivering). Sample at two
 different waits and compare before believing any figure taken from here.
 
-**Only the adb path feeds the pipeline in this spec.** `find_lotto_sms.py`
-prints; it writes no file, and `tickets.py::load()` reads only the adb dump
-format (`^Row: N address=…, date=…, body=…`, one record per match, from
-`lotto_sms_raw.txt` at the repo root). Turning the KDE Connect stream into
-that format is LOTTO-0003.
+**`find_lotto_sms.py` still prints and writes no file.** `tickets.py::load()`
+reads one format (`^Row: N address=…, date=…, body=…`, one record per match,
+from `lotto_sms_raw.txt` at the repo root), and until 2026-08-13 only adb wrote
+it — this paragraph used to say so, and to name LOTTO-0003 as what would change
+it. **LOTTO-0003 shipped**: `watch_sms.py` now writes that format from the KDE
+Connect stream, so the dump has two producers and one reader
+(`tickets.py::rows()`, which `load()` calls). The caveat about matching against
+each thread's newest message survives unchanged and is why that path also asks
+for the history of threads that have moved (LOTTO-0003 §4.5).
 
 ### 4.2 Parsing two SMS eras
 

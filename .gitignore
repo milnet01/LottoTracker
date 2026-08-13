@@ -9,5 +9,11 @@ lotto_sms_raw.txt
 archive_cache/
 archive_results.json
 
+# Phone-derived state: which SMS threads have carried a lottery message, so
+# `watch_sms.py` can ask for their history after the PC has been off
+# (LOTTO-0003). Thread ids, not content - ignored anyway, because it is a
+# by-product of one phone and means nothing on another.
+sms_threads.json
+
 __pycache__/
 *.pyc

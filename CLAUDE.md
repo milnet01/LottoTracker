@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A personal tool that reads South African National Lottery ticket SMSes (Standard
 Bank wording) off an Android phone, scores every ticket against real draw
 results, and reports what is still claimable. Pure Python 3.8+ standard library
-plus `dbus-python` (only for `find_lotto_sms.py`). No package manager, no
+plus `dbus-python` (only for `find_lotto_sms.py` and `watch_sms.py`). No package manager, no
 virtualenv, no test framework, no build step — everything runs as `python3 <file>`
 from the repository root.
 
@@ -18,7 +18,12 @@ python3 backfill.py            # one-off: scrape pre-2026-06-01 results into
                                # archive_results.json + archive_cache/ (12 fetches)
 python3 check.py               # score every ticket, print claimable wins
 python3 results.py             # smoke-test the official API (prints 3 recent draws/game)
-python3 find_lotto_sms.py      # pull new lottery SMSes over KDE Connect (D-Bus)
+python3 find_lotto_sms.py      # INSPECT SMSes over KDE Connect: prints, writes
+                               # nothing, wider keyword list than the pipeline
+python3 watch_sms.py           # the cable-free import (LOTTO-0003): listen over
+                               # KDE Connect and APPEND new lottery SMSes to the
+                               # dump. --once catches up and exits; tray.py
+                               # starts the long-running form
 python3 serve.py               # the local page on http://127.0.0.1:4322 (headless-safe)
 python3 tray.py                # the tray icon: starts serve.py, opens the page, reaps it
 ```
@@ -45,9 +50,11 @@ dump — while still exiting 0. So a green tick on GitHub is weaker than a green
 full strength rather than trusting its exit code. `local-CI.sh`'s header holds
 the reasoning.
 
-Verification — there is no test runner; these five scripts *are* the test
+Verification — there is no test runner; these six scripts *are* the test
 suite, and each maps to a numbered invariant in the specs. Run from the
-repository root, after `backfill.py`, with `lotto_sms_raw.txt` present:
+repository root, after `backfill.py`, with `lotto_sms_raw.txt` present
+(`verify_watch.py` is the exception: it needs no dump, no phone and no
+`dbus-python`, which is why it runs in the CI lane):
 
 ```bash
 python3 tools/verify_sources.py   # INV-3: the two results sources agree on overlap
@@ -60,6 +67,9 @@ python3 tools/verify_page.py      # INV-12..INV-21, INV-23..INV-25 and INV-27..I
                                   # spawn-and-reap lifecycle, what it reports after a
                                   # refresh, the port it binds, the managed (no-icon)
                                   # run, and the results transport underneath them
+python3 tools/verify_watch.py     # INV-32..INV-36: the cable-free SMS path writes
+                                  # what adb would, never twice, and its child is
+                                  # spawned, observed and reaped
 ```
 
 `verify_page.py` is the one verifier that needs PySide6 installed — its
@@ -85,10 +95,12 @@ run them from there rather than re-inventing them.
 Data flows in one direction, and the two halves are independent:
 
 ```
-phone ──adb/KDE Connect──> lotto_sms_raw.txt ──tickets.py::parse()──> [Ticket]
-                                                                          │
-results.py    (official API, 2026-06-01 on, has payouts) ──┐              │
-backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─┴─> check.py
+phone ──adb over USB─────────┐
+       (bulk history)        ├─> lotto_sms_raw.txt ──tickets.py::rows()──> parse() ──> [Ticket]
+phone ──watch_sms.py─────────┘   (two writers, ONE reader)                                │
+       (KDE Connect, new messages, no cable)                                              │
+results.py    (official API, 2026-06-01 on, has payouts) ──┐                              │
+backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─────────────────┴─> check.py
                                                                               │
                                                     ┌─────────────────────────┴──┐
                                                     ▼                            ▼
@@ -96,13 +108,26 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
                                         (the terminal output)         (the local page)
                                                                           ▲   │
                                                           tray.py ──> supervise.py
-                                                          (PySide6)   (spawns serve.py;
-                                                                       owns the settings
-                                                                       reader both import)
+                                                          (PySide6)   (spawns serve.py AND
+                                                                       watch_sms.py; owns the
+                                                                       settings reader both
+                                                                       import)
 ```
 
-- **`tickets.py`** is the only bank-specific file. `parse()` handles two SMS
-  eras; `GAME_MAP` translates an SMS game name to the one `(game, plus_flag,
+- **`watch_sms.py`** is the cable-free collector (LOTTO-0003). It reads the
+  phone's conversation list once at start, then lives on `conversationUpdated`
+  signals. **`conversationCreated` fires only the first time the KDE Connect
+  daemon learns of a conversation** — measured 202 signals on a first run and
+  **zero** on every later one against the same 2,325 conversations — so nothing
+  may build discovery on it; that mistake shipped a watcher that reported "0
+  new" against a phone holding 951 matching messages. Its filter is
+  LOTTO-0001 §4.1's adb `WHERE` clause re-expressed, and `verify_watch.py`
+  checks the two against SQLite. `find_lotto_sms.py` is a different tool with a
+  deliberately wider list: it prints, this writes. Do not merge them.
+- **`tickets.py`** is the only bank-specific file. `rows()` is the dump
+  format's one reader, and both writers depend on that staying true — a second
+  reader that drifts would duplicate every record it failed to recognise.
+  `parse()` handles two SMS eras; `GAME_MAP` translates an SMS game name to the one `(game, plus_flag,
   pool_id)` it names, and `entered_pools()` derives the *full* set of pools
   from the ticket price, which is what scoring actually iterates
   (`Ticket.pools`).

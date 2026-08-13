@@ -8,6 +8,23 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **New tickets arrive with no cable — `watch_sms.py` listens over KDE Connect and appends to the dump. (LOTTO-0003)**
+  The tray starts it, stops it and re-scores the page when the dump grows,
+  so a ticket bought on the phone reaches the page by itself. adb keeps
+  bulk history; the two paths share one filter, checked against SQLite
+  (INV-32), and one dump reader, `tickets.py::rows()`.
+  The subscribe-don't-poll plan was half wrong and the correction is the
+  interesting part: `conversationCreated` fires only the first time the
+  KDE Connect daemon learns of a conversation — 202 signals on a first
+  run, zero on every later one, against the same 2,325 conversations — so
+  the first build of this reported "0 new" against a phone holding 951
+  matching messages. Discovery now reads `activeConversations()` and
+  waits for it to stop growing. Seven cases in `tools/verify_watch.py`,
+  all observed failing; none of them could have caught that defect, and
+  the spec says so (§7).
+  Live, with the cable unplugged: 2,325 threads read in 21 seconds, two
+  new payout SMSes collected, the 951 existing records untouched.
+
 - **The tray says what a refresh found, instead of a flat "Results refreshed."** (LOTTO-0019)
   `GET /status` gains `found` — how many winning lines the last completed
   build found that its predecessor did not, and their total — and

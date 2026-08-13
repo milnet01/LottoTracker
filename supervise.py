@@ -373,6 +373,80 @@ class Supervisor:
             time.sleep(min(interval, max(0.0, deadline - time.monotonic())))
 
 
+class SmsWatch:
+    """Own the SMS-watcher child: `watch_sms.py`, and its death (LOTTO-0003).
+
+    The same spawn-and-reap contract as Supervisor, deliberately in the same
+    Qt-free module so the lifecycle stays checkable from a headless script -
+    but with no token and no port, because this child talks to the phone over
+    D-Bus and never to us. It is a SECOND child of the tray, not a second
+    server.
+
+    A failure to start is not fatal and must not be silent: without it new
+    tickets simply stop arriving, which on the page is indistinguishable from
+    not winning - the failure this project exists to prevent. `died_early()`
+    is what lets the tray say so (INV-36).
+    """
+
+    def __init__(self, command=None):
+        # The command is injectable for the same reason run_headless() takes a
+        # supervisor: INV-36's case has to drive spawn-and-reap without running
+        # the real watcher, which would talk to the phone and APPEND TO THE
+        # REAL DUMP. A verifier with a side effect on live data is not one.
+        self.command = command or [sys.executable, os.path.join(HERE, "watch_sms.py")]
+        self.child = None
+
+    def start(self):
+        """Spawn the watcher. No-op if one is already running."""
+        if self.is_running():
+            return
+        self.child = subprocess.Popen(
+            self.command,
+            # For the reason Supervisor.start() gives: the dump, and the thread
+            # state beside it, are resolved relative to the working directory,
+            # and an autostarted session's cwd is not the repository.
+            cwd=HERE,
+        )
+
+    def is_running(self):
+        return self.child is not None and self.child.poll() is None
+
+    def died_early(self, timeout=3.0):
+        """True if the child is already gone - the "dbus-python is missing" case.
+
+        A short wait, not a poll of the exit code alone: Popen returns before
+        the child has reached its own imports, so an immediate poll() reports a
+        healthy process that is about to exit(1). Returns False while it lives,
+        which is the answer for every healthy run.
+        """
+        if self.child is None:
+            return True
+        try:
+            self.child.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return False
+        return True
+
+    def stop(self, timeout=5.0):
+        """terminate(), then kill() after the timeout, then wait().
+
+        Same shape as Supervisor.stop() and for the same reason: the watcher
+        sits in a GLib main loop and may be mid-write to the dump, and a child
+        that ignores SIGTERM would outlive the tray holding a D-Bus name.
+        """
+        if self.child is None:
+            return
+        if self.child.poll() is None:
+            self.child.terminate()
+            try:
+                self.child.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                self.child.kill()
+                self.child.wait(timeout=timeout)
+        else:
+            self.child.wait(timeout=timeout)
+
+
 def free_port():
     """A concrete free port, for callers that must not collide with 4322.
 

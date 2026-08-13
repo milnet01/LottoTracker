@@ -100,6 +100,10 @@ echo "local-CI: CI lane   [$(ruff --version 2>/dev/null || echo 'ruff MISSING'),
 run "ruff check"        ruff check .
 run "syntax (compileall)" python3 -m compileall -q .
 run "verify_page.py"    python3 tools/verify_page.py
+# In the CI lane on purpose: LOTTO-0003's checks need no phone, no KDE Connect
+# and no dump. Its one dump-dependent case says so and carries on when there is
+# none, which is why it is honest to run it where there never is one.
+run "verify_watch.py"   python3 tools/verify_watch.py
 run "verify_privacy.py" python3 tools/verify_privacy.py
 PRIVACY_OUT="$LAST_OUT"
 
