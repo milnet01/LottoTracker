@@ -121,8 +121,14 @@ def read_threads(path=THREADS):
         got = json.load(open(path))
         return {int(t) for t in got} if isinstance(got, list) else set()
     except (OSError, ValueError, TypeError):
-        # Same rule as supervise.read_settings(): a corrupt state file costs
-        # a slower catch-up, and must never be the reason the watcher exits.
+        # Never a reason to exit - the rule supervise.read_settings() follows.
+        # But the cost is NOT just a slower run, and saying so here was wrong:
+        # with no remembered set, pull_targets() keeps only threads matching
+        # NOW, so a ticket sitting under a newer non-matching message is
+        # neither asked for nor visible in the snapshot - and it does not heal,
+        # because consume() re-adds a thread only on a message that matches.
+        # Those are reachable over the cable until the thread matches again.
+        # LOTTO-0003 §4.5.
         return set()
 
 

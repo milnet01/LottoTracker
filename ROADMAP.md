@@ -311,7 +311,8 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   morning, both after the last cable pull). The 951 records already held
   were left byte-identical.
   Not done here: LOTTO-0028 (scheduled refresh) is less pressing now that
-  an arrival triggers one, and INV-37 is stated but unchecked - see
+  an arrival triggers one, and two invariant halves are stated but
+  unchecked (INV-37, and INV-36's tray notification) - see
   LOTTO-0003 §11 for why, and LOTTO-0007 for the deferred reconnect gap.
 
 - ✅ **LOTTO-0008** Record what each ticket cost, so prizes can be compared against spend.

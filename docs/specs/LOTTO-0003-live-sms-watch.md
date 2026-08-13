@@ -192,10 +192,22 @@ moved, nothing is asked, which is the normal case. Measured on the live run of
 
 The remembered set lives in `sms_threads.json` beside the dump — 543 thread ids
 after the first full run, and no message content. It is gitignored anyway: it
-is a by-product of one phone and means nothing on another. A corrupt or missing
-file reads as the empty set and costs a slower catch-up — the same rule
-`supervise.read_settings()` follows, and for the same reason: a state file must
-never be why collection stops.
+is a by-product of one phone and means nothing on another.
+
+**A corrupt or missing file reads as the empty set, and the cost is not merely
+a slower run — say what it is.** With no remembered set, `pull_targets()` keeps
+only the threads that match *now*, so the one case the set exists for — a
+ticket sitting under a newer non-matching message — is not asked for and cannot
+be seen by the snapshot either. **Nor does it heal**: `consume()` re-adds a
+thread only on a message that matches, which that thread by definition no
+longer has. Those tickets are then reachable only over the cable, until another
+lottery SMS arrives in the same thread and re-adds it.
+
+The file is still never a reason to *stop*: reading it must not raise, which is
+the rule `supervise.read_settings()` follows. But "it degrades quietly" was the
+wrong description, and a degradation this specific is a candidate for a visible
+warning rather than a silent fallback — recorded here, not built, because it
+was found by review after the code shipped.
 
 ### 4.6 A second child, reaped like the first
 
@@ -231,8 +243,18 @@ compares the dump's size against what it was; `watch_sms.py` only ever appends,
 so a bigger file is new records and nothing else. On growth the tray notifies
 and triggers the refresh it already has. A shrunk file is an adb re-pull
 rewriting the dump — it re-baselines silently rather than announcing an arrival
-that did not happen. When the server is stopped or busy, the notification says
-to use *Refresh results now* instead of claiming a refresh is running.
+that did not happen. **When the server is stopped**, the notification says to
+use *Refresh results now* instead of claiming a refresh is running.
+
+**The check runs inside `sync()`, after its `if self.busy: return`**, so an
+arrival during a long refresh is not announced as it lands: it is noticed on
+the first tick after that action finishes, and announced then. That is the
+behaviour, and it is acceptable — five seconds late on a message the user has
+not looked for yet. The `self.busy` half of `check_new_tickets()`'s own guard
+is therefore unreachable through the only caller it has; it is kept as a guard
+against a second caller, not as a path that runs today. An earlier draft of
+this section claimed a busy run produced the *Refresh results now* wording,
+which it cannot.
 
 ## 5. Invariants
 
@@ -243,8 +265,11 @@ to use *Refresh results now* instead of claiming a refresh is running.
   `tickets.rows()` as exactly one record, with its date intact and its body
   unchanged but for the deliberate header guard.
 - **INV-34** — A message the dump already carries is never appended a second
-  time, keyed on `(date_ms, body)`; a message it does not carry always is; a
-  body the filter excludes never is.
+  time, keyed on `(date_ms, body)`; a message it does not carry, and that reads
+  back through `tickets.rows()`, always is; a body the filter excludes never
+  is. The read-back clause is not a hedge — §4.3 drops an unparseable record at
+  the door on purpose, and an invariant demanding it be written would undo
+  that.
 - **INV-35** — The thread state that makes catch-up possible round-trips, and
   reads as the empty set when missing or corrupt rather than raising. History
   is asked for exactly the threads that have moved since the dump's newest
@@ -253,9 +278,11 @@ to use *Refresh results now* instead of claiming a refresh is running.
 - **INV-36** — The watcher child is spawned, observed and reaped like the
   server; and a watcher that cannot start is reported in words that name what
   is lost, never silently.
-- **INV-37** — A dump that grew is announced and re-scored; a dump that shrank
-  is not announced. The page must never gain a ticket the user is not told
-  about, nor be told about one it did not gain.
+- **INV-37** — A dump that grew is announced, and re-scored **when the server
+  is running**; when it is not, the notice names *Refresh results now* instead
+  of claiming a refresh that is not happening. A dump that shrank is not
+  announced. The page must never gain a ticket the user is not told about, nor
+  be told about one it did not gain.
 
 ## 6. Failure modes
 
@@ -264,9 +291,21 @@ to use *Refresh results now* instead of claiming a refresh is running.
 | `dbus-python` or KDE Connect absent | watcher exits non-zero naming the cable; tray notifies | the alternative is a page that quietly stops growing |
 | phone off, asleep or off the network | no signals; nothing written; catch-up on the next start | the dump is append-only, so a gap closes itself later |
 | KDE Connect restarts | signals stop arriving; watcher stays alive on a dead bus | accepted — see §9; the tray's growth check will simply see nothing |
-| two watchers running | both filter and de-duplicate identically; second writes nothing | `(date, body)` is checked against the file, not against a lock |
+| two watchers running | usually the second writes nothing — but see below | **not guaranteed**, and nothing prevents it |
 | an SMS body carrying a record header | prefixed with a space, one record | §4.3 |
 | the dump is deleted | catch-up rewrites what the phone still holds | not a recovery plan; adb remains the recovery plan |
+
+**The two-watchers row is a warning, not a guarantee, and the earlier draft had
+it backwards.** `append_new()` reads the dump into a `seen` set and then
+appends, with no lock, so two watchers that both read before either writes will
+both append the same message — and their row indices collide too, since each
+takes `max(existing) + 1`. The de-duplication key is checked against the file's
+*contents at read time*, which is exactly why it cannot serialise two writers.
+The case is reachable: `SmsWatch.start()` guards only against its own second
+spawn, and `python3 watch_sms.py` is documented as a hand invocation. **Run
+one.** A single-instance guard (a lockfile or an abstract socket) is the fix if
+this ever bites; it is not built, and this row is what stops the omission being
+read as a decision that it is safe.
 
 ## 7. Tests
 
@@ -280,7 +319,7 @@ clause is copied from LOTTO-0001 §4.1 into `WHERE`, but the half most likely to
 be got wrong is not the words — it is `LIKE`'s case-insensitivity against
 Python's case-sensitive `in`. Asking the engine adb asks is the only way that
 half is checked at all; a hand-written Python equivalent would agree with its
-own mistake, which is the lesson `verify_pools.py`'s price table carries.
+own mistake, which is the lesson `tools/verify_pools.py`'s price table carries.
 
 Every case was **observed failing** on 2026-08-13, by deliberate defect:
 dropping the `vas00` clause (the LOTTO-0030 gap) reddened `filter_matches_adb`;
@@ -359,6 +398,17 @@ one 200-message history request per thread that has moved, usually zero or one
 file read per accepted message. The tray's growth check is two integers every
 five seconds on a timer that already existed.
 
+**The dominant startup cost is not the D-Bus traffic, it is the dump.**
+`snapshot()` calls `consume()` per entry and `consume()` calls `append_new()`,
+which re-reads and re-parses the whole file every time — so a catch-up is one
+210 KB read and parse **per filter-matching snapshot entry**, 543 of them on
+this phone, on every start rather than only the first. That is roughly 114 MB
+of reads inside the measured 21 seconds, which is why it was not noticed. It is
+affordable and it is not defended: batching the snapshot into a single
+`append_new()` call would make it one read, and the only reason it is written
+per message is that the same function serves the signal path, where one message
+is all there is.
+
 ## 11. What checks this
 
 | Invariant | Checked by |
@@ -367,17 +417,27 @@ five seconds on a timer that already existed.
 | INV-33 | `tools/verify_watch.py::round_trip` |
 | INV-34 | `tools/verify_watch.py::no_duplicates` (against real dump records) |
 | INV-35 | `tools/verify_watch.py::thread_state`, `::catch_up_targets` |
-| INV-36 | `tools/verify_watch.py::watcher_lifecycle`, `::absent_dbus_is_named` |
+| INV-36 | `tools/verify_watch.py::watcher_lifecycle`, `::absent_dbus_is_named` — **watcher half only**, see below |
 | INV-37 | not checked by a case — see below |
 
+**Two gaps, both for the same reason, and neither is a decision.**
+
+**INV-36's tray half is unchecked.** `absent_dbus_is_named` checks that
+`watch_sms.py`'s own exit message names the cable; the notification §4.7
+promises — `tray.main()`'s `watcher_checked` — is checked by nothing. The row
+above lists both cases against INV-36 and that is honest about the *watcher*
+half only.
+
 **INV-37 is stated and not checked**, and that is a gap rather than a decision.
-`tray.py::check_new_tickets()` needs a QSystemTrayIcon, and the one tray case
-that exists (`verify_page.py::tray_headless_when_managed`) runs the managed
-path precisely because it constructs no Qt object. Checking it would mean the
-first Qt-constructing case in the project. The half that would hurt most if
-wrong — a shrinking dump announcing an arrival — is a two-line comparison; the
-half that is exercised constantly is the growth path, which any real ticket
-exercises. Recorded here so it is not mistaken for covered.
+
+Both gaps are the same shape: every unchecked half lives in `tray.py` and needs
+a QSystemTrayIcon, and the one tray case that exists
+(`tools/verify_page.py::tray_headless_when_managed`) runs the managed path
+precisely because it constructs no Qt object. Closing either would mean the
+first Qt-constructing case in the project. What is exercised instead is
+reality: the growth path runs on every real ticket, and the watcher-failure
+message was observed by running the watcher with `dbus` made unimportable.
+Recorded here so neither is mistaken for covered.
 
 ## 12. Cross-doc impact
 
@@ -398,4 +458,4 @@ exercises. Recorded here so it is not mistaken for covered.
 
 | Loop | Date | Reviewer | Findings | Outcome |
 |------|------|----------|----------|---------|
-| — | 2026-08-13 | **not yet run** | — | **Gate owed.** `review-contract` dispatches an independent cold reviewer, and this session is operating under an instruction not to dispatch subagents unless asked. The rule that governs this (global CLAUDE.md §14) says the honest answer is to say so rather than to substitute a self-read and record a gate that never ran. Asked of the user 2026-08-13; the answer decides whether this row is filled or stays as evidence that it was not. |
+| 1 | 2026-08-13 | 2 cold lanes + `check-doc-facts` (by hand) | **Q1 5 · Q2 2 · Q3 0 · Q4 0** (verified 7 / dismissed 0), plus 1 mechanical | All fixed. Both lanes read the code and neither accepted the document's account of it. Q1: the state-file fallback claimed its only cost was slowness, where losing it makes a ticket under a newer non-matching message unreachable and the set does not self-heal; the two-watchers row claimed the second writer is harmless *because* de-duplication is against the file rather than a lock, which is the reason it is **not** harmless; §4.7 promised a notification the code cannot emit, its `busy` branch being unreachable through `sync()`; §10 omitted the dominant startup cost (one full dump read per matching snapshot entry, ~543 on this phone); §11 presented INV-36 as covered when only its watcher half is. Q2: INV-37 made re-scoring unconditional where the code guards on the server running, and INV-34's "always is" contradicted §4.3's drop-at-the-door. Mechanical: one path cited without its `tools/` prefix. Collateral: the same false state-file claim in `watch_sms.py`'s comment, and a ROADMAP line counting one gap where there are two. Two code changes were surfaced rather than applied — a single-instance guard, and batching the snapshot into one `append_new()`. |
