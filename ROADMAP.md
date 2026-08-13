@@ -745,6 +745,37 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   does not pay.
   Next step is therefore to check stored archive draw numbers for those
   four draws against an independent source, before building anything.
+  Investigation (2026-08-13) into the four fully-scorable misses. Four
+  causes ELIMINATED, each by a check that would have shown the defect:
+  1. Not the division table. `paying_combinations()` returns all 8 Lotto
+     divisions with the right labels, and plain MATCH 2 correctly does not
+     pay - the traced ticket's best outcomes were MATCH 2 and MATCH
+     1 + BONUS, which genuinely win nothing.
+  2. Not a date offset in the archive. Scored the traced ticket against
+     the two draws either side of its own: two chance hits appear (one
+     BEFORE the purchase date, one AFTER the payout arrived, so neither
+     can be the prize), and ~1 chance hit is expected across 75
+     board-draw pairs at Lotto's P(match 3). No systematic shift.
+  3. Not the archive parser or a corrupt store. Re-parsed the three
+     cached year pages for the draw in question and compared against
+     `archive_results.json`: all three tiers agree exactly, main numbers
+     and bonus. The three tiers also carry distinct number sets, so no
+     tier is duplicating another.
+  4. Not the ticket parse. Every board in the dump carries exactly its
+     game's pick count - 309 Lotto boards at 6, 312 PowerBall at 5, 130
+     Daily at 5, zero exceptions across all 561 tickets. A dropped number
+     would have made matches systematically low, which is what the
+     under-counting looked like, and it is not happening.
+  What remains: the traced ticket reaches no paying division in ANY of
+  its three pools for the draw it was bought for, yet the bank paid the
+  next morning. Either the results SOURCE is wrong for that draw (the
+  project has one archive source and `tools/verify_sources.py` cannot
+  cross-check it before 2026-06-01, which is exactly where all four
+  misses sit), or a payout can arise from something this model does not
+  represent. Distinguishing them needs an INDEPENDENT results source for
+  those four archive-era draws - a second site, since the official API
+  does not reach back. That is a new dependency and is the user's call;
+  nothing further can be settled offline.
 
 - ✅ [LOTTO-0030] **The import filter matched game names, so it excluded every payout SMS.**
   **Layman:** The command that copies lottery texts off the phone only looked for messages naming a game. The bank's "you won" texts don't name one, so 149 of them were skipped every time. Now they come across.
