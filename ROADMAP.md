@@ -1008,6 +1008,33 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   `### Security` blocks is an editorial judgement about which entries belong
   together, and doing the first without the second leaves the file still
   malformed while looking tidied. Do both in one pass, or neither.
+  Progress (2026-08-13): four more, all from LOTTO-0003's review gate.
+  Each is CODE rather than prose, which is why the gate surfaced them
+  instead of fixing them, and each is stated in the spec at the section
+  named. None is a regression: (i) and (k) shipped with the item, (j) is a
+  cost, (l) predates it.
+  (i) `watch_sms.py::append_new()` reads the dump then appends with no
+  lock, so two concurrently running watchers can both append the same
+  message, with colliding row indices. Reachable: `SmsWatch.start()`
+  guards only its own second spawn, and `python3 watch_sms.py` is a
+  documented hand invocation. A lockfile or abstract socket is the fix.
+  LOTTO-0003 §6.
+  (j) `Watch.snapshot()` calls `append_new()` per message, so a catch-up
+  re-reads and re-parses the whole 210 KB dump once per accepted message -
+  543 times on this phone, ~114 MB inside the measured 21 seconds.
+  Batching the snapshot into one `append_new()` makes it one read. The
+  per-message shape exists because the same function serves the signal
+  path, where one message is all there is. LOTTO-0003 §10.
+  (k) When the server is stopped, the new-ticket notification says to use
+  "Refresh results now" - but `tray.py::sync()` DISABLES that menu item
+  while the server is stopped, so the instruction points at something the
+  user cannot click. Found by a review lane reading past the document into
+  the code. The wording or the enablement has to give. LOTTO-0003 §4.7.
+  (l) `watch_sms.py` holds its D-Bus proxy from start-up, so if KDE
+  Connect restarts the watcher stays alive and stops hearing anything,
+  silently - quitting and reopening the tray is the only fix today. Filed
+  here rather than left only in LOTTO-0003 §9, which is where it was
+  recorded as out of scope.
 
 - ✅ **LOTTO-0026** A feed-side rename of `MATCH n` scores every line as a loss.
   Kind: fix. Source: in-session-2026-08-03; approach approved by the user
