@@ -776,6 +776,39 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   those four archive-era draws - a second site, since the official API
   does not reach back. That is a new dependency and is the user's call;
   nothing further can be settled offline.
+  Second source fetched (2026-08-13), and it CLEARS the archive rather
+  than convicting it. The previous note named the archive era as the lead
+  because nothing could cross-check it; that lead is now dead.
+  Two archive-era draws were checked against sites the project does not
+  scrape (`thesouthafrican.com`, `za.lottonumbers.com`; the archive is
+  `za.national-lottery.com`). Both agree EXACTLY with
+  `archive_results.json` - all three Lotto tiers, six main numbers and the
+  bonus ball, on 2025-10-01 and 2025-09-24. The stored results are right.
+  A wrong turn, recorded because the correction is the useful part: a
+  range check over all 1,431 stored draws reported 133 Lotto draws
+  carrying numbers of 53-58, which looked like archive corruption
+  confined to the Ithuba era and ending exactly at the 2026-06-01
+  handover. It is not corruption - the independent source shows the same
+  values, and lottonumbers.com states 58 as the highest number drawn in
+  that period. The premise "SA Lotto is 6/52" was the error, not the
+  data. **Do not add a 1-52 range assertion anywhere**: it would fail on
+  133 real draws.
+  So five causes are now eliminated (division table, date offset, archive
+  parser/store, ticket board parse, results data itself), plus a sixth
+  checked here: no purchase SMS names more than one game, so a payout
+  cannot be for a second game bought in the same transaction - all 561
+  carry exactly one `Played R...` line.
+  What that leaves is a conclusion about the DOMAIN, not the code: a
+  payout SMS is not always attributable to a computed win. The traced
+  ticket reaches no paying division against numbers now verified twice,
+  and was paid R10.50 the next morning anyway. Consequences for the
+  build, which are the point of this item:
+  - an unexplained payout is its OWN category on the page, beside
+    "app says won" and "bank paid" - never evidence that scoring is
+    broken, and never silently dropped.
+  - the 15 refs where the app computes LOW remain unexplained and are the
+    better lead now, being a difference in AMOUNT on tickets that did win
+    - a pricing question rather than a matching one.
 
 - ✅ [LOTTO-0030] **The import filter matched game names, so it excluded every payout SMS.**
   **Layman:** The command that copies lottery texts off the phone only looked for messages naming a game. The bank's "you won" texts don't name one, so 149 of them were skipped every time. Now they come across.
