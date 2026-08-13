@@ -708,6 +708,43 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   remaining prerequisite is mechanical, not a decision: re-run the widened
   adb import over USB.** Until that happens `lotto_sms_raw.txt` holds the old
   575 records and no payouts, so there is nothing on disk to parse.
+  Progress (2026-08-13): step 2 measured. The join WORKS and the
+  reconciliation is worth building - it already found that scoring
+  under-counts real money.
+  Decision taken by the user 2026-08-13, and it settles what this item
+  builds: when a payout SMS and the computed score disagree, the
+  disagreement is FLAGGED LOUDLY - both figures shown - never resolved in
+  the SMS's favour. A scoring bug that hides is the failure this project
+  exists to prevent, and the measurement below is what that decision buys.
+  Measured against the 953-record dump (368 payout messages parse, 224
+  distinct refs, R8,312.70 paid lifetime):
+  - ref is a clean join key: 561 tickets, 561 distinct refs, 223 of 224
+    paid refs match a ticket. One paid ref has NO purchase SMS at all.
+  - 77 refs carry more than one payout, so any design must sum per ref
+    rather than expect one payment per ticket.
+  - computed lifetime wins: R3,323.00 over 77 refs. Against the bank:
+    60 refs agree exactly, 17 differ (15 of them computed LOW, by R315.50
+    in total; 2 high by R11.40), and 147 refs were paid where the app
+    found no win at all.
+  - 142 of those 147 involve an entry nothing can score, so the silence is
+    correct and is the uncheckable-is-not-a-loss rule working. FOUR are
+    fully scorable and were still missed: R65.40, every one of them Lotto
+    entered in all three tiers.
+  - ZERO refs where the app claims a win the bank never paid. It errs
+    downward only.
+  Lead, not a conclusion: all four outright misses and 16 of the 17 amount
+  disagreements are archive-era (pre-2026-06-01), which is exactly the era
+  `tools/verify_sources.py` cannot cross-check because the official API
+  does not reach back that far. The API era has only 7 paid refs (6 agree,
+  1 differs), too few to clear it. Traced one miss fully - a 5-board
+  single-draw ticket, paid R10.50 the morning after the draw - and no
+  board reaches a paying division in ANY of its three pools, so either the
+  stored archive numbers for that draw are wrong or the prize came from
+  something this model does not represent. `paying_combinations()` was
+  ruled out: the division table is complete and plain MATCH 2 correctly
+  does not pay.
+  Next step is therefore to check stored archive draw numbers for those
+  four draws against an independent source, before building anything.
 
 - ✅ [LOTTO-0030] **The import filter matched game names, so it excluded every payout SMS.**
   **Layman:** The command that copies lottery texts off the phone only looked for messages naming a game. The bank's "you won" texts don't name one, so 149 of them were skipped every time. Now they come across.
