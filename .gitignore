@@ -15,5 +15,9 @@ archive_results.json
 # by-product of one phone and means nothing on another.
 sms_threads.json
 
+# The sidecar whose flock serialises two watchers appending to the dump
+# (LOTTO-0007 (i), INV-38). Always empty - it is held, never written.
+*.lock
+
 __pycache__/
 *.pyc

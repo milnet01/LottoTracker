@@ -124,6 +124,10 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Catching up reads the message file once instead of once per message** (LOTTO-0007)
+  543 messages took 543 full re-reads of the file (~114 MB) on every start;
+  they now take one.
+
 - **The SMS import now excludes prepaid-electricity messages** (LOTTO-0030)
   The widened `VAS00` clause turned out to catch more than lottery: VAS is
   the bank's value-added services platform, and prepaid electricity carries
@@ -219,6 +223,23 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importing the derivation it is testing.
 
 ### Fixed
+
+- **The watcher no longer dies when the phone link is merely not ready yet** (LOTTO-0007)
+  Starting the tray at login, before the phone has re-paired, used to kill
+  the collector outright. It now waits and retries.
+
+- **The new-ticket notice no longer points at a menu item you cannot click** (LOTTO-0007)
+  With the server stopped it said to use “Refresh results now”, which the
+  tray greys out in that very state. It now says “Start server”.
+
+- **Two watchers appending at once can no longer lose a message or repeat a row** (LOTTO-0007)
+  The read and the append are now one locked step. Measured without the
+  lock: 105 of 120 row numbers collided.
+
+- **A KDE Connect restart no longer silently stops new tickets being caught up** (LOTTO-0007)
+  Killing the phone-link daemon used to leave the watcher alive but unable
+  to ask the phone for anything, and nothing said so. It now notices, brings
+  the daemon back itself, and re-runs the catch-up.
 
 - **A ticket naming the rebranded game was silently never scored** (LOTTO-0031)
   `tickets.py::GAME_MAP` had no entry for the June-2026 rebrand names, so

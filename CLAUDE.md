@@ -67,9 +67,11 @@ python3 tools/verify_page.py      # INV-12..INV-21, INV-23..INV-25 and INV-27..I
                                   # spawn-and-reap lifecycle, what it reports after a
                                   # refresh, the port it binds, the managed (no-icon)
                                   # run, and the results transport underneath them
-python3 tools/verify_watch.py     # INV-32..INV-36: the cable-free SMS path writes
+python3 tools/verify_watch.py     # INV-32..INV-39: the cable-free SMS path writes
                                   # what adb would, never twice, and its child is
-                                  # spawned, observed and reaped
+                                  # spawned, observed and reaped; two watchers
+                                  # appending at once collide never; and a KDE
+                                  # Connect restart is read as one
 ```
 
 `verify_page.py` is the one verifier that needs PySide6 installed — its
@@ -125,6 +127,18 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   LOTTO-0001 §4.1's adb `WHERE` clause re-expressed, and `verify_watch.py`
   checks the two against SQLite. `find_lotto_sms.py` is a different tool with a
   deliberately wider list: it prints, this writes. Do not merge them.
+  **A KDE Connect restart breaks it in HALF, and the half that survives is the
+  one you would expect to lose** — measured 2026-08-15, the second D-Bus
+  assumption this project got wrong by recall rather than by measuring. The
+  held proxy dies (`ServiceUnknown`, because dbus-python pins a well-known name
+  to the unique connection it resolved at `get_object()` time), while the
+  signal match rule survives untouched (it carries an interface and a member
+  and no sender). So the watcher does not go deaf — it goes **mute**, and since
+  steady state makes no call to the phone, the loss is invisible until a
+  catch-up that never ran is noticed. **And nothing brings the daemon back:**
+  the watcher must reach for it, because the bus name is D-Bus *activatable* and
+  the act of reaching starts it. `RETRY_EVERY` is 60s, not 2s, so it cannot
+  resurrect a daemon the user stopped on purpose. LOTTO-0003 §4.8.
 - **`tickets.py`** is the only bank-specific file. `rows()` is the dump
   format's one reader, and both writers depend on that staying true — a second
   reader that drifts would duplicate every record it failed to recognise.
@@ -165,6 +179,12 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   *writing*, behind `POST /settings`'s lock. One reader, three callers — do not
   add a second, however local it looks: two readers that agree today pass every
   check and diverge later (LOTTO-0013 §4.1).
+  It also owns `new_ticket_notice()`, for the same reason `refresh_message()`
+  lives here: **a wording decision inside `tray.py` cannot be checked without
+  constructing a `QSystemTrayIcon`**, and the project has no Qt-constructing
+  test. Every branch must name a menu item that state leaves *enabled* — the
+  one that did not sent the user to a greyed-out *Refresh results now*
+  (LOTTO-0003 §4.7).
   **`tray.py`** is the only file that imports PySide6, and the only file that
   reads `LWSM_MANAGED` — `=1` means a process manager started it, so it runs
   with no icon and, above all, no path that stops the server (INV-25). It is a

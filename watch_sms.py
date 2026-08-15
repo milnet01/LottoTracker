@@ -23,6 +23,7 @@ Nothing here prints a message body. A body is real personal data (CLAUDE.md
 autostarted session is the desktop's log.
 """
 
+import fcntl
 import json
 import os
 import re
@@ -74,6 +75,20 @@ def format_row(index, address, date_ms, body):
     return f"Row: {index} address={address}, date={int(date_ms)}, body={body}\n"
 
 
+def lock_path(path=DUMP):
+    """The sidecar file whose flock serialises writers of `path`. INV-38.
+
+    A SIDECAR rather than the dump itself, and that is not a style choice.
+    Locking the dump means opening it, and opening it in append mode CREATES
+    it - while `serve.py::build()` keys its "no messages have been imported"
+    notice on the dump's EXISTENCE, never its emptiness. A lock that created
+    an empty dump would replace that notice with an empty results table, which
+    is "no data" reading as "did not win": the one failure this project exists
+    to prevent (CLAUDE.md, LOTTO-0009 INV-26).
+    """
+    return path + ".lock"
+
+
 def append_new(messages, path=DUMP):
     """Append the wanted messages the dump does not already carry.
 
@@ -82,39 +97,53 @@ def append_new(messages, path=DUMP):
     this is the normal path and not an edge case. Measured 2026-08-13: the
     key is unique across all 951 records, and adb's own re-pull relies on the
     same pair. INV-34.
+
+    The read and the append are ONE critical section, held under an exclusive
+    flock on the sidecar. De-duplication is against the file's contents at
+    READ time, so without the lock two watchers that both read before either
+    wrote would both append the same message - and their row indices would
+    collide too, since each takes max(existing) + 1. The case is reachable
+    rather than theoretical: `supervise.SmsWatch.start()` guards only against
+    its own second spawn, and `python3 watch_sms.py` is a documented hand
+    invocation. INV-38.
     """
-    try:
-        raw = open(path, errors="replace").read()
-    except FileNotFoundError:
-        raw = ""
-    import tickets  # here, not at module scope: a missing dump must not stop
+    with open(lock_path(path), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            raw = open(path, errors="replace").read()
+        except FileNotFoundError:
+            raw = ""
+        import tickets  # here, not at module scope: a missing dump must not
+        # stop this module being imported by a verifier with no project state.
 
-    seen = {(date_ms, body) for _a, date_ms, body in tickets.rows(raw)}
-    index = max((int(m.group(1)) for m in re.finditer(
-        r"^Row: (\d+) address=", raw, flags=re.M)), default=-1) + 1
+        seen = {(date_ms, body) for _a, date_ms, body in tickets.rows(raw)}
+        index = max((int(m.group(1)) for m in re.finditer(
+            r"^Row: (\d+) address=", raw, flags=re.M)), default=-1) + 1
 
-    out = []
-    for address, date_ms, body in messages:
-        row = format_row(index + len(out), address, date_ms, body)
-        # Read the record back through the dump's own reader before accepting
-        # it: what is de-duplicated is then exactly what will later be scored,
-        # and a record the reader cannot see (a negative date, say) is dropped
-        # here rather than written and silently ignored forever.
-        parsed = tickets.rows(row)
-        if not parsed:
-            continue
-        _a, key_date, key_body = parsed[0]
-        if not wanted(key_body) or (key_date, key_body) in seen:
-            continue
-        seen.add((key_date, key_body))
-        out.append(row)
+        out = []
+        for address, date_ms, body in messages:
+            row = format_row(index + len(out), address, date_ms, body)
+            # Read the record back through the dump's own reader before
+            # accepting it: what is de-duplicated is then exactly what will
+            # later be scored, and a record the reader cannot see (a negative
+            # date, say) is dropped here rather than written and silently
+            # ignored forever.
+            parsed = tickets.rows(row)
+            if not parsed:
+                continue
+            _a, key_date, key_body = parsed[0]
+            if not wanted(key_body) or (key_date, key_body) in seen:
+                continue
+            seen.add((key_date, key_body))
+            out.append(row)
 
-    if out:
-        # One append, opened and closed around it. serve.py may read the dump
-        # at any moment (its rebuild is on a timer the user can also click),
-        # and a partial record is a record tickets.rows() drops silently.
-        with open(path, "a") as fh:
-            fh.write("".join(out))
+        if out:
+            # One append, opened and closed around it. serve.py may read the
+            # dump at any moment (its rebuild is on a timer the user can also
+            # click), and a partial record is a record tickets.rows() drops
+            # silently.
+            with open(path, "a") as fh:
+                fh.write("".join(out))
     return len(out)
 
 
@@ -149,8 +178,14 @@ def write_threads(ids, path=THREADS):
 #   6 threadID, 7 uID, 8 subID, 9 attachments
 BODY, ADDRS, DATE, THREAD = 1, 2, 3, 6
 
+# The daemon's well-known bus name, watched so a restart can be recovered from
+# rather than survived by half (INV-39).
+KDECONNECT = "org.kde.kdeconnect"
+
 QUIET = 8.0     # seconds of silence that count as "the phone has finished"
 CATCHUP_CAP = 1200.0   # ceiling on the whole catch-up, in case it never quiets
+RETRY_EVERY = 60.0     # how often to reach for KDE Connect once it has gone
+RETRY_GRACE = 5.0      # and how long to leave it alone straight after it went
 
 
 def decode(msg):
@@ -174,6 +209,30 @@ def connect():
     import find_lotto_sms  # imports dbus; one device-discovery implementation
 
     return find_lotto_sms.conversations_iface()
+
+
+def daemon_change(name, old_owner, new_owner):
+    """One NameOwnerChanged, read as what it means here: "back", "gone", None.
+
+    Measured 2026-08-15 by killing kdeconnectd under a running watcher, and
+    the result SPLITS - which is why this is not "the watcher goes deaf":
+
+      * the held conversations proxy DIES. Every later call on it raises
+        `ServiceUnknown: The name is not activatable`, because dbus-python
+        resolves a well-known name to a unique connection at get_object()
+        time and stays pinned to it.
+      * the signal match rule SURVIVES. It carries an interface and a member
+        and no sender, so it matches whoever emits next: 69 signals from the
+        restarted daemon reached a receiver registered before the restart.
+
+    So live arrivals keep landing, and what is lost is everything that CALLS
+    the phone - the catch-up and the history requests. Steady state makes no
+    such call, which is exactly why the loss was silent: it shows up only as a
+    backlog that never arrives. INV-39.
+    """
+    if str(name) != KDECONNECT:
+        return None
+    return "back" if str(new_owner) else "gone"
 
 
 def pull_targets(snapshot, known, high_water):
@@ -258,23 +317,59 @@ class Watch:
         self.last_signal = time.monotonic()
         self.consume(msg)
 
-    def consume(self, msg):
-        """Take one message, wherever it came from: a signal or the snapshot."""
-        try:
-            address, date_ms, body, thread = decode(msg)
-        except (IndexError, TypeError, ValueError):
-            return  # a struct we do not recognise is not a reason to die
+    def accept(self, decoded):
+        """Filter one decoded message and remember its thread. No dump I/O.
+
+        Splitting the filter from the WRITE is what lets snapshot() batch: the
+        caller decides when to persist, and the thread set is updated here but
+        deliberately not saved, for the same reason.
+        """
+        address, date_ms, body, thread = decoded
         if not wanted(body):
-            return
-        if thread not in self.threads:
-            self.threads.add(thread)
+            return None
+        self.threads.add(thread)
+        return (address, date_ms, body)
+
+    def record(self, batch, grew):
+        """Persist what accept() collected: ONE append, one thread-state write.
+
+        `grew` says whether the thread set changed, so an unchanged set is not
+        rewritten. This is LOTTO-0007 (j)'s fix in one line: `append_new()`
+        re-reads and re-parses the whole 210 KB dump on every call, so calling
+        it once per accepted message made a catch-up ~543 reads (~114 MB)
+        against this phone instead of one. LOTTO-0003 §10.
+
+        Nothing is written until the batch is complete, which also means a
+        watcher killed mid-snapshot leaves the thread state claiming no
+        knowledge of threads whose messages were never appended. The next run
+        redoes the snapshot, which is idempotent, so that is the safe half.
+        """
+        if grew:
             write_threads(self.threads, self.threads_path)
-        n = append_new([(address, date_ms, body)], self.path)
+        if not batch:
+            return 0
+        n = append_new(batch, self.path)
         self.written += n
         if n:
             # The count, never the message (see the module docstring).
             print(f"+{n} new lottery SMS (total this run: {self.written})",
                   flush=True)
+        return n
+
+    def consume(self, msg):
+        """Take one message from a SIGNAL and write it straight away.
+
+        The signal path carries one message, so there is nothing to batch and
+        delaying it would only postpone the tray's notice. The snapshot path
+        is the one that batches - see snapshot().
+        """
+        try:
+            decoded = decode(msg)
+        except (IndexError, TypeError, ValueError):
+            return  # a struct we do not recognise is not a reason to die
+        before = len(self.threads)
+        got = self.accept(decoded)
+        self.record([got] if got else [], len(self.threads) != before)
 
     def idle_for(self):
         return time.monotonic() - self.last_signal
@@ -287,15 +382,23 @@ class Watch:
         ticket in the ordinary case: a purchase SMS is the newest message in
         its thread, so the snapshot alone carries it and no history request is
         needed at all.
+
+        ONE append for the whole snapshot rather than one per message, which
+        is what record() exists for (LOTTO-0003 §10).
         """
-        rows = []
+        rows, batch = [], []
+        before = len(self.threads)
         for msg in conv.activeConversations():
             try:
-                _address, date_ms, body, thread = decode(msg)
+                decoded = decode(msg)
             except (IndexError, TypeError, ValueError):
                 continue
+            _address, date_ms, body, thread = decoded
             rows.append((date_ms, thread, wanted(body)))
-            self.consume(msg)
+            got = self.accept(decoded)
+            if got:
+                batch.append(got)
+        self.record(batch, len(self.threads) != before)
         return len(rows), rows
 
     def pull_history(self, conv, ids):
@@ -323,7 +426,26 @@ def run(once=False, path=DUMP, threads_path=THREADS):
 
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     watch = Watch(path, threads_path)
-    conv = connect()
+
+    # A daemon that is not ready is NOT a watcher that cannot run, and the two
+    # were the same thing until 2026-08-15. `connect()` needs KDE Connect's
+    # DEVICE object, which appears only once the phone re-pairs - so starting
+    # the tray at login, before the phone is back, killed the watcher outright
+    # and the user got one notification and no collector. That is transient and
+    # belongs in the retry loop below. An ImportError is the other thing
+    # entirely - dbus-python or KDE Connect is absent and nothing will ever
+    # work - and it is re-raised so main() still names the cable (INV-36).
+    try:
+        conv = connect()
+    except ImportError:
+        raise
+    except Exception as err:  # noqa: BLE001 - transient by definition
+        conv = None
+        print(f"KDE Connect is not answering yet ({err.__class__.__name__}) - "
+              "waiting for it.", flush=True)
+
+    state = {"phase": "discovering" if conv else "waiting", "count": -1,
+             "still": 0, "retry_at": 0.0, "conv": conv}
 
     bus = dbus.SessionBus()
     for signal in ("conversationCreated", "conversationUpdated"):
@@ -333,31 +455,102 @@ def run(once=False, path=DUMP, threads_path=THREADS):
             dbus_interface="org.kde.kdeconnect.device.conversations",
         )
 
+    def begin_catchup():
+        """Start - or RESTART - the discover-then-catch-up cycle.
+
+        Everything the cycle is bounded by is re-read here rather than closed
+        over once, and that is what makes it re-runnable after a reconnect:
+        the high-water mark has moved (the watcher wrote while the daemon was
+        up), the known-thread set has grown, and `pulled` has to forget what
+        it asked the now-dead proxy for or the replacement asks for nothing.
+        """
+        state["conv"].requestAllConversationThreads()
+        state["phase"] = "discovering"
+        state["count"] = -1
+        state["still"] = 0
+        state["started"] = time.monotonic()
+        state["water"] = high_water(path)
+        state["known"] = set(watch.threads)
+        watch.pulled.clear()
+
+    def owner_changed(name, old_owner, new_owner):
+        """KDE Connect stopped or came back (INV-39, LOTTO-0007 (l))."""
+        change = daemon_change(name, old_owner, new_owner)
+        if change == "gone":
+            state["phase"] = "waiting"
+            state["retry_at"] = time.monotonic() + RETRY_GRACE
+            print("KDE Connect stopped - no new tickets will be collected "
+                  "until it is back.", flush=True)
+        elif change == "back":
+            # Not a reconnect on its own - the proxy is still the dead one.
+            # It only says the next attempt need not wait out the interval.
+            state["phase"] = "waiting"
+            state["retry_at"] = 0.0
+
+    bus.add_signal_receiver(
+        owner_changed,
+        signal_name="NameOwnerChanged",
+        dbus_interface="org.freedesktop.DBus",
+        arg0=KDECONNECT,
+    )
+
     loop = GLib.MainLoop()
-    started = time.monotonic()
-    water = high_water(path)
-    known = set(watch.threads)
-    conv.requestAllConversationThreads()
-    state = {"phase": "discovering", "count": -1, "still": 0}
+    if conv:
+        begin_catchup()
 
     def tick():
-        """Two seconds at a time: fill, then catch up, then idle."""
+        """Two seconds at a time: reconnect, fill, catch up, then idle."""
+        if state["phase"] == "waiting":
+            # One state, not two: "the daemon went away" and "the daemon came
+            # back" both mean "try to connect again", and NameOwnerChanged is
+            # only what makes the next attempt immediate.
+            if time.monotonic() < state["retry_at"]:
+                return True
+            try:
+                state["conv"] = connect()
+                begin_catchup()
+            except Exception:  # noqa: BLE001 - any failure means "not yet"
+                # Reaching for it is also what BRINGS IT BACK: the bus name is
+                # D-Bus activatable, so the attempt starts the daemon. Measured
+                # 2026-08-15 - NOTHING else did. A watcher that only listened
+                # for it to return sat here indefinitely, which is the same
+                # silence this handler exists to end. Slowly, though: the same
+                # call every two seconds would resurrect a daemon the user
+                # stopped on purpose. Its DEVICE object also appears only once
+                # the phone re-pairs, so an early failure is the normal case
+                # rather than the answer.
+                state["retry_at"] = time.monotonic() + RETRY_EVERY
+                return True
+            print("KDE Connect is back - catching up on what it missed.",
+                  flush=True)
         if state["phase"] == "discovering":
             # The completion measure: the snapshot has stopped GROWING. A cold
             # daemon fills it over ~12 minutes; a warm one is already complete,
             # and both end here without a guessed sleep. The snapshot is read
             # for its length only until it settles - consuming a half-filled
             # list would be harmless but pointless.
-            count = len(conv.activeConversations())
-            state["still"] = state["still"] + 1 if count == state["count"] else 0
-            state["count"] = count
-            if state["still"] * 2 >= QUIET or time.monotonic() - started > CATCHUP_CAP:
-                seen, rows = watch.snapshot(conv)
-                asked = watch.pull_history(conv, pull_targets(rows, known, water))
-                print(f"catch-up: {seen} threads, {asked} asked for history, "
-                      f"{watch.written} written", flush=True)
-                state["phase"] = "catching-up"
-                watch.last_signal = time.monotonic()
+            try:
+                count = len(state["conv"].activeConversations())
+                state["still"] = (state["still"] + 1
+                                  if count == state["count"] else 0)
+                state["count"] = count
+                if (state["still"] * 2 >= QUIET
+                        or time.monotonic() - state["started"] > CATCHUP_CAP):
+                    seen, rows = watch.snapshot(state["conv"])
+                    asked = watch.pull_history(
+                        state["conv"],
+                        pull_targets(rows, state["known"], state["water"]))
+                    print(f"catch-up: {seen} threads, {asked} asked for "
+                          f"history, {watch.written} written", flush=True)
+                    state["phase"] = "catching-up"
+                    watch.last_signal = time.monotonic()
+            except dbus.DBusException:
+                # The daemon went away mid-discovery. NameOwnerChanged will
+                # bring us back; what matters here is returning True, because
+                # GLib REMOVES a timeout source whose callback raised - an
+                # escaping exception would stop the watcher permanently, which
+                # is a worse version of the defect this handler exists to fix.
+                state["phase"] = "waiting"
             return True
         if once and watch.idle_for() >= QUIET:
             loop.quit()
@@ -372,6 +565,12 @@ def run(once=False, path=DUMP, threads_path=THREADS):
         loop.run()
     except KeyboardInterrupt:
         pass
+    if once and state["phase"] == "waiting":
+        # --once is a catch-up, so ending it still waiting means the catch-up
+        # did not happen. Exiting 0 here would be the project's cardinal
+        # failure by the shortest road: nothing collected, reported as fine.
+        raise RuntimeError("KDE Connect never answered, so nothing was "
+                           "caught up. Import over the cable meanwhile.")
     return watch.written
 
 

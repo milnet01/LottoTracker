@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LOTTO-0003 INV-32..INV-36: the cable-free SMS path writes what adb would.
+"""LOTTO-0003 INV-32..INV-39: the cable-free SMS path writes what adb would.
 
 `watch_sms.py` is the second writer of `lotto_sms_raw.txt`. The dump has always
 had exactly one producer, and the invariants this file checks are the ones that
@@ -10,6 +10,9 @@ statement used to make for free:
   INV-34  a message already in the dump is never written a second time
   INV-35  the thread state that makes catch-up possible survives a corrupt file
   INV-36  the watcher child is spawned, observed and reaped like the server
+  INV-37  what the tray says about an arrival names an action the user can take
+  INV-38  two watchers appending at once lose nothing and collide never
+  INV-39  a KDE Connect restart is noticed rather than survived by half
 
 INV-32 is checked against SQLite rather than against a second transcription of
 the WHERE clause in Python. The clause below is copied from LOTTO-0001 §4.1, but
@@ -30,6 +33,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -37,7 +41,8 @@ import supervise  # noqa: E402
 import tickets  # noqa: E402
 import watch_sms  # noqa: E402
 
-DUMP = os.path.join(os.path.dirname(__file__), "..", "lotto_sms_raw.txt")
+ROOT = os.path.join(os.path.dirname(__file__), "..")
+DUMP = os.path.join(ROOT, "lotto_sms_raw.txt")
 
 # LOTTO-0001 §4.1's adb clause, verbatim in its own language.
 WHERE = (
@@ -301,6 +306,190 @@ def absent_dbus_is_named():
     return 0
 
 
+def concurrent_appends_serialise():
+    """INV-38: two watchers appending at once lose nothing and collide never.
+
+    A real race rather than a mock. N processes call append_new() on one dump
+    at the same instant, each with its own messages. De-duplication is against
+    the file's contents at READ time and the row index is max(existing) + 1, so
+    without the lock every process that reads before any of them writes starts
+    from the same index: records are lost and indices repeat. The workers
+    synchronise on a wall-clock deadline because process start-up jitter alone
+    would serialise them and the case would pass over a race it never ran.
+    """
+    bad = 0
+    workers, per = 8, 15
+    worker = (
+        "import sys, time\n"
+        f"sys.path.insert(0, {ROOT!r})\n"
+        "import watch_sms\n"
+        "base, path, go = int(sys.argv[1]), sys.argv[2], float(sys.argv[3])\n"
+        f"msgs = [('Std Bank', 1700000000000 + base * 1000 + i, {BODIES[0]!r})\n"
+        f"        for i in range({per})]\n"
+        "time.sleep(max(0.0, go - time.time()))\n"
+        "watch_sms.append_new(msgs, path)\n"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "dump.txt")
+        go = time.time() + 3.0
+        running = [
+            subprocess.Popen([sys.executable, "-c", worker, str(w), path,
+                              str(go)])
+            for w in range(workers)
+        ]
+        for proc in running:
+            proc.wait(timeout=60)
+        raw = open(path, errors="replace").read()
+
+    records = tickets.rows(raw)
+    indices = [int(m.group(1)) for m in
+               re.finditer(r"^Row: (\d+) address=", raw, flags=re.M)]
+    want = workers * per
+    if len(records) != want:
+        print(f"  CONCURRENT: {len(records)} records survived, expected {want}")
+        bad += 1
+    if len(set(indices)) != len(indices):
+        dupes = len(indices) - len(set(indices))
+        print(f"  CONCURRENT: {dupes} row index(es) collided")
+        bad += 1
+    if sorted(indices) != list(range(len(indices))):
+        print("  CONCURRENT: row indices are not a gapless 0..n-1 run")
+        bad += 1
+    # Anti-vacuity: a worker that failed to start writes nothing, and a case
+    # comparing zero against zero would report that as agreement.
+    if not records:
+        print("  CONCURRENT: nothing was written at all - the race never ran")
+        bad += 1
+    return bad
+
+
+def lock_never_creates_the_dump():
+    """INV-38: taking the lock must not bring the dump into existence.
+
+    `serve.py::build()` keys its "no messages have been imported" notice on the
+    dump's EXISTENCE, never its emptiness. So a lock taken on the dump itself -
+    which means opening it, which in append mode CREATES it - would replace
+    that notice with an empty results table, and "no data" would read as "did
+    not win": the failure this project exists to prevent (INV-26). The lock is
+    a sidecar for that reason and this case is what holds it there.
+    """
+    bad = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "dump.txt")
+        if watch_sms.lock_path(path) == path:
+            print("  LOCK: the lock path IS the dump path")
+            bad += 1
+        if watch_sms.append_new([], path):
+            print("  LOCK: an empty batch reported writing something")
+            bad += 1
+        if os.path.exists(path):
+            print("  LOCK: appending nothing CREATED the dump")
+            bad += 1
+        # A batch the filter rejects is the same case reached by another road.
+        if watch_sms.append_new([("Std Bank", 1767936736700, BODIES[-1])], path):
+            print("  LOCK: a filtered-out message was written")
+            bad += 1
+        if os.path.exists(path):
+            print("  LOCK: a filtered-out message CREATED the dump")
+            bad += 1
+        # And the dump IS created once there is something to put in it.
+        if not watch_sms.append_new([("Std Bank", 1767936736701, BODIES[0])],
+                                    path):
+            print("  LOCK: a wanted message was not written")
+            bad += 1
+        if not os.path.exists(path):
+            print("  LOCK: a wanted message did not create the dump")
+            bad += 1
+    return bad
+
+
+def daemon_restart_is_read():
+    """INV-39: a KDE Connect restart is read as a restart.
+
+    Measured 2026-08-15 by killing kdeconnectd under a running watcher, and the
+    result splits: the HELD conversations proxy DIES (`ServiceUnknown: The name
+    is not activatable`) while the signal match rule SURVIVES - 69 signals from
+    the restarted daemon reached a receiver registered before the restart,
+    because the rule carries an interface and a member and no sender.
+
+    So the watcher never went deaf; it went MUTE. Live arrivals kept landing
+    and everything that CALLS the phone failed, and since steady state makes no
+    such call the loss was silent - a backlog that simply never arrives.
+
+    This case covers the READING of the signal only. That the watcher then
+    reconnects and re-runs its catch-up needs a live daemon and is checked by
+    running it, not by a case - LOTTO-0003 §11 says so rather than implying
+    coverage this file does not have.
+    """
+    bad = 0
+    cases = [
+        ("came back", (watch_sms.KDECONNECT, "", ":1.404"), "back"),
+        ("went away", (watch_sms.KDECONNECT, ":1.404", ""), "gone"),
+        ("replaced in place", (watch_sms.KDECONNECT, ":1.404", ":1.900"),
+         "back"),
+        ("a different service", ("org.kde.somethingelse", "", ":1.1"), None),
+    ]
+    for name, args, want in cases:
+        got = watch_sms.daemon_change(*args)
+        if got != want:
+            print(f"  RESTART {name}: read as {got!r}, expected {want!r}")
+            bad += 1
+    return bad
+
+
+def notice_names_a_live_action():
+    """INV-37: the new-ticket notice names something the user can click.
+
+    The stopped-server branch used to say *Refresh results now*, and
+    `tray.sync()` DISABLES that item while the server is stopped - so the one
+    instruction the user was given pointed at a greyed-out menu entry
+    (LOTTO-0007 (k)).
+
+    Which items are disabled in that state is read out of tray.py rather than
+    repeated here, so re-enabling one, or renaming it, moves this case with it
+    instead of leaving the notice quietly wrong again. A scrape by regex over
+    the whole file, so it is not anchored to any position in it.
+    """
+    bad = 0
+    src = open(os.path.join(ROOT, "tray.py"), errors="replace").read()
+
+    label_of = {}
+    for pattern in (r"self\.(act_\w+)\s*=\s*menu\.addAction\((.*?)\)",
+                    r"self\.(act_\w+)\.setText\((.*?)\)"):
+        for var, call in re.findall(pattern, src, flags=re.S):
+            label_of.setdefault(var, set()).update(
+                re.findall(r'"([^"]+)"', call))
+    # Everything gated on the server running is unavailable while it is not.
+    gated = set(re.findall(r"self\.(act_\w+)\.setEnabled\(on\)", src))
+    dead = {lab for var in gated for lab in label_of.get(var, ())}
+    live = {lab for var, labs in label_of.items() if var not in gated
+            for lab in labs}
+
+    stopped = supervise.new_ticket_notice(False, False)
+    for lab in sorted(dead):
+        if lab in stopped:
+            print(f"  NOTICE: the stopped-server notice names {lab!r}, "
+                  "which that state disables")
+            bad += 1
+    if not any(lab in stopped for lab in live):
+        print(f"  NOTICE: it names no available menu item at all: {stopped!r}")
+        bad += 1
+    # Three states, three sentences: a refresh that is running, one that will
+    # not run, and one about to start must not collapse into one string.
+    said = {supervise.new_ticket_notice(True, False),
+            supervise.new_ticket_notice(True, True),
+            stopped}
+    if len(said) != 3:
+        print(f"  NOTICE: {3 - len(said)} state(s) share a sentence")
+        bad += 1
+    # Anti-vacuity: read nothing out of tray.py and every check above passes.
+    if not dead or not live:
+        print(f"  NOTICE: scraped {len(dead)} disabled and {len(live)} live "
+              "labels - the check passed over nothing")
+        bad += 1
+    return bad
+
+
 CASES = (
     ("filter_matches_adb", filter_matches_adb),
     ("round_trip", round_trip),
@@ -309,6 +498,10 @@ CASES = (
     ("catch_up_targets", catch_up_targets),
     ("watcher_lifecycle", watcher_lifecycle),
     ("absent_dbus_is_named", absent_dbus_is_named),
+    ("concurrent_appends_serialise", concurrent_appends_serialise),
+    ("lock_never_creates_the_dump", lock_never_creates_the_dump),
+    ("daemon_restart_is_read", daemon_restart_is_read),
+    ("notice_names_a_live_action", notice_names_a_live_action),
 )
 
 

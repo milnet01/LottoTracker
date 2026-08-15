@@ -101,6 +101,39 @@ def refresh_message(outcome, found=None):
     )
 
 
+def new_ticket_notice(running, busy):
+    """What the tray says when the dump grew. LOTTO-0003 §4.7, INV-37.
+
+    Here rather than in tray.py for refresh_message()'s reason: the wording is
+    a decision, the tray is the only place a decision cannot be checked without
+    constructing a QSystemTrayIcon, and LOTTO-0003 §11 records INV-37 as
+    stated-but-unchecked because of exactly that. Moving the decision out makes
+    it checkable from a headless script; the tray keeps only the call.
+
+    Every branch has to name an action the user can actually take, which is
+    what the stopped-server branch got wrong (LOTTO-0007 (k)): it said to use
+    *Refresh results now*, and `tray.sync()` DISABLES that item while the
+    server is stopped - deliberately, because asking to see a page is not
+    asking to start something (LOTTO-0013). So the item it names had to give,
+    not the enablement. *Start server* IS enabled in that state, and starting
+    the server builds the model, so it does score the new ticket.
+
+    The busy branch is unreachable through `sync()`, which returns early while
+    busy (§4.7). It is kept as a guard against a second caller, and it claims
+    only what is true of any caller: the next refresh will pick the ticket up.
+
+    No ticket data in any branch, for refresh_message()'s reason - a desktop
+    notification may be logged and synced off the machine.
+    """
+    if not running:
+        return ("A new lottery SMS arrived. "
+                "Use “Start server” to score it.")
+    if busy:
+        return ("A new lottery SMS arrived. "
+                "It will be scored on the next refresh.")
+    return "A new lottery SMS arrived — refreshing the page."
+
+
 # --------------------------------------------------------------- settings I/O
 #
 # These live here rather than in serve.py because tray.py needs to READ them and

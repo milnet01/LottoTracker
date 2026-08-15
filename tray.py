@@ -188,14 +188,13 @@ class LottoTray(QSystemTrayIcon):
             self.dump_size = size
             return
         self.dump_size = size
-        if self.busy or not self.sup.is_running():
-            # Never "refreshing" when nothing is: the wording has to survive
-            # the case where the server is stopped (LOTTO-0013 §4.6's rule).
-            self.note("A new lottery SMS arrived. "
-                      "Use “Refresh results now” to score it.")
-            return
-        self.note("A new lottery SMS arrived — refreshing the page.")
-        self.refresh()
+        # Never "refreshing" when nothing is, and never naming a menu item this
+        # state has disabled: supervise.new_ticket_notice() owns both, so the
+        # wording is checkable without a Qt object (LOTTO-0007 (k)).
+        running = self.sup.is_running()
+        self.note(supervise.new_ticket_notice(running, self.busy))
+        if running and not self.busy:
+            self.refresh()
 
     def note(self, body):
         self.showMessage("Lotto Tracker", body, self.running_icon, 5000)

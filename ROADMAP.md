@@ -1136,6 +1136,44 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   silently - quitting and reopening the tray is the only fix today. Filed
   here rather than left only in LOTTO-0003 §9, which is where it was
   recorded as out of scope.
+  Progress (2026-08-15): (i), (j), (k) and (l) are DONE - the four code
+  items LOTTO-0003's review gate surfaced. (b) to (h) remain open.
+  (i) `append_new()` now holds an exclusive flock spanning the read AND the
+  append, so the critical section is the whole of what de-duplication
+  depends on. A single-instance guard was the other candidate and is
+  weaker: it makes a second watcher REFUSE to run, where this makes it
+  CORRECT. The lock is a SIDECAR file, and that is load-bearing rather
+  than tidy - locking the dump means opening the dump, an open in append
+  mode CREATES it, and `serve.py::build()` keys its "nothing has been
+  imported" notice on the dump's EXISTENCE, so a lock on the dump would
+  have turned that notice into an empty results table. Measured with the
+  lock removed: 105 of 120 row indices collided, three runs out of three.
+  (j) `snapshot()` now batches into ONE `append_new()`. Measured after the
+  change: 543 messages produce 1 call and all 543 are still written; it
+  was 543 calls and ~114 MB re-read on every start.
+  (k) The wording gave, not the enablement. The stopped-server notice now
+  names "Start server", which that state leaves enabled and which does
+  score the ticket. The decision moved into
+  `supervise.new_ticket_notice()` so it is checkable without a
+  QSystemTrayIcon - INV-37 was recorded as unchecked for exactly that
+  reason, and now has a case.
+  (l) WAS FILED WRONG, and the correction is the useful half. Measured
+  2026-08-15 by killing kdeconnectd under a running watcher: the held
+  proxy DIES (`ServiceUnknown`) while the signal match rule SURVIVES (69
+  signals still arrived), because the rule carries an interface and a
+  member and no sender. So the watcher never went deaf - it went MUTE.
+  Live arrivals kept landing and only the calls failed, which is exactly
+  why nobody would notice. Second correction: NOTHING brings the daemon
+  back. The watcher has to reach for it, the bus name being D-Bus
+  activatable, every 60s rather than 2s so it cannot resurrect a daemon
+  the user stopped on purpose. A third defect surfaced while testing and
+  is fixed with it: a daemon merely not READY YET killed the watcher at
+  start-up, which is the normal case at login when the tray starts before
+  the phone re-pairs. Observed end to end: catch-up, kill, "stopped",
+  self re-activation, "back", second full catch-up (2328 threads).
+  New invariants INV-38 and INV-39; `tools/verify_watch.py` goes 7 cases
+  to 11, each red-tested. Spec amended at LOTTO-0003 4.7, 4.8 (new), 5,
+  6, 7, 9, 10, 11.
 
 - ✅ **LOTTO-0026** A feed-side rename of `MATCH n` scores every line as a loss.
   Kind: fix. Source: in-session-2026-08-03; approach approved by the user

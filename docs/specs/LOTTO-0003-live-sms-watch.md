@@ -1,6 +1,9 @@
 # LOTTO-0003 — Pick up new tickets as the SMS arrives, with no cable
 
-**Status:** accepted (2026-08-13)
+**Status:** accepted (2026-08-13); amended 2026-08-15 to record what was built
+for the four code items this document's review gate surfaced rather than fixed
+(ROADMAP LOTTO-0007 (i)–(l)). Sections 4.7, 4.8 (new), 5, 6, 7, 9, 10 and 11.
+An amendment recording work already done does not re-arm the gate.
 **Kind:** feature.
 **Source:** ROADMAP LOTTO-0003 (user-request-2026-08-01), reaffirmed
 2026-08-13 ("get the app to a point where I don't have to plug in the cable").
@@ -269,8 +272,22 @@ compares the dump's size against what it was; `watch_sms.py` only ever appends,
 so a bigger file is new records and nothing else. On growth the tray notifies
 and triggers the refresh it already has. A shrunk file is an adb re-pull
 rewriting the dump — it re-baselines silently rather than announcing an arrival
-that did not happen. **When the server is stopped**, the notification says to
-use *Refresh results now* instead of claiming a refresh is running.
+that did not happen. **When the server is stopped**, the notification names
+*Start server* instead of claiming a refresh is running.
+
+**It named *Refresh results now* until 2026-08-15, and `sync()` DISABLES that
+item while the server is stopped** — so the one instruction the user was given
+pointed at a greyed-out menu entry (LOTTO-0007 (k), found by a review lane
+reading past this document into the code). The enablement is deliberate (asking
+to see a page is not asking to start something, LOTTO-0013), so the wording is
+what had to give. *Start server* is enabled in that state, and starting the
+server builds the model, so it does score the ticket.
+
+**The decision moved OUT of the tray to make it checkable**, into
+`supervise.new_ticket_notice(running, busy)` — the module that already holds
+`refresh_message()` for the same reason and is Qt-free on purpose. §11 recorded
+INV-37 as stated-but-unchecked precisely because every branch of it lived
+behind a `QSystemTrayIcon`; the tray now keeps only the call.
 
 **The check runs inside `sync()`, after its `if self.busy: return`**, so an
 arrival during a long refresh is not announced as it lands: it is announced the
@@ -282,6 +299,57 @@ is therefore unreachable through the only caller it has; it is kept as a guard
 against a second caller, not as a path that runs today. An earlier draft of
 this section claimed a busy run produced the *Refresh results now* wording,
 which it cannot.
+
+### 4.8 Surviving KDE Connect
+
+**Measured 2026-08-15 by killing `kdeconnectd` under a running watcher, and the
+answer splits — which is why the rough edge filed as "the watcher goes deaf"
+was half wrong:**
+
+- **The held conversations proxy DIES.** Every later call on it raises
+  `ServiceUnknown: The name is not activatable`, because dbus-python resolves a
+  well-known name to the unique connection it saw at `get_object()` time and
+  stays pinned to it.
+- **The signal match rule SURVIVES.** It carries an interface and a member and
+  no sender, so it matches whoever emits next: **69 signals** from the restarted
+  daemon reached a receiver registered before the restart.
+
+So the watcher never went deaf, it went **mute**. Live arrivals kept landing;
+everything that *calls* the phone failed; and since steady state makes no such
+call, the failure was invisible — it showed up only as a catch-up that never
+ran. That is the same silence §4.7 is built against, arriving by a third road.
+
+**Waiting for it to come back is not a recovery, because nothing brings it
+back.** Measured in the same session: with the watcher only listening, the
+daemon stayed dead indefinitely. Its bus name is D-Bus **activatable**, so the
+act of reaching for it is what starts it — which is what every KDE Connect
+client does, and what `find_lotto_sms.py` already does on every run. The
+watcher therefore retries `connect()` itself, **every 60 seconds**, immediately
+on a `NameOwnerChanged` saying the name has an owner again. Sixty rather than
+two because the same call on a two-second timer would resurrect a daemon the
+user stopped on purpose.
+
+**One state, not two.** "It went away" and "it came back" both mean *try to
+connect again*; the signal only makes the next attempt immediate. A separate
+reconnecting phase was written first and deleted — it was the same branch twice.
+
+**A daemon that is not ready is not a watcher that cannot run**, and the two
+shared a path until this change. `connect()` needs KDE Connect's *device*
+object, which appears only once the phone re-pairs, so starting the tray at
+login — the normal case — killed the watcher outright and left the user with one
+notification and no collector. That is transient and now enters the retry loop.
+An `ImportError` is the other thing entirely (nothing will ever work) and is
+re-raised so `main()` still names the cable, which is what INV-36 asserts.
+
+**`--once` ending in the waiting state raises rather than exiting 0.** It is a
+catch-up, so ending it still waiting means the catch-up did not happen, and
+exiting 0 there would be this project's cardinal failure by the shortest road.
+
+Re-entering the catch-up re-reads **everything the bound depends on** — the
+high-water mark (the watcher wrote while the daemon was up), the known-thread
+set, and `pulled`, which has to forget what it asked the dead proxy for or the
+replacement asks for nothing. Closing those over once made the cycle run-once;
+they live in the state dict for that reason.
 
 ## 5. Invariants
 
@@ -313,34 +381,62 @@ which it cannot.
   is running**; when it is not, the notice names *Refresh results now* instead
   of claiming a refresh that is not happening. A dump that shrank is not
   announced. The page must never gain a ticket the user is not told about, nor
-  be told about one it did not gain.
+  be told about one it did not gain. **Every branch of the notice names an
+  action that state leaves available** — see §4.7.
+- **INV-38** — The read and the append are one critical section. Two watchers
+  appending at once lose no message and produce no repeated row index. The
+  lock is a **sidecar** and never the dump itself: `serve.py::build()` keys its
+  "no messages have been imported" notice on the dump's *existence*, so a lock
+  that created an empty dump would turn that notice into an empty results
+  table — "no data" reading as "did not win" (INV-26).
+- **INV-39** — A KDE Connect that goes away is said so, and is **reached for
+  again** until it answers; the catch-up then re-runs against a mark re-read at
+  that moment, not the one the process started with. A daemon that is merely
+  not ready yet never kills the watcher — only an absent `dbus-python` does
+  (INV-36), and the two must not share a path.
 
 ## 6. Failure modes
 
 | What goes wrong | What happens | Why that is the right answer |
 |---|---|---|
-| `dbus-python` or KDE Connect absent | watcher exits non-zero naming the cable; tray notifies | the alternative is a page that quietly stops growing |
+| `dbus-python` absent | watcher exits non-zero naming the cable; tray notifies | nothing will ever work, so saying so beats a page that quietly stops growing |
+| KDE Connect not ready at start-up | says so and waits; retries until it answers | transient, and it is the NORMAL case at login — the tray starts before the phone re-pairs (§4.8) |
 | phone off, asleep or off the network | no signals; nothing written; catch-up on the next start | the dump is append-only, so a gap closes itself later |
-| KDE Connect restarts | signals stop arriving; watcher stays alive on a dead bus | accepted — see §9; the tray's growth check will simply see nothing |
-| two watchers running | usually the second writes nothing — but see below | **not guaranteed**, and nothing prevents it |
+| KDE Connect restarts | said so; the watcher re-activates it and re-runs the catch-up | measured — the held proxy dies while the signals keep arriving, so half of it survives and the half that does not is silent (§4.8) |
+| two watchers running | both write; nothing is lost and no index repeats | an exclusive flock makes the read-and-append one critical section (INV-38) |
 | an SMS body carrying a record header | prefixed with a space, one record | §4.3 |
 | the dump is deleted | catch-up rewrites what the phone still holds | not a recovery plan; adb remains the recovery plan |
 
-**The two-watchers row is a warning, not a guarantee, and the earlier draft had
-it backwards.** `append_new()` reads the dump into a `seen` set and then
-appends, with no lock, so two watchers that both read before either writes will
-both append the same message — and their row indices collide too, since each
-takes `max(existing) + 1`. The de-duplication key is checked against the file's
-*contents at read time*, which is exactly why it cannot serialise two writers.
-The case is reachable: `SmsWatch.start()` guards only against its own second
-spawn, and `python3 watch_sms.py` is documented as a hand invocation. **Run
-one.** A single-instance guard (a lockfile or an abstract socket) is the fix if
-this ever bites; it is not built, and this row is what stops the omission being
-read as a decision that it is safe.
+**The two-watchers row was a warning and is now a guarantee** — built
+2026-08-15 as LOTTO-0007 (i). `append_new()` reads the dump into a `seen` set
+and then appends, and the de-duplication key is checked against the file's
+*contents at read time*, so it can never serialise two writers by itself: two
+that both read before either wrote would both append the same message, with
+colliding row indices, since each takes `max(existing) + 1`. The case was
+reachable rather than theoretical — `SmsWatch.start()` guards only against its
+own second spawn, and `python3 watch_sms.py` is documented as a hand
+invocation.
+
+**The fix is an exclusive `flock` spanning the read AND the append**, so the
+critical section is the whole of what the de-duplication depends on. A
+single-instance guard was the other candidate and is weaker: it makes the
+second watcher refuse to run, where this makes the second watcher *correct*.
+**Measured with the lock removed, 8 processes × 15 messages released on one
+wall-clock deadline: 105 of 120 row indices collided, three runs out of three.
+With the lock: 120 records, indices a gapless 0..119.**
+`tools/verify_watch.py::concurrent_appends_serialise` is that measurement kept.
+
+**The lock file is a sidecar, and that is load-bearing rather than tidy.**
+Locking the dump means opening the dump, and opening it in append mode creates
+it — while `serve.py::build()` keys its "no messages have been imported" notice
+on the dump's EXISTENCE, never its emptiness. A lock that created an empty dump
+would replace that notice with an empty results table, which is "no data"
+reading as "did not win": the failure this project exists to prevent.
+`::lock_never_creates_the_dump` holds it there.
 
 ## 7. Tests
 
-`tools/verify_watch.py`, seven cases, exit code is the signal. It needs no phone,
+`tools/verify_watch.py`, eleven cases, exit code is the signal. It needs no phone,
 no KDE Connect and no `dbus-python`, which is why it runs in `local-CI.sh`'s
 **CI lane** rather than the local-only one. It reads the real dump and writes
 only to temporary files.
@@ -407,11 +503,13 @@ unique across all 953.
 
 ## 9. Out of scope
 
-- **Reconnecting to a KDE Connect that restarted.** The watcher holds a D-Bus
-  proxy from start-up; if the daemon goes away, signals stop and nothing says
-  so. Quitting and reopening the tray fixes it. Filed as a rough edge rather
-  than solved, because the failure is visible the moment a ticket is bought and
-  the page does not move.
+- ~~**Reconnecting to a KDE Connect that restarted.**~~ **Built 2026-08-15 as
+  LOTTO-0007 (l) — §4.8 owns it.** Left here because the reasoning that
+  deferred it was wrong twice over, and that is worth keeping: the failure is
+  NOT "signals stop" (they do not — the match rule survives), and it is NOT
+  visible the moment a ticket is bought (live arrivals keep landing; what stops
+  is the catch-up, which nobody watches). Both halves were recall about D-Bus
+  rather than measurement, and one measurement settled both.
 - **Windows.** `dbus-python` and KDE Connect are Linux-only; LOTTO-0015 §
   already names the fetcher as the entry point that cannot cross.
 - **Payout reconciliation.** LOTTO-0029 / LOTTO-0010 own it. The decision taken
@@ -432,16 +530,25 @@ is a first run against an empty dump, which asks every matching thread once —
 file read per accepted message. The tray's growth check is two integers every
 five seconds on a timer that already existed.
 
-**The dominant startup cost is not the D-Bus traffic, it is the dump.**
-`snapshot()` calls `consume()` per entry and `consume()` calls `append_new()`,
-which re-reads and re-parses the whole file every time — so a catch-up is one
-210 KB read and parse **per filter-matching snapshot entry**, 543 of them on
-this phone, on every start rather than only the first. That is roughly 114 MB
-of reads inside the measured 21 seconds, which is why it was not noticed. It is
-affordable and it is not defended: batching the snapshot into a single
-`append_new()` call would make it one read, and the only reason it is written
-per message is that the same function serves the signal path, where one message
-is all there is.
+**The dominant startup cost WAS the dump, and is not any more** — fixed
+2026-08-15 as LOTTO-0007 (j). `snapshot()` called `consume()` per entry and
+`consume()` called `append_new()`, which re-reads and re-parses the whole file
+every time — so a catch-up was one 210 KB read and parse **per filter-matching
+snapshot entry**, 543 of them on this phone, on every start rather than only
+the first. Roughly 114 MB of reads inside the measured 21 seconds, which is why
+nobody noticed it.
+
+The filter and the WRITE are now separate: `accept()` decides and remembers the
+thread, `record()` persists a whole batch in one `append_new()` and one
+`write_threads()`. **Measured after the change: 543 synthetic messages through
+`snapshot()` produce one `append_new()` call, and all 543 are still written.**
+The signal path still writes per message, because there it *is* one message and
+batching would only delay the tray's notice.
+
+One consequence worth stating: nothing is written until the batch completes, so
+a watcher killed mid-snapshot leaves the thread state claiming no knowledge of
+threads whose messages were never appended. The next run redoes the snapshot,
+which is idempotent — that is the safe direction of the two.
 
 ## 11. What checks this
 
@@ -452,9 +559,11 @@ is all there is.
 | INV-34 | `tools/verify_watch.py::no_duplicates` (against real dump records) |
 | INV-35 | `tools/verify_watch.py::thread_state`, `::catch_up_targets` |
 | INV-36 | `tools/verify_watch.py::watcher_lifecycle`, `::absent_dbus_is_named` — **watcher half only**, see below |
-| INV-37 | not checked by a case — see below |
+| INV-37 | `tools/verify_watch.py::notice_names_a_live_action` — **wording half only**, see below |
+| INV-38 | `tools/verify_watch.py::concurrent_appends_serialise`, `::lock_never_creates_the_dump` |
+| INV-39 | `tools/verify_watch.py::daemon_restart_is_read` — **the reading only**, see below |
 
-**Two gaps, both for the same reason, and neither is a decision.**
+**Three gaps, and none is a decision.**
 
 **INV-36's tray half is unchecked.** `absent_dbus_is_named` checks that
 `watch_sms.py`'s own exit message names the cable; the notification §4.7
@@ -462,16 +571,31 @@ promises — `tray.main()`'s `watcher_checked` — is checked by nothing. The ro
 above lists both cases against INV-36 and that is honest about the *watcher*
 half only.
 
-**INV-37 is stated and not checked**, and that is a gap rather than a decision.
+**INV-37's wording is now checked; its delivery is not.** Moving the decision
+into `supervise.new_ticket_notice()` made the sentence checkable from a
+headless script, and `notice_names_a_live_action` reads which menu items
+`tray.py` disables **out of `tray.py`'s own source** — so re-enabling one, or
+renaming it, moves the case with it rather than leaving the notice quietly
+wrong again. What is still unchecked is that the tray *shows* it: that half
+needs a `QSystemTrayIcon`.
 
-Both gaps are the same shape: every unchecked half lives in `tray.py` and needs
-a QSystemTrayIcon, and the one tray case that exists
+**INV-39's reading is checked; its action is checked by running it.**
+`daemon_restart_is_read` covers `daemon_change()`, a pure function. That the
+watcher then re-activates KDE Connect and completes a second catch-up needs a
+live daemon, and was **observed on 2026-08-15**: watcher started, first
+catch-up `2328 threads`, `kdeconnectd` killed, *KDE Connect stopped* printed,
+the watcher's own retry brought the daemon back, *KDE Connect is back* printed,
+and a **second full catch-up completed** — `2328 threads` again. Also observed
+from a cold start, with the daemon already dead before the watcher began.
+
+The unchecked halves are all one shape: they live in `tray.py` or need a phone,
+and the one tray case that exists
 (`tools/verify_page.py::tray_headless_when_managed`) runs the managed path
 precisely because it constructs no Qt object. Closing either would mean the
 first Qt-constructing case in the project. What is exercised instead is
 reality: the growth path runs on every real ticket, and the watcher-failure
 message was observed by running the watcher with `dbus` made unimportable.
-Recorded here so neither is mistaken for covered.
+Recorded here so none is mistaken for covered.
 
 ## 12. Cross-doc impact
 
@@ -487,6 +611,19 @@ Recorded here so neither is mistaken for covered.
 - **`CHANGELOG.md`** — one entry under Added.
 - **`README.md`** — not amended; it describes what to run, and the answer for a
   user is still `tray.py`.
+
+**The 2026-08-15 amendment (LOTTO-0007 (i)–(l)) also touched:**
+
+- **`CLAUDE.md`** — the `watch_sms.py` bullet gains the daemon-restart
+  measurement, which is the second D-Bus assumption this project got wrong by
+  recall; and `supervise.py` gains `new_ticket_notice()` beside the settings
+  reader as a second thing the tray must not re-implement.
+- **`.gitignore`** — `*.lock`, the flock sidecar. Always empty; it is held,
+  never written.
+- **`ROADMAP.md`** — LOTTO-0007 (i), (j), (k) and (l) annotated as done, with
+  (l)'s filed description corrected rather than merely ticked: it was wrong
+  about which half fails.
+- **`CHANGELOG.md`** — entries under Fixed and Changed.
 
 ## 13. Cold-eyes loop log
 
