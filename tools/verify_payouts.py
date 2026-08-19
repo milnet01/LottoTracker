@@ -57,6 +57,14 @@ from tickets import Ticket, load, load_payouts, parse_payout, rows  # noqa: E402
 
 SENTINEL = "VAS00000000000"
 
+# Fixtures needing a SECOND distinct reference do not get a second VAS-shaped
+# one. tools/verify_privacy.py treats EVERY reference-shaped string that is not
+# exactly the sentinel as a leak, invented or not - and it only reads TRACKED
+# files, so a new file passes every local run until `git add` makes it tracked,
+# and then fails at the push. reconcile() takes a reference as an opaque
+# string, so these cost nothing.
+SYNTH_B, SYNTH_C, SYNTH_D = "SYNTH-B", "SYNTH-C", "SYNTH-D"
+
 
 # ---------------------------------------------------------------- fixtures
 
@@ -157,8 +165,8 @@ def disagreement_keeps_both():
     assert r["paid_cents"] == 1200, f"paid_cents is {r['paid_cents']}c, expected 1200c"
     assert wins == before, "reconcile() mutated the wins list it was passed"
     # None must stay distinguishable from 0 (the cardinal rule at this layer).
-    unscorable = [_ticket("VAS00000000001", pools=((1, 101),), start="2020-01-01")]
-    n = check.reconcile(unscorable, [], [_payout("VAS00000000001", 900)])[0]
+    unscorable = [_ticket(SYNTH_B, pools=((1, 101),), start="2020-01-01")]
+    n = check.reconcile(unscorable, [], [_payout(SYNTH_B, 900)])[0]
     assert n["computed_cents"] is None, (
         f"a reference nothing could score reports {n['computed_cents']!r}; None "
         f"means 'not checkable' and 0 means 'checked, won nothing'")
@@ -173,12 +181,12 @@ def unscored_is_not_unexplained():
     # genuinely unscorable pool (LOTTO-0009). lotto/1 does NOT work here: it
     # has draws, so both entries would be scorable and `unexplained` would be
     # the correct answer, which is what this fixture got wrong first time.
-    mixed = [_ticket("VAS00000000002", game="daily",
+    mixed = [_ticket(SYNTH_C, game="daily",
                      pools=((0, 100), (1, 101)),
                      start=_scorable_start("daily", 0),
                      boards=[("A", [1, 2, 3, 4, 5], None)])]
     a = check.reconcile(every, [], [_payout(SENTINEL, 500)])[0]
-    b = check.reconcile(mixed, [], [_payout("VAS00000000002", 500)])[0]
+    b = check.reconcile(mixed, [], [_payout(SYNTH_C, 500)])[0]
     assert a["category"] == "unexplained", (
         f"a paid reference whose every entry is scorable, with no winning line, "
         f"landed in {a['category']!r} rather than 'unexplained'")
@@ -223,10 +231,10 @@ def unpaid_carries_draw_date():
     # SYNTHETIC on purpose. The category is empty against the real dump today,
     # so a case run over real data alone passes without executing the rule.
     tk = [_ticket(SENTINEL, start=_scorable_start()),
-          _ticket("VAS00000000003", start=_scorable_start())]
+          _ticket(SYNTH_D, start=_scorable_start())]
     wins = [_win(SENTINEL, 800, date="2026-07-09"),
             _win(SENTINEL, 200, date="2026-07-02")]
-    recs = check.reconcile(tk, wins, [_payout("VAS00000000003", 100)])
+    recs = check.reconcile(tk, wins, [_payout(SYNTH_D, 100)])
     unpaid = [r for r in recs if r["category"] == "unpaid"]
     assert len(unpaid) == 1, f"expected one unpaid record, got {len(unpaid)}"
     assert unpaid[0]["first_win"] == "2026-07-02", (

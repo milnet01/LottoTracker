@@ -278,10 +278,19 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
 gitignored. The non-obvious part: **never paste real message content into code,
 docs or commit messages**, even with the reference scrubbed — numbers, date and
 amount identify a ticket on their own. Two leaks got past weaker checks, one per
-review loop. Sample references must be the sentinel `VAS00000000000`. Run
+review loop. Sample references must be the sentinel `VAS00000000000` — **the one sentinel,
+not a family of them.** Every reference-shaped string that is not exactly that
+is a leak, invented or not, and a test fixture needing a second distinct
+reference uses a name that is not reference-shaped at all (`tools/verify_payouts.py`
+does this). Run
 `python3 tools/verify_privacy.py` before any commit that touches prose or
 examples; it compares tracked files against the dump itself, not a guessed
 pattern.
+**It only reads TRACKED files, and that is the trap.** A NEW file passes every
+local run — including a full `./local-CI.sh` — right up until `git add` makes
+it tracked, and then fails at the push. LOTTO-0029's verifier did exactly this:
+clean on every run while it was untracked, three leaks the moment it was
+staged. `git add -A` first, then run the check, if the change adds a file.
 
 ## Working conventions
 
