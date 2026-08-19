@@ -21,6 +21,12 @@ the tiers are derived from what the ticket cost. See entered_pools().
 
 Prize divisions are read from the API rather than hardcoded, so a rule change
 upstream doesn't silently produce wrong answers here.
+
+This file reads TWO message kinds, and they are disjoint. parse() reads a
+purchase; parse_payout() reads the bank's own statement of a prize it paid
+(LOTTO-0029). Both go through rows(), and neither accepts the other's shape -
+a purchase debit names a game, a payout names none, and counting one as the
+other turns money spent into money won.
 """
 
 import re
@@ -196,6 +202,50 @@ def parse(body, bought=None):
     )
 
 
+# A prize payment. The bank sends one per paying draw, so a ticket entered in
+# several draws is paid several times - the unit of reconciliation is the
+# REFERENCE, never the payment (LOTTO-0029 INV-41).
+PAYOUT = re.compile(r"winnings of R([\d,]+\.?\d*) for ticket ref:\s*(VAS\d+)", re.I)
+
+
+class Payout:
+    def __init__(self, ref, cents, received):
+        # Whole cents, and an int on purpose: this is the figure a computed win
+        # is compared against, and money compared in rands disagrees with
+        # itself (LOTTO-0029 INV-42).
+        self.ref, self.cents, self.received = ref, cents, received
+
+    def __repr__(self):
+        return f"<paid {self.ref} {self.cents}c>"
+
+
+def parse_payout(body, received=None):
+    """Return a Payout, or None if this SMS is not a prize payment.
+
+    The mirror of parse(), and the two are disjoint by construction. A purchase
+    debit reads "R<amount> paid from Acc. NNNN to VAS... LOTTO" - money LEAVING
+    the account - and names a game, which is why it cleared the old import
+    filter while a payout, which names no game, never did (LOTTO-0030).
+
+    Do NOT widen this toward "paid" or a bare "R... VAS...": that counts the 14
+    debits in this dump as winnings, so lifetime "paid" grows by what the user
+    SPENT. LOTTO-0010 made exactly that mistake against those debits before the
+    real payouts existed to compare them with. LOTTO-0029 INV-40.
+    """
+    m = PAYOUT.search(body)
+    if not m:
+        return None
+    try:
+        cents = round(float(m.group(1).replace(",", "")) * 100)
+    except ValueError:
+        # A body matching the shape whose amount will not parse is a corrupt
+        # record, not a prize of R0.00. Dropping it routes it to INV-47's
+        # census; returning 0 would price it, which is the mistake INV-22
+        # already forbids on the scoring side (LOTTO-0029 §6).
+        return None
+    return Payout(m.group(2), cents, received)
+
+
 def rows(raw):
     """Split a dump into (address, date_ms, body) triples, unparsed.
 
@@ -227,4 +277,18 @@ def load(path="lotto_sms_raw.txt"):
         bought = datetime.fromtimestamp(date_ms / 1000)
         if t := parse(body, bought):
             out.append(t)
+    return out
+
+
+def load_payouts(path="lotto_sms_raw.txt"):
+    """-> [Payout], every prize the bank says it paid.
+
+    Reads through rows() - the dump format's ONE reader (LOTTO-0003 INV-34) -
+    exactly as load() does. A second reader of one format agrees today and
+    drifts later, and this file now has two message kinds to keep in step.
+    """
+    out = []
+    for _address, date_ms, body in rows(open(path, errors="replace").read()):
+        if p := parse_payout(body, datetime.fromtimestamp(date_ms / 1000)):
+            out.append(p)
     return out

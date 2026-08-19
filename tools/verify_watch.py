@@ -151,7 +151,7 @@ def no_duplicates():
         # exercise every branch. Said out loud rather than passed over, and NOT
         # counted as a failure - this file is in the CI lane precisely because
         # it needs no personal data, and a public runner has no dump to hold it
-        # to. The local lane's three data-dependent verifiers are what fail
+        # to. The local lane's four data-dependent verifiers are what fail
         # loudly when the dump is missing on this machine.
         print("  (no dump present: de-duplication ran on synthetic rows only)")
         real = []

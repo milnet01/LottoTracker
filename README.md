@@ -160,6 +160,14 @@ Three things worth knowing:
 - **"Not checkable" is not "did not win".** Entries with no results to check
   against say exactly that, in words, everywhere they appear. They are never
   shown as a blank, a dash or R0.00.
+- **The bank's own record is shown beside ours, and never instead of it.** Your
+  bank texts you the amount every time it pays a prize in. Those messages are
+  read and matched to your tickets, and where the bank's figure and this app's
+  disagree you are shown **both** — the app never quietly adopts the bank's
+  number. A figure that agreed with the bank by construction would tell you
+  nothing, and would hide the cases where this app has got the maths wrong.
+  Right now it under-counts: the bank has paid more than this app works out,
+  and you can see exactly which tickets that is.
 - **The comparison is honest about what it covers.** Spend is compared against
   winnings only over the entries that could actually be checked. Lifetime spend
   is shown too, on its own line, and the two are never subtracted from each
@@ -193,8 +201,8 @@ matches the PowerBall. Whatever your bank does, check that case first.
 | `results.py` | Official results feed, 2026-06-01 onward |
 | `backfill.py` | Scrapes earlier results and per-draw payouts |
 | `history.py` | Merges both sources into one view |
-| `tickets.py` | Parses SMSes into tickets; expands Multiplay |
-| `check.py` | Scores tickets, prices wins, flags expiry |
+| `tickets.py` | Parses SMSes into tickets and into the bank's payout messages; expands Multiplay |
+| `check.py` | Scores tickets, prices wins, flags expiry, and reconciles against what the bank actually paid |
 | `find_lotto_sms.py` | Finds lottery threads via KDE Connect |
 | `tools/verify_*.py` | Checks the contracts in `docs/specs/`, including that no real message content is tracked |
 

@@ -8,6 +8,30 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The bank's own payout messages, checked against every win this app computed. (LOTTO-0029/0010)**
+  369 payout SMSes were sitting unread in the dump. `check.py` now joins them
+  to tickets on the VAS reference and reports, per reference, what the bank
+  paid beside what this project computed. The bank has paid R8,332.70; this
+  app computes R3,343.20, and the difference is now visible instead of absent.
+
+  Where the two disagree the disagreement is FLAGGED, never resolved in the
+  SMS's favour (your decision, 2026-08-13). Adopting the bank's figure would
+  price the archive era for free and erase the 15 references where the app
+  computes LOW - which are the evidence that something in pricing is wrong.
+
+  Seven categories, decided in a fixed order because as an unordered set they
+  overlap. 61 references agree exactly. 15 are computed low and 2 high. 142
+  were paid where an entry nothing can score may be the reason - correct
+  silence, not a defect. 1 was paid against a reference with no purchase SMS
+  at all. And 4 are fully checkable, paid, and reach no paying division: the
+  real leads, kept in their own category so they cannot be buried in the 142.
+  Zero references where the app claims a win the bank never paid.
+
+  `tools/verify_payouts.py` holds INV-40 to INV-47, and joins local-CI.sh's
+  local-only lane - it needs both the dump and the archive, and the payouts
+  are the one thing that must never reach a public runner. Eight cases, each
+  observed failing under its own `--break`.
+
 - **New tickets arrive with no cable — `watch_sms.py` listens over KDE Connect and appends to the dump. (LOTTO-0003)**
   The tray starts it, stops it and re-scores the page when the dump grows,
   so a ticket bought on the phone reaches the page by itself. adb keeps

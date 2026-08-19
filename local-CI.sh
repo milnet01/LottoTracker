@@ -2,7 +2,7 @@
 #
 # local-CI.sh - the pre-push gate. Run this before every `git push`.
 #
-#   ./local-CI.sh            full gate: the CI lane plus the three checks a
+#   ./local-CI.sh            full gate: the CI lane plus the four checks a
 #                            runner cannot do (see below). This is the one to
 #                            run before pushing.
 #   ./local-CI.sh --ci       the CI lane ONLY. This is what
@@ -125,8 +125,12 @@ if [ "$CI_ONLY" -eq 0 ]; then
     run "verify_sources.py"  python3 tools/verify_sources.py
     run "verify_coverage.py" python3 tools/verify_coverage.py
     run "verify_pools.py"    python3 tools/verify_pools.py
+    # Needs the dump AND the archive: it reconciles the bank's own payout
+    # SMSes against every computed win (LOTTO-0029). A public runner has
+    # neither, and the payouts are the one thing that must never reach one.
+    run "verify_payouts.py"  python3 tools/verify_payouts.py
 else
-    echo "local-CI: --ci, so the three data-dependent verifiers and the"
+    echo "local-CI: --ci, so the four data-dependent verifiers and the"
     echo "          full-strength privacy assertion are NOT run. A green"
     echo "          result here is weaker than a green ./local-CI.sh."
 fi

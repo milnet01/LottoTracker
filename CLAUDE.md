@@ -42,7 +42,7 @@ does not track hooks and `core.hooksPath` is local config:
 git config core.hooksPath .githooks   # .githooks/pre-push then runs the gate
 ```
 
-The two lanes are **not** equal and must not be made so. Three verifiers need
+The two lanes are **not** equal and must not be made so. Four verifiers need
 `lotto_sms_raw.txt` and the scraped archive, neither of which may reach a public
 runner, and `verify_privacy.py` drops to a weaker pattern-only mode without the
 dump — while still exiting 0. So a green tick on GitHub is weaker than a green
@@ -50,7 +50,7 @@ dump — while still exiting 0. So a green tick on GitHub is weaker than a green
 full strength rather than trusting its exit code. `local-CI.sh`'s header holds
 the reasoning.
 
-Verification — there is no test runner; these six scripts *are* the test
+Verification — there is no test runner; these seven scripts *are* the test
 suite, and each maps to a numbered invariant in the specs. Run from the
 repository root, after `backfill.py`, with `lotto_sms_raw.txt` present
 (`verify_watch.py` is the exception: it needs no dump, no phone and no
@@ -67,6 +67,9 @@ python3 tools/verify_page.py      # INV-12..INV-21, INV-23..INV-25 and INV-27..I
                                   # spawn-and-reap lifecycle, what it reports after a
                                   # refresh, the port it binds, the managed (no-icon)
                                   # run, and the results transport underneath them
+python3 tools/verify_payouts.py   # INV-40..INV-47: the bank's own payout SMSes,
+                                  # reconciled per VAS reference against every
+                                  # computed win; --break/--list like verify_page
 python3 tools/verify_watch.py     # INV-32..INV-39: the cable-free SMS path writes
                                   # what adb would, never twice, and its child is
                                   # spawned, observed and reaped; two watchers
@@ -97,17 +100,25 @@ run them from there rather than re-inventing them.
 Data flows in one direction, and the two halves are independent:
 
 ```
-phone ──adb over USB─────────┐
-       (bulk history)        ├─> lotto_sms_raw.txt ──tickets.py::rows()──> parse() ──> [Ticket]
-phone ──watch_sms.py─────────┘   (two writers, ONE reader)                                │
-       (KDE Connect, new messages, no cable)                                              │
-results.py    (official API, 2026-06-01 on, has payouts) ──┐                              │
-backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─────────────────┴─> check.py
-                                                                              │
-                                                    ┌─────────────────────────┴──┐
-                                                    ▼                            ▼
-                                        check.py::__main__            serve.py ──> page.py
-                                        (the terminal output)         (the local page)
+phone ──adb over USB─────────┐                        ┌─ parse() ──────────> [Ticket]
+       (bulk history)        ├─> lotto_sms_raw.txt ───┤   (a purchase)
+phone ──watch_sms.py─────────┘   (two writers,        └─ parse_payout() ──> [Payout]
+       (KDE Connect, new           ONE reader)            (a prize the bank paid)
+        messages, no cable)
+
+results.py    (official API, 2026-06-01 on, has payouts) ──┐
+backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ──┐
+                                                                           │
+                      [Ticket] + history.py ─────────────────────────────> check.py::check()
+                                                                                  │
+                      [Payout] ──────────> check.py::reconcile() <────────────────┤
+                      (the bank's record against ours: LOTTO-0029. Flags a        │
+                       disagreement, never resolves it in the SMS's favour.)      │
+                                                                                  │
+                                        ┌─────────────────────────────────────────┤
+                                        ▼                                         ▼
+                            check.py::__main__                        serve.py ──> page.py
+                            (the terminal output)                     (the local page)
                                                                           ▲   │
                                                           tray.py ──> supervise.py
                                                           (PySide6)   (spawns serve.py AND
@@ -139,9 +150,17 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   the watcher must reach for it, because the bus name is D-Bus *activatable* and
   the act of reaching starts it. `RETRY_EVERY` is 60s, not 2s, so it cannot
   resurrect a daemon the user stopped on purpose. LOTTO-0003 §4.8.
-- **`tickets.py`** is the only bank-specific file. `rows()` is the dump
+- **`tickets.py`** is the only bank-specific file, and it reads **two** message
+  kinds. `rows()` is the dump
   format's one reader, and both writers depend on that staying true — a second
   reader that drifts would duplicate every record it failed to recognise.
+  `parse_payout()` reads the bank's statement of a prize it paid; it and
+  `parse()` are disjoint by construction and **must stay so**. A purchase debit
+  reads "R… paid from Acc. … to VAS… LOTTO" — money *leaving* the account, and
+  it names a game. A payout names none, which is the one word that kept every
+  payout out of the dump until LOTTO-0030 widened the import filter. Widening
+  `PAYOUT` toward "paid" counts the 14 debits as winnings, so lifetime "paid"
+  grows by what the user *spent* (LOTTO-0029 INV-40).
   `parse()` handles two SMS eras; `GAME_MAP` translates an SMS game name to the one `(game, plus_flag,
   pool_id)` it names, and `entered_pools()` derives the *full* set of pools
   from the ticket price, which is what scoring actually iterates
@@ -213,6 +232,31 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
 - **A Lotto board with >6 numbers is Multiplay** and expands to one line per
   6-number combination, each winning independently (INV-2). Currently
   Lotto-only — see LOTTO-0007(d).
+- **The bank's payout SMS never replaces a computed figure.** `check.py::reconcile()`
+  joins the bank's own record to tickets on the `VAS` reference and reports both
+  figures side by side; a disagreement is flagged, never resolved in the SMS's
+  favour (user decision 2026-08-13, LOTTO-0029 INV-43). Adopting it would price
+  the archive era for free — and erase the 15 references where the app computes
+  LOW, which are the evidence that something in pricing is wrong. Three things
+  not to "simplify": the unit is the **reference**, not the payment (77 of 225
+  are paid more than once); money is compared in **whole cents**, never float
+  rands; and the seven categories are decided in a fixed **order**, because as
+  an unordered set they overlap — a reference with no purchase SMS has no
+  entries, so "every entry is scorable" is vacuously true of it and it would
+  match `unexplained` as well as `no_ticket`.
+- **`computed_cents` is three-valued and the three must not converge** — the
+  cardinal rule again, one layer below the page. `None` is *not checkable*
+  (nothing could be scored), `0` is *checked, total prize zero*, and a positive
+  integer is the summed prize. So `computed_cents` never answers "did it win?";
+  `first_win` does. A reference that is only **partly** scorable carries an
+  integer, never `None`, or LOTTO-0009 INV-11 is breached from the other side.
+- **A dump with no parsable payout reports that, and emits no category census.**
+  If the bank changes its wording, `parse_payout()` matches nothing and every
+  scored reference would otherwise satisfy `unpaid` — announcing prizes nobody
+  was ever paid. The guard is in `reconcile()` itself, not only in the report,
+  so the page cannot render the fictions either (INV-47). Same class as
+  LOTTO-0031, where a rebranded game name parsed to `None` and a ticket was
+  silently never scored.
 - **`paying_combinations()` raises** rather than returning `{}` when a pool has
   no recent draw. An empty set would score the whole pool as losses with no
   diagnostic.

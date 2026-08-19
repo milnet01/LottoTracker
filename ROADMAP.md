@@ -195,7 +195,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   editing. LOTTO-0001 was retrofitted in the same pass (its own loop 4, 17
   findings) — its unit is now the entry.
 
-- 📋 **LOTTO-0010** Read the payout SMSes and reconcile them against computed wins.
+- ✅ **LOTTO-0010** Read the payout SMSes and reconcile them against computed wins.
   Kind: implement. Source: user-correction-2026-08-02.
   Layman: the bank already told you what it paid you — check our maths against it.
   The dump holds 575 messages: 558 ticket purchases and 17 others.
@@ -267,6 +267,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   still the right shape and the VAS reference is still the join. Merged with
   LOTTO-0029 (same work); sequence is LOTTO-0030 (done) → re-pull the dump
   over USB → LOTTO-0029/0010.
+  **Shipped 2026-08-19 with LOTTO-0029** — one spec, one piece of work.
+  `tools/verify_payouts.py` is the shape this item predicted, and the VAS
+  reference was the join, exactly as it argued.
 
 - 📋 **LOTTO-0011** Stop saying "still claimable" — the bank pays automatically.
   Kind: fix. Source: user-correction-2026-08-02.
@@ -608,7 +611,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: feature.
   Source: in-session-2026-08-05 (split out while speccing LOTTO-0019).
 
-- 📋 [LOTTO-0029] **A payout SMS would be a third results source, and the dump does not carry one today.**
+- ✅ [LOTTO-0029] **A payout SMS would be a third results source, and the dump does not carry one today.**
   The user's point, and it is a good one: every ticket that paid out should
   have a message announcing it, and a message stating the amount beats a
   figure this project derives. It would be the only source authoritative
@@ -810,6 +813,23 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
     better lead now, being a difference in AMOUNT on tickets that did win
     - a pricing question rather than a matching one.
 
+
+  **Shipped 2026-08-19.** `tickets.py::parse_payout()` reads the bank's payout
+  wording beside `parse()`, through the one dump reader; `check.py::reconcile()`
+  joins them per VAS reference and sorts every reference into seven categories
+  in a fixed order; `tools/verify_payouts.py` holds INV-40..INV-47 with eight
+  cases, each observed failing under its own `--break`. Spec:
+  `docs/specs/LOTTO-0029-payout-reconciliation.md`, gated to its cap - two
+  loops, three cold lanes each, 18 verified findings, all fixed.
+  Measured on shipping: the bank has paid R8,332.70 over 225 references against
+  R3,343.20 computed. 61 agree exactly, 15 computed LOW (by R315.50), 2 high
+  (by R11.60), 142 have an entry nothing can score, 1 has no purchase SMS, and
+  **4 are fully checkable, paid, and reach no paying division** - the leads,
+  now in a category of their own rather than buried in the 142. Zero references
+  where the app claims a win the bank never paid: it errs downward only.
+  The original headline was written before the dump could hold a payout at all
+  and is left as filed; LOTTO-0030 is what made them collectable, and the body
+  above records the correction. The page surface is LOTTO-0032, blocked on this.
 - ✅ [LOTTO-0030] **The import filter matched game names, so it excluded every payout SMS.**
   **Layman:** The command that copies lottery texts off the phone only looked for messages naming a game. The bank's "you won" texts don't name one, so 149 of them were skipped every time. Now they come across.
   Kind: fix.

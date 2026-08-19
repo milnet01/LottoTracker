@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from backfill import payouts
 from history import all_draws, covered, scorable
 from results import divisions, draws
-from tickets import load
+from tickets import load, load_payouts
 
 CLAIM_DAYS = 365  # SA prizes expire a year after the draw
 
@@ -321,6 +321,153 @@ def uncheckable_report(tickets):
     return lines, counts
 
 
+def reconcile(tickets, wins, payouts):
+    """-> records, one per reference the bank paid OR the app computed a win for.
+
+    The bank's own statement of what it paid is the only external ground truth
+    this project has; everything else verifies the code against its own inputs.
+    So a disagreement is FLAGGED, never resolved in the SMS's favour: `wins` is
+    read and returned untouched (LOTTO-0029 INV-43, user decision 2026-08-13).
+
+    `wins` is the WHOLE of check()'s output, expired lines included - not the
+    unexpired `live` subset sitting beside it in __main__ - because the bank's
+    payouts are lifetime and a prize paid in 2025 is still money it paid.
+
+    Each record: ref, paid_cents, computed_cents, category, first_win.
+    `computed_cents` is THREE-valued and the three must not converge, which is
+    this project's cardinal rule at this layer (INV-43):
+        None  no entry could be scored - not checkable, and not a zero
+        0     checked; total prize zero, either nothing won or a division the
+              source itself priced at R0.00
+        int   the summed prize of its winning lines
+    So `computed_cents` never answers "did it win?" - `first_win` does.
+
+    NOTE the `payouts` parameter shadows `backfill.payouts` (the archive price
+    scraper this module imports and amount() calls) for the length of this
+    function. Nothing here needs it, so there is no bug; the name is the one
+    LOTTO-0029 §4.3 fixes. Reach for a price inside here and you get a list.
+    """
+    # No payout parsed at all means the bank's wording moved, and every scored
+    # reference would otherwise satisfy `unpaid` - announcing prizes nobody was
+    # ever paid. The guard lives HERE and not only in the report, so the page
+    # (LOTTO-0032) cannot render the fictions either. INV-47.
+    if not payouts:
+        return []
+
+    paid = {}
+    for p in payouts:
+        paid[p.ref] = paid.get(p.ref, 0) + p.cents  # 77 refs are paid twice+
+
+    # A ticket with no Ref: parses to the "?" sentinel. No payout can carry
+    # that string, so such tickets never join - but two of them would sum under
+    # one key and surface as a spurious `unpaid`. Dropped from both sides.
+    by_ref = {}
+    for t in tickets:
+        if t.ref != "?":
+            by_ref.setdefault(t.ref, []).append(t)
+
+    won, first = {}, {}
+    for w in wins:
+        if w["ref"] == "?":
+            continue
+        # Whole cents. amount() returns float rands, and a sum of divisions
+        # compared in rands can miss its equal by one part in 10^13 (INV-42).
+        won[w["ref"]] = won.get(w["ref"], 0) + round(w["amount"] * 100)
+        if w["ref"] not in first or w["date"] < first[w["ref"]]:
+            first[w["ref"]] = w["date"]
+
+    out = []
+    for ref in sorted(set(paid) | set(won)):
+        tix = by_ref.get(ref, [])
+        p = paid.get(ref)
+        if not tix:
+            computed = None
+        elif ref in won:
+            computed = won[ref]
+        elif any(scorable(t, pf) for t in tix for pf, _ in t.pools):
+            computed = 0
+        else:
+            computed = None
+
+        # ORDER IS THE CONTRACT (INV-45). As an unordered set these overlap: a
+        # reference with no ticket has no entries, so "every entry is scorable"
+        # is vacuously true of it and it would match `unexplained` too.
+        if not tix:
+            category = "no_ticket"
+        elif p is None:
+            category = "unpaid"
+        elif ref in won:
+            # On the PRESENCE of a winning line, never its value: a division
+            # the source prices at R0.00 is still a win, and a `0 < computed`
+            # bound would drop it out of every category.
+            category = "agree" if p == computed else "low" if computed < p else "high"
+        elif all(scorable(t, pf) for t in tix for pf, _ in t.pools):
+            category = "unexplained"
+        else:
+            # An entry nothing can score MAY be what the bank paid on, so this
+            # is not a verdict that the app was right. Keeping it apart from
+            # `unexplained` is what stops the real leads being buried (INV-44).
+            category = "unscored"
+
+        out.append({
+            "ref": ref,
+            "paid_cents": p,
+            "computed_cents": computed,
+            "category": category,
+            "first_win": first.get(ref),
+        })
+    return out
+
+
+# Printed newest-concern first. Every category is REPORTED; none is asserted -
+# tools/verify_payouts.py says why.
+CATEGORY_NOTE = {
+    "unpaid": "computed a win the bank has no record of paying",
+    "low": "the app computed LESS than the bank paid",
+    "high": "the app computed MORE than the bank paid",
+    "unexplained": "paid, every entry checkable, and no win found",
+    "no_ticket": "paid on a reference with no purchase SMS",
+    "unscored": "paid, but an entry nothing can score may be why",
+    "agree": "the bank and this app agree exactly",
+}
+
+
+def reconcile_report(records):
+    """-> (lines, counts), deliberately the shape uncheckable_report() returns.
+
+    One convention for both consumers - the terminal here, and the page in
+    LOTTO-0032 - rather than two that agree today.
+    """
+    if not records:
+        return ([
+            "NO PAYOUT DATA: no message in the dump parses as a prize payment.",
+            "  Nothing below is compared against the bank. This is NOT agreement",
+            "  - a change to the bank's wording looks exactly like never winning.",
+        ], {})
+
+    counts = {k: 0 for k in CATEGORY_NOTE}
+    for r in records:
+        counts[r["category"]] += 1
+    paid_total = sum(r["paid_cents"] or 0 for r in records)
+    computed_total = sum(r["computed_cents"] or 0 for r in records)
+
+    lines = [
+        f"THE BANK PAID R{paid_total / 100:,.2f} over "
+        f"{sum(1 for r in records if r['paid_cents'])} references; "
+        f"this app computes R{computed_total / 100:,.2f}.",
+        "  Both figures are shown wherever they differ. Neither replaces the other.",
+    ]
+    for key in ("unpaid", "low", "high", "unexplained", "no_ticket", "unscored", "agree"):
+        if counts[key]:
+            lines.append(f"  {counts[key]:4} {key:12} {CATEGORY_NOTE[key]}")
+    gap = paid_total - computed_total
+    if gap:
+        lines.append(f"  unexplained difference: R{gap / 100:,.2f}")
+    counts["paid_cents"] = paid_total
+    counts["computed_cents"] = computed_total
+    return lines, counts
+
+
 def retired_report(tickets):
     """-> lines naming any pool whose archive era paid a division now unnameable.
 
@@ -381,6 +528,17 @@ if __name__ == "__main__":
     gone_lines = retired_report(all_tickets)
     if gone_lines:
         print("\n".join(gone_lines))
+        print()
+
+    # The bank's own record, against ours (LOTTO-0029). `wins`, not `live`:
+    # the payouts are lifetime, so a prize paid in 2025 is still money paid.
+    try:
+        paid_lines, _ = reconcile_report(reconcile(all_tickets, wins, load_payouts()))
+    except OSError:
+        # No dump is already reported above; do not turn it into a traceback.
+        paid_lines = []
+    if paid_lines:
+        print("\n".join(paid_lines))
         print()
 
     print(f"{len(wins)} winning lines total; {len(live)} still claimable\n")
