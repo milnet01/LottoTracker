@@ -936,6 +936,30 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: fix.
   Source: in-session-2026-08-13 (surfaced by LOTTO-0030's first re-pull).
 
+- 📋 [LOTTO-0032] **Show the bank's own payout record on the page, beside what the app computed.**
+  Kind: feature. Source: in-session-2026-08-19 (split out while speccing LOTTO-0029).
+  Layman: the page shows what the bank actually paid you next to what this app
+  worked out, so a difference is visible instead of hidden.
+  Split out of LOTTO-0029 rather than folded into it. LOTTO-0029 puts the
+  bank's payouts into the model and reconciles them; nothing puts the result
+  on the page. `page.py` is a pure function from a model dict to one HTML
+  string, so this is a rendering item with its own security surface, its own
+  `tools/verify_page.py` cases and its own `--break` red-tests — which is why
+  it is not carried inside the reconciliation build.
+  The user's decision of 2026-08-13 is what it must render: a disagreement is
+  FLAGGED LOUDLY, both figures shown, never resolved in the SMS's favour.
+  LOTTO-0029 §5 INV-43 holds that for the model; this item holds it for the
+  page.
+  Two constraints inherited, neither guessable from the model alone:
+  (a) the cardinal rule arrives here as a SEVEN-way split rather than the
+  page's current two — `_money_cell()`'s "not checkable" vs `R0.00` becomes
+  "app says won", "bank paid", "both agree", "paid, nothing scored",
+  "paid, unexplained", "paid, no purchase SMS" and "computed, not yet paid",
+  and none of them may render as any other;
+  (b) INV-21 forbids a filter or control that puts ticket data in a query
+  parameter, a fragment or a history entry, and a payout amount is ticket data.
+  **Blocked by:** LOTTO-0029.
+
 ## Hardening
 
 - ✅ [LOTTO-0025] **A pre-push gate, and the CI that mirrors it.**
