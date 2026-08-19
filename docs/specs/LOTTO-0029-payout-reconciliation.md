@@ -1,6 +1,6 @@
 # LOTTO-0029 — Reconcile the bank's payout SMSes against every computed win
 
-**Status:** spec draft (2026-08-19)
+**Status:** accepted (2026-08-19)
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0029 (user-request-2026-08-12) and ROADMAP
 LOTTO-0010 (user-correction-2026-08-02). One umbrella spec covering both ids
@@ -19,8 +19,8 @@ where the two disagree you can see both instead of trusting one.
 After this ships, `check.py` reads the 369 payout SMSes already sitting in
 `lotto_sms_raw.txt`, joins them to tickets on the `VAS` reference, and reports
 — per reference — what the bank paid beside what this project computed. Every
-reference the bank paid, or the app scored, lands in exactly one of seven named
-categories. A disagreement is shown with both figures and neither is silently
+reference the bank paid, or the app **computed a win for**, lands in exactly
+one of seven named categories. A disagreement is shown with both figures and neither is silently
 preferred.
 
 This is the first check in the project that compares its output against
@@ -179,7 +179,19 @@ is summed before comparison (§2 consequence 4, INV-41).
 ### 4.3 The seven categories
 
 `check.py::reconcile(tickets, wins, payouts)` returns one record per reference
-in the union of *paid* and *computed*. The record has five fields:
+in the union of *paid* and *computed*, where:
+
+- ***paid*** is the references `load_payouts()` found a payment for — 225.
+- ***computed*** is the references carrying **at least one winning line** in
+  `wins` — 78. It is **not** every reference the app scored, which is all 561
+  of them; taking that reading puts 483 losing tickets into `unpaid`, the row
+  §4.3 calls the dangerous direction.
+- ***`wins`*** is the **whole** of `check()`'s output, expired lines included.
+  `check.py::__main__` holds both that list and an unexpired `live` subset, so
+  this is one identifier at the call site — and the bank's payouts are
+  lifetime, so a prize paid in 2025 is still money it paid.
+
+The record has five fields:
 
 ```python
 {
@@ -198,8 +210,10 @@ holds the same rule for `won_cents`:
 
 - **`None`** — *not checkable.* No entry of this reference could be scored, so
   the app has no opinion. It is not a zero.
-- **`0`** — *checked, and it did not win.* At least one entry was scorable and
-  none of them reached a paying division.
+- **`0`** — *checked, and the total prize is zero.* Either no entry reached a
+  paying division, or one did and the source itself priced that division at
+  R0.00 (below). **So `computed_cents` never answers "did it win?"** —
+  `first_win` is the only field that does, and rows 3 to 5 key on it.
 - **a positive integer** — the summed prize of its winning lines.
 
 A reference that is only *partly* scorable carries an **integer**, never
@@ -292,10 +306,15 @@ scoring its 1,238 entries — it is not observable.
 
 - **INV-43** — A disagreement carries both figures, and the computed figure is
   never replaced by the bank's. *Test:*
-  `tools/verify_payouts.py::disagreement_keeps_both` → every non-`agree` record
-  carries both `paid_cents` and `computed_cents` with `None` distinguishable
-  from `0`, and the `wins` list `reconcile()` was passed is unchanged when it
-  returns. *Breaks when:* a later change adopts the SMS
+  `tools/verify_payouts.py::disagreement_keeps_both` → a **synthetic** reference
+  whose payout and winning lines differ categorises `low` or `high` and carries
+  `computed_cents` equal to the summed cents of **its own winning lines**, not
+  to `paid_cents`; every non-`agree` record carries both fields with `None`
+  distinguishable from `0`; and the `wins` list `reconcile()` was passed is
+  unchanged when it returns. **The quantifier alone is the wrong clause**:
+  adopting the bank's figure turns those references into `agree`, so they leave
+  the "every non-`agree` record" set and the case passes against the one change
+  this invariant exists to forbid. *Breaks when:* a later change adopts the SMS
   amount as authoritative for its own ticket — the 15 `low` references would
   read as agreement, and the pricing defect behind them would stop being
   visible anywhere.
@@ -304,8 +323,9 @@ scoring its 1,238 entries — it is not observable.
   one where every entry is scorable. *Test:*
   `tools/verify_payouts.py::unscored_is_not_unexplained` → a **synthetic** paid
   reference whose every entry is scorable and which has no winning line lands
-  in `unexplained`, and one carrying an unscorable entry lands in `unscored`; both
-  categories are non-empty over the real dump (4 and 142 today). *Breaks when:*
+  in `unexplained`, and one carrying an unscorable entry lands in `unscored`.
+  The real-dump counts (4 and 142 today) are printed, never asserted — §7 says
+  why. *Breaks when:*
   the two are merged, which buries four real leads under 142 references
   carrying an excuse. **A disjointness assertion is the wrong clause here**:
   merging empties `unexplained`, and the empty set is disjoint from everything,
@@ -314,12 +334,19 @@ scoring its 1,238 entries — it is not observable.
 - **INV-45** — Every reference in the union of paid and computed lands in
   exactly one category, and none is dropped. *Test:*
   `tools/verify_payouts.py::categories_partition` → the seven counts sum to
-  `len(paid ∪ computed)`; 1 + 0 + 61 + 15 + 2 + 4 + 142 = 225 today, in §4.3's
-  decision order. *Breaks when:* the conditions are evaluated as an unordered
-  set, so the one no-ticket reference matches `unexplained` too and is counted
-  twice; or the `no_ticket` case is filtered out at the join, which is the
-  likely one, since dropping references with no ticket is the obvious way to
-  write the loop and discards money the bank actually paid.
+  `len(paid ∪ computed)`, that union built **independently** — from
+  `load_payouts()` and `check()` directly, never from `reconcile()`'s own
+  output — and taken after the `"?"` sentinel of §6 is excluded from both
+  sides; 1 + 0 + 61 + 15 + 2 + 4 + 142 = 225 today, in §4.3's decision order.
+  *Breaks when:* the conditions are evaluated as an unordered set, so the one
+  no-ticket reference matches `unexplained` too and is counted twice; or the
+  `no_ticket` case is filtered out at the join, which is the likely one, since
+  dropping references with no ticket is the obvious way to write the loop and
+  discards money the bank actually paid. **Taking the denominator from
+  `reconcile()`'s output is the wrong clause**: dropping a reference then
+  shrinks both sides equally and the count passes against exactly that defect —
+  the rule `tools/verify_pools.py` states as never importing the thing under
+  test.
 
 - **INV-46** — An `unpaid` record carries `first_win`, the date of its earliest
   winning line, and its count is never asserted to be zero. *Test:*
@@ -334,13 +361,17 @@ scoring its 1,238 entries — it is not observable.
 - **INV-47** — A dump from which no payout parses is reported as carrying no
   payout data, never as agreement. *Test:*
   `tools/verify_payouts.py::no_payouts_is_not_agreement` → against a dump with
-  every payout removed, the report names the absence AND emits no category
-  census at all. *Breaks when:* the bank changes its wording and the report
+  every payout removed, `reconcile()` itself returns **no records** rather than
+  78 `unpaid` ones, and the report names the absence and emits no category
+  census. **The guard belongs in `reconcile()`, not only in the report**:
+  §4.4's whole point is that `check.py::__main__` and LOTTO-0032 consume one
+  convention, so a check living in the report leaves the page rendering the
+  fictions and every consumer re-inventing its own "is this data real?" test. *Breaks when:* the bank changes its wording and the report
   degrades to "0 disagreements over 0 references" — the same silent parse
   failure LOTTO-0031 shipped, on the surface built to catch it. **Suppressing
   the census is the half that is easy to miss:** with no payout parsed every
-  reference the app scored satisfies `unpaid`'s condition, so a report that
-  keeps the table announces 78 prizes the bank never paid — the category §4.3
+  reference the app computed a win for satisfies `unpaid`'s condition, so a
+  report that keeps the table announces 78 prizes the bank never paid — the category §4.3
   calls the dangerous direction, filled entirely with fiction.
 
 ## 6. Failure modes
@@ -386,11 +417,19 @@ CI lane, which has no dump and no archive.
 
 The exit code is the signal; the census counts are printed and move as
 messages arrive, following `tools/verify_pools.py`'s stated convention. The
-asserted terms are named rather than left to "the zero-terms", because one
-count that is zero today must **not** be asserted: **0** purchase debits
-accepted as payouts, **0** references dropped by the partition, and both
-`unexplained` and `unscored` non-empty. **`unpaid` is printed and never
-asserted** — §8 says why, and INV-46 holds it.
+asserted terms are named rather than left to "the zero-terms", because a count
+that happens to be zero today is not thereby a contract. What is asserted:
+**0** purchase debits accepted as payouts, **0** references dropped by the
+partition, and the **synthetic** fixtures of INV-43, INV-44 and INV-46.
+
+**Every real-dump category count is printed and none is asserted** — not
+`unpaid`, and not `unexplained` or `unscored` either. §8 rejects
+`assert unpaid == 0` because it is true today and is not a contract, and the
+same reasoning covers the other two from the other direction: `unexplained` is
+a defect residue this project intends to explain away, and LOTTO-0006's whole
+value (§9) is turning today's 142 `unscored` references into an oracle. An
+assertion that either stays non-empty goes red on the exact progress this spec
+exists to enable, in `local-CI.sh`'s local-only lane, blocking a push.
 
 It carries a `--break <name>` flag applying one deliberate defect and asserting
 the named case goes red, and a `--list`. This follows `verify_page.py`, and for
@@ -575,3 +614,4 @@ this project and the bank's wording, or about a judgement no assertion can make.
 | Loop | Date | Reviewer | Findings | Outcome |
 |------|------|----------|----------|---------|
 | 1 | 2026-08-19 | 3 cold lanes + `check-doc-facts` | **Q1 2 · Q2 3 · Q3 4 · Q4 1** (verified 10 / dismissed 1) | **All ten fixed.** **Three lanes independently found the same defect**, which is the run's strongest signal: §4.3 enumerated the record as four fields while INV-46 required a fifth, so a builder ships four keys and `unpaid_carries_draw_date` has nothing to assert — the field is now named `first_win` in §4.3's schema. **Two lanes found the category overlap**, and it verified empirically: a reference with no ticket has no entries, so `all(scorable(...))` over the empty set returns `True` and the one `no_ticket` reference satisfied `unexplained` too. §4.3 now fixes a decision ORDER and says so. **The best single finding was one lane's alone** — the spec never said what `computed_cents` holds where nothing was scorable, so a builder writes `0` and LOTTO-0032's `_money_cell()` renders R0.00: "no data" as "did not win", on the surface built to expose it. It is now three-valued (`None` / `0` / positive) against `CLAUDE.md`'s cardinal rule, and a *partly* scorable reference carries an integer so LOTTO-0009 INV-11 is not breached — 3 of the 147 are partly scorable, measured. **Two vacuous test clauses**, the same class the draft had already self-caught twice: INV-44 asserted disjointness, which holds against the merge it forbids because the empty set is disjoint from everything, and is now a positive assertion; and §7's unnamed "zero-terms" would have had a builder write `assert unpaid == 0`, the exact assertion §8 rejects, so the asserted terms are now named. **A latent partition hole**: `low`/`high` were bounded `0 < computed`, and `amount()` returns `0.0` for a division the source states as R0.00, so a zero-priced win matched no category at all — rows 3-5 now turn on the presence of a winning line, never its value. None exist today, which is why it would have shipped. Also fixed: INV-47 was silent on the category census when zero payouts parse, where every scored reference satisfies `unpaid` and the report would announce 78 prizes the bank never paid; INV-43 carried a second, conflicting return contract; §9 said 143 where §4.3 says 142 + 1; and a ref-less ticket's `"?"` sentinel is now excluded from the join (§6). **§7.1's census script was my own Q1** — it asserted it produced every figure in §2 and §4.3 and produced neither the scorability split nor the no-ticket count, importing `scorable` without calling it. Rewritten to apply §4.3's decision order, and the script pasted into the spec was extracted and RUN: its output is byte-identical to the output the spec claims. One dismissal, true but immaterial: INV-40's "three wordings" for the debits. `check-doc-facts` clean both before and after; its test-surface check did not run (ANTS-4393) so the clauses were checked by hand. |
+| 2 | 2026-08-19 | 3 cold lanes (identical brief, packet rebuilt from disk) | **Q1 0 · Q2 4 · Q3 2 · Q4 2** (verified 8 / dismissed 0) | **All eight fixed. Cap reached (2 for a spec); the run files its tail — which is empty — and exits.** **A HIGH-COLLATERAL CAP, not a calm one: 5 of the 8 findings landed on text loop 1 wrote**, each anchor checked against loop 1's ledger rather than recalled. Per `review-contract` § At the cap this document does not get a third cold read; it goes to implementation, which exercises the contract against real code. **Size is not the problem** — at 616 lines it is the shortest substantive spec in `docs/specs/`. **All three lanes independently found the same defect, and it is the most severe of the run:** §1 said every reference *"the app scored"* lands in a category, while INV-45 and §7.1's census build the union from references carrying a **winning line**. The app scores 561 references and 78 carry a win, so a builder taking §1 adds **483 losing tickets to `unpaid`** — the row §4.3 itself calls the dangerous direction — announcing hundreds of prizes the bank never paid. *paid*, *computed* and the `wins` argument are now defined where a builder implements from. **Three of the five collateral findings are loop 1's fixes being subtly wrong rather than incomplete.** Loop 1 defined `computed_cents == 0` as *"checked, and it did not win"*, which a zero-priced win also satisfies — so the three values converged in the very section forbidding convergence; `first_win` is now the sole has-a-win signal and `0` means *total prize is zero*. Loop 1's §7 asserted `unexplained` and `unscored` stay non-empty, which is the shape §8 rejects for `unpaid`, pointed the other way: both are counts this project intends to **drain** (LOTTO-0006 turns the 142 into an oracle), so the assertion would go red on correct progress and block a push. And loop 1's `"?"`-sentinel exclusion in §6 contradicted INV-45's denominator. **A third vacuous test clause in three loops**, this time two at once: INV-43's *"every non-`agree` record"* quantifier cannot falsify its own stated break, because adopting the bank's figure turns those references into `agree` and they leave the set; and INV-45's partition passes if the union is taken from `reconcile()`'s own output, since dropping a reference shrinks both sides — the rule `tools/verify_pools.py` already states as never importing the thing under test. Both are now positive and synthetic. Also fixed: INV-47's guard sat on the report only, leaving `reconcile()` handing LOTTO-0032 78 fictional `unpaid` records. `check-doc-facts` clean before and after; its test-surface check did not run (ANTS-4393), so all eight clauses were checked by hand. |
