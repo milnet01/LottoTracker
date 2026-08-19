@@ -295,7 +295,15 @@ staged. `git add -A` first, then run the check, if the change adds a file.
 ## Working conventions
 
 - Roadmap items are `LOTTO-000N` in `ROADMAP.md`; commits are
-  `LOTTO-000N: <description>`. `CHANGELOG.md` follows Keep a Changelog and
+  `LOTTO-000N: <description>`.
+  **`ROADMAP.md` is edited by hand, and the Ants `roadmap_query` verb can be
+  stale against it — trust the file.** `roadmap_log` re-renders the WHOLE file
+  on every write: appending one bullet rewrote 233 lines, restyled all 31
+  existing headlines and flattened a nested sub-bullet (measured 2026-08-19,
+  filed as Ants MCP feedback). That is not a diff anyone can review, so writes
+  go in by hand — which leaves the verb's own store behind, and it then reports
+  shipped items as still open. Read `ROADMAP.md` itself before believing a
+  status from the verb. `CHANGELOG.md` follows Keep a Changelog and
   each entry cites its id.
 - Specs live in `docs/specs/LOTTO-000N-<topic>.md` and carry numbered
   invariants (INV-n), failure modes, and a cold-eyes loop log. Code comments

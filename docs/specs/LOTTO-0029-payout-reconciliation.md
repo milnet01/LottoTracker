@@ -574,8 +574,10 @@ print(len(p), len({re.sub(r'VAS\d+','R',re.sub(r'[\d][\d,.]*','N',x)).strip() fo
 - **The page** — LOTTO-0032. This spec puts the reconciliation in the model
   and the terminal; rendering it is a separate surface with its own security
   invariants.
-- **Correcting the 15 `low` references** — LOTTO-0010 keeps the pricing
-  question. This item makes them visible and counted; it does not explain them.
+- **Correcting the 15 `low` references, and explaining the 4 `unexplained`
+  ones** — LOTTO-0033, filed 2026-08-19 when this shipped. This item makes both
+  populations visible and counted; it does not explain either. LOTTO-0010 is
+  closed with this spec and is not the owner.
 - **The claim wording and `CLAIM_DAYS`** — LOTTO-0011, per §3.
 - **Backfilling earlier than 2025-01-01** — LOTTO-0006. That item's value is
   that this reconciliation turns the 142 currently-`unscored` references (plus

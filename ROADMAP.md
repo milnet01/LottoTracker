@@ -980,6 +980,30 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   parameter, a fragment or a history entry, and a payout amount is ticket data.
   **Blocked by:** LOTTO-0029.
 
+- 📋 [LOTTO-0033] **The app under-counts real money on 15 references, and 4 paid tickets reach no paying division.**
+  Kind: investigate. Source: in-session-2026-08-19 (measured by LOTTO-0029 on shipping).
+  Layman: the bank paid you more than this app works out, on tickets that did
+  win. We now know exactly which ones — this is finding out why.
+  **Split out of LOTTO-0029, which shipped the measurement rather than the
+  fix.** `check.py::reconcile()` now names the affected references every run.
+  Two populations, and they are different questions:
+  - **15 references computed LOW, by R315.50 in total** (2 high, by R11.60).
+  These tickets DID win and the amount is wrong, so it is a **pricing**
+  question, not a matching one — `check.py::amount()` and the two pricing
+  paths its era asymmetry forces are where to look.
+  - **4 references fully checkable, paid, reaching no paying division.**
+  LOTTO-0029 eliminated six causes against these: the division table, a date
+  offset, the archive parser and store, the ticket board parse, the stored
+  results themselves (checked against two independent sites), and a second
+  game bought in one transaction. What remains may be a fact about the domain
+  rather than a defect — a payout is not always attributable to a computed
+  win — which is why `unexplained` is its own category and not an error.
+  **Do not re-run the six eliminations**; LOTTO-0029's body records each with
+  its method. 16 of the 17 amount disagreements are archive-era, which is the
+  era `tools/verify_sources.py` cannot cross-check.
+  **Read `docs/specs/LOTTO-0029-payout-reconciliation.md` §2 first** — the
+  populations, the categories and how to list them are all there.
+
 ## Hardening
 
 - ✅ [LOTTO-0025] **A pre-push gate, and the CI that mirrors it.**
@@ -1406,6 +1430,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   already known from the bank's own record — the only end-to-end check of
   parsing, pool derivation, matching and pricing this project can have.
   Do LOTTO-0010 first: without the reconciliation script the oracle is unread.
+  **Unblocked 2026-08-19** — LOTTO-0010/0029 shipped, and `check.py::reconcile()`
+  is that script. 142 references sit in `unscored` because an entry nothing
+  can score may be what the bank paid on; backfilling converts them into
+  known-correct answers. That is this item's value, now measurable.
 
 - ✅ **LOTTO-0017** INV-19 says "no Qt" but cannot see a PyQt import.
   Kind: fix. Source: cold-eyes-2026-08-02 (LOTTO-0013 re-gate, loop 4).
