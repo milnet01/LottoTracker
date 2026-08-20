@@ -249,6 +249,16 @@ def check(tickets=None, today=None):
                             "plus_flag": plus_flag,
                             "pool_id": pool_id,
                             "line": board[0],
+                            # The numbers themselves, both sides, reported by
+                            # the engine that matched them rather than re-derived
+                            # by a consumer: serve.py adds no second opinion
+                            # about scoring (LOTTO-0035). board is
+                            # (label, mains, special); special is None for any
+                            # game without one.
+                            "numbers": list(board[1]),
+                            "special": board[2],
+                            "drawn_main": list(d["main"]),
+                            "drawn_special": d.get("special"),
                             "date": d["date"],
                             "division": pays[label],
                             "matched": site_label(t.game, hits, special),

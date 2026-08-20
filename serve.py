@@ -190,6 +190,15 @@ def build_model():
                     else None,
                     "draws_covered": covered,
                     "draws_remaining": (t.ndraws - covered) if ok else None,
+                    # The numbers the user actually chose (LOTTO-0035). Every
+                    # entry of one ticket carries the same boards - they are a
+                    # property of the ticket, not of the pool - which is why
+                    # this repeats across an entry's siblings rather than
+                    # being looked up separately per pool.
+                    "boards": [
+                        {"line": b[0], "numbers": list(b[1]), "special": b[2]}
+                        for b in t.boards
+                    ],
                 }
             )
 

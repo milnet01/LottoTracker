@@ -835,14 +835,38 @@ its INV-19 observable).
 ## 5. Invariants
 
 This document holds **INV-15 to INV-18** — the honesty rules on the data the
-page renders — and **INV-24**, which is an honesty rule about the port the
-process binds rather than about the data, and lives here because §4.1's
-environment table and §6's failure mode are both this document's. LOTTO-0001
+page renders — **INV-48**, added 2026-08-20 with LOTTO-0035 and the same kind
+of rule one column further right, and **INV-24**, which is an honesty rule
+about the port the process binds rather than about the data, and lives here
+because §4.1's environment table and §6's failure mode are both this
+document's. LOTTO-0001
 holds INV-1 to INV-6, INV-22 and INV-26, LOTTO-0009 INV-7 to INV-11,
 LOTTO-0014 INV-12 to INV-14 and INV-21, and LOTTO-0013 INV-19, INV-20, INV-23
 and INV-25. No
 number moved in either 2026-08-02 split — CHANGELOG.md and sibling specs cite
 them unqualified.
+
+- **INV-48** — The page shows the numbers the user chose beside the numbers
+  drawn, and a set it does not hold is said in words rather than rendered
+  blank. Added 2026-08-20 (LOTTO-0035): the user's stated need is to compare
+  what was played against what came up, and a blank cell where numbers belong
+  asserts something about the ticket instead of about what is known — INV-15's
+  rule, one column to the right.
+  *Test:* `tools/verify_page.py`, case `numbers_chosen_and_drawn`. Its two
+  fixture sets are **disjoint on purpose**: a renderer that puts the chosen
+  numbers in both columns satisfies every per-number assertion when they
+  overlap, so the case also asserts the two cells differ. Red-tested by
+  `--break no_drawn_numbers` (renders the chosen half only, which is the shape
+  a half-finished change leaves behind, since the drawn half needs the model to
+  carry per-win draw detail) and `--break blank_numbers_cell` (renders an
+  absent set as an empty cell).
+  **Writing the second break found a defect in the case rather than in the
+  code**, which is the second time this flag has done that (see §13 and
+  CHANGELOG). The break first patched `page._balls` and the case stayed GREEN:
+  `_boards_cell()` answers the empty case itself and never calls `_balls`, so
+  the assertion was being satisfied by a path the break did not touch. A break
+  aimed one function too low proves nothing and looks identical to one that
+  works.
 
 - **INV-15** — An entry nothing can score renders as "not checkable" with its
   reason, and never as a blank, a dash, a zero, or an omission; a ticket
@@ -1274,6 +1298,7 @@ LOTTO-0014 §8.)
 | INV-18 failed refresh keeps the model | `tools/verify_page.py::failed_refresh_keeps_model` |
 | INV-24 the port comes from `$PORT`, then `$LOTTO_PORT`, then 4322, and a bad non-empty value exits | `tools/verify_page.py::port_from_environment` — which also covers `supervise.py`'s matching precedence and its opposite policy on a bad value (LOTTO-0013 §4.5) |
 | INV-24's `$LOTTO_PORT` and bare-4322 legs reaching the **bind** | **nothing** — both are asserted at `resolve_port()` level only; the three children cover the `$PORT` leg, the rejected leg and the supervised one. A `main()` that resolved correctly and then bound `DEFAULT_PORT` on the `$LOTTO_PORT` path alone would pass |
+| INV-48 the numbers chosen beside the numbers drawn, absence said in words | `tools/verify_page.py::numbers_chosen_and_drawn` — two disjoint fixture sets, so a renderer echoing the chosen numbers into both columns fails; red-tested by `--break no_drawn_numbers` and `--break blank_numbers_cell` |
 | §4.1 the *resolved* port being what builds LOTTO-0014 §4.2's `Host` allowlist, not either variable read again | **nothing** — and the gap is structural rather than an omission: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because the question they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes both. The breach is loud to a *user* — every request fails — and invisible to the suite |
 | §4.1 `page.py` performing no I/O | `tools/verify_page.py` — **two** doubles for `all_draws`, swapped between phases: a *returning* one while the builder runs (INV-15 needs draws for one pool and `[]` for the other), then a *raising* one installed before `render()` is called. Only the second proves the renderer performs no I/O, and it must not be in place during the build or every case dies there. Absent the raising double the row would be false: with no `archive_results.json`, `history.all_draws()` falls straight through to `api_draws()`, which **succeeds** on a connected machine, so a renderer calling it would pass |
 | §4.1 `settings` in the model, so both switches render their real state | **nothing** — a switch rendered in the wrong state looks identical to one rendered right until the user toggles it; no case reads the panel's initial state |

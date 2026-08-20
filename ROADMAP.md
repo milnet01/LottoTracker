@@ -1046,11 +1046,8 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: feature.
   Source: user-discovery-2026-08-20.
 
-- 📋 [LOTTO-0035] **Show the numbers chosen beside the numbers drawn.**
-  Sign of success 2 (README § How you would know it works). **The cheapest item
-  on this list: the model already carries `boards` and `page.py` renders it
-  nowhere** — verified 2026-08-20 by grep, no occurrence in the file. So the
-  chosen half is a rendering change alone.
+- ✅ [LOTTO-0035] **Show the numbers chosen beside the numbers drawn.**
+  Sign of success 2 (README § How you would know it works). **Correction (2026-08-20, before any code was written): this was filed as "the cheapest item, a rendering change alone" and that was wrong.** The claim came from grepping `serve.py` for `"boards":`, which exists — as `len(t.boards)`. The model carries the board COUNT, never the numbers. `page.py` does render `boards` nowhere, so that half of the grep held; the conclusion drawn from it did not. Both halves therefore need `build_model()` work, and the item is not free. Recorded rather than quietly corrected, because "the data is already there" is exactly the kind of claim that gets planned around.
   The drawn half is not: `history.py` holds `main` and `special` per draw, but
   the model carries no per-entry draw detail, so `serve.py::build_model()` has
   to put it there first. Keep the two halves in one item — a page showing your
@@ -1058,6 +1055,26 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Watch the cardinal rule: an entry that could not be scored has no drawn
   numbers to show, and the cell must say so rather than rendering blank
   (page.py `_money_cell` and `_draws_cell` are the pattern to copy).
+  Resolved (2026-08-20): shipped. `check.py::check()` reports the numbers it
+  matched — the board's mains, its special, and the draw's mains and special —
+  so `serve.py` re-derives nothing about scoring. `build_model()` carries each
+  entry's boards; `page.py` gains `_balls()`, `_numbers_cell()` and
+  `_boards_cell()`, and renders "Your numbers" and "Drawn" on the wins table and
+  "Your numbers" on both outstanding tables. The special is styled apart from
+  the mains, or a PowerBall ticket reads as a six-main-number ticket.
+  Numbers are left in ticket and draw order rather than sorted: that is what was
+  actually played and actually drawn, and LOTTO-0001 already records that the two
+  results sources differ in ordering, so sorting would invent an agreement.
+  Holds INV-48 (LOTTO-0002 §5, §11 row added). `tools/verify_page.py` goes 17
+  cases to 18 and 31 breaks to 33, both new breaks red-tested.
+  The filing claim that this was "a rendering change alone" was wrong and is
+  corrected in the body above rather than deleted.
+  Second time `--break` has found a defect in a CASE rather than in the code: the
+  absence break first patched `page._balls` and the case stayed GREEN, because
+  `_boards_cell()` answers the empty case itself and never calls it. The
+  assertion was being satisfied by a path the break did not touch, which is
+  indistinguishable from a working red test until you look.
+  `./local-CI.sh --force`: PASS, all eleven checks, privacy at full strength.
   **Layman:** The page shows the numbers on your ticket next to the numbers that actually came up
   Kind: feature.
   Source: user-discovery-2026-08-20.

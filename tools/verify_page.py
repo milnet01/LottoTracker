@@ -48,6 +48,11 @@ import serve  # noqa: E402
 import supervise  # noqa: E402
 
 SENTINEL = "VAS00000000000"
+# Fixture numbers for INV-48. The two sets are DISJOINT on purpose: a renderer
+# that shows the chosen numbers in both columns passes every per-number
+# assertion if they overlap, and this is the case that catches it.
+CHOSEN_MAIN = [3, 11, 24, 38, 45]
+DRAWN_MAIN = [6, 17, 29, 41, 50]
 # Read at import, while $HOME is still the real one: temp_home() moves $HOME for
 # every case, and on this machine PySide6 lives in the USER site-packages under
 # it — so the tray probe would find no Qt at all and report the wrong reason.
@@ -1811,6 +1816,106 @@ def notification_carries_no_ticket_data():
             supervise.refresh_message = real_msg
 
 
+def numbers_chosen_and_drawn():
+    """INV-48 — the page shows the numbers chosen beside the numbers drawn, and
+    an absent set is said in words rather than rendered blank.
+
+    The second clause is the cardinal rule reaching the numbers columns: a
+    blank cell where numbers should be reads as "no numbers", which is a
+    statement about the ticket rather than about what is known.
+    """
+    temp_home()
+    import re
+
+    if broken("no_drawn_numbers"):
+        # Show what the user picked and not what came up. The likeliest real
+        # regression: the chosen half is easy and the drawn half needs the
+        # model to carry per-win draw detail, so the drawn half is what a
+        # half-finished change drops.
+        real_cell = page._numbers_cell
+        page._numbers_cell = lambda nums, special=None: (
+            "<td></td>" if nums == DRAWN_MAIN else real_cell(nums, special)
+        )
+    if broken("blank_numbers_cell"):
+        # Blank ONLY the absent case, leaving every real set rendered normally.
+        # Two ways to get this break wrong, both found by writing it:
+        # mangling present numbers trips assertion 1 first and never reaches
+        # the cardinal-rule clause, and patching _balls misses entirely because
+        # _boards_cell answers the empty case itself without calling it. The
+        # break has to sit on the function that actually decides absence.
+        real_boards = page._boards_cell
+        page._boards_cell = lambda boards: (
+            '<td class="nums"></td>' if not boards else real_boards(boards)
+        )
+
+    try:
+        model = fixture_model(
+            wins=[
+                {
+                    "ref": SENTINEL, "game": "powerball", "plus_flag": 0,
+                    "pool_id": 100, "date": "2026-07-01",
+                    "division": "Division 8", "matched": "MATCH 1 + PB",
+                    "amount_cents": 1500, "expires": "2027-07-01",
+                    "expires_in_days": 333, "expired": False,
+                    "numbers": CHOSEN_MAIN, "special": 7,
+                    "drawn_main": DRAWN_MAIN, "drawn_special": 7,
+                },
+            ],
+            entries=[
+                {"ref": SENTINEL, "game": "powerball", "plus_flag": 0,
+                 "pool_id": 100, "cost_cents": 1000, "scorable": True,
+                 "reason": None, "won_cents": 1500, "draws_covered": 2,
+                 "draws_remaining": 3,
+                 "boards": [{"line": "A", "numbers": CHOSEN_MAIN, "special": 7}]},
+                # An entry whose boards never made it into the model. Not a
+                # hypothetical: every entry built before LOTTO-0035 has none,
+                # so a cached or older model reaches the renderer this way.
+                {"ref": SENTINEL, "game": "lotto", "plus_flag": 0,
+                 "pool_id": 100, "cost_cents": 500, "scorable": True,
+                 "reason": None, "won_cents": 0, "draws_covered": 1,
+                 "draws_remaining": 4, "boards": []},
+            ],
+            uncheckable={"entries": 2, "uncheckable": 0, "too_old": 0,
+                         "no_pool": 0, "wholly": 0, "partly": 0},
+        )
+        html = render_pure(model)
+
+        # 1. Both sides of the comparison reach the win row.
+        for n in CHOSEN_MAIN:
+            need(f">{n}</span>" in html, f"chosen number {n} is not rendered")
+        for n in DRAWN_MAIN:
+            need(f">{n}</span>" in html, f"drawn number {n} is not rendered")
+        need("Your numbers" in html, "no 'Your numbers' column header")
+        need("Drawn" in html, "no 'Drawn' column header")
+
+        # 2. The special is rendered and marked as such, or a PowerBall ticket
+        #    reads as a six-main-number ticket.
+        need('class="ball special"' in html,
+             "the special number is not distinguished from the mains")
+
+        # 3. The cardinal rule: an absent set says so, and is never blank.
+        need("not recorded" in html,
+             "an entry with no boards rendered nothing at all")
+        for empty in ('<td class="nums"></td>', "<td></td>"):
+            need(empty not in html,
+                 f"a numbers cell rendered as {empty!r} - blank is not an answer")
+
+        # 4. The chosen and drawn sets must not be conflated: they differ here,
+        #    so rendering one twice would pass every assertion above.
+        wins_tbl = re.search(r"<h2>Claimable now</h2>.*?</table>", html, re.S)
+        need(wins_tbl is not None, "the wins table is missing entirely")
+        cells = re.findall(r'<td class="nums">(.*?)</td>', wins_tbl.group(0), re.S)
+        need(len(cells) >= 2,
+             f"expected two numbers cells on the win row, found {len(cells)}")
+        need(cells[0] != cells[1],
+             "the chosen and drawn cells rendered identically - one is a copy")
+    finally:
+        if broken("no_drawn_numbers"):
+            page._numbers_cell = real_cell
+        if broken("blank_numbers_cell"):
+            page._boards_cell = real_boards
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -1829,10 +1934,13 @@ CASES = [
     ("build_progress_is_visible", "INV-28", build_progress_is_visible),
     ("no_comparison_is_not_no_wins", "INV-29", no_comparison_is_not_no_wins),
     ("notification_carries_no_ticket_data", "INV-30", notification_carries_no_ticket_data),
+    ("numbers_chosen_and_drawn", "INV-48", numbers_chosen_and_drawn),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
 BREAKS = {
+    "no_drawn_numbers": "numbers_chosen_and_drawn",
+    "blank_numbers_cell": "numbers_chosen_and_drawn",
     "host_endswith": "host_allowlist",
     "no_security_headers": "host_allowlist",
     "token_exempt_refresh": "token_required",

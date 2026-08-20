@@ -49,6 +49,41 @@ def _draws_cell(value):
     return f"<td>{value}</td>"
 
 
+def _balls(numbers, special=None):
+    """One set of numbers as markup, main numbers then any special (LOTTO-0035).
+
+    The cardinal rule reaches here too: an absent set is said in words, never
+    rendered as an empty cell. An empty list is absence, not "no numbers" - a
+    board always has numbers, so nothing to show means nothing was known.
+    """
+    if not numbers:
+        return '<span class="notcheckable">not recorded</span>'
+    out = " ".join(f'<span class="ball">{_e(n)}</span>' for n in numbers)
+    if special is not None:
+        out += f' <span class="ball special">{_e(special)}</span>'
+    return out
+
+
+def _numbers_cell(numbers, special=None):
+    return f"<td class=\"nums\">{_balls(numbers, special)}</td>"
+
+
+def _boards_cell(boards):
+    """Every board on a ticket, one per line, labelled when there is >1."""
+    if not boards:
+        return '<td class="notcheckable">not recorded</td>'
+    if len(boards) == 1:
+        b = boards[0]
+        return _numbers_cell(b.get("numbers"), b.get("special"))
+    parts = [
+        f'<div><span class="muted">{_e(b.get("line"))}</span> '
+        + _balls(b.get("numbers"), b.get("special"))
+        + "</div>"
+        for b in boards
+    ]
+    return f'<td class="nums">{"".join(parts)}</td>'
+
+
 def _notice(model):
     """The three states in which the page shows no ticket data (LOTTO-0002 §6).
 
@@ -129,13 +164,16 @@ def _wins_section(model):
                     when += f' <span class="muted">({d} days)</span>'
             rows.append(
                 f'<tr class="{cls}"><td>{_e(w["game"])}/{_e(w["plus_flag"])}</td>'
-                f'<td>{_e(w.get("division"))}</td><td>{_e(w.get("matched"))}</td>'
+                + _numbers_cell(w.get("numbers"), w.get("special"))
+                + _numbers_cell(w.get("drawn_main"), w.get("drawn_special"))
+                + f'<td>{_e(w.get("division"))}</td><td>{_e(w.get("matched"))}</td>'
                 f'<td>{_e(w.get("date"))}</td>'
                 f'<td class="money">{_e(_rands(w["amount_cents"]))}</td>'
                 f"<td>{when}</td></tr>"
             )
         body = (
-            "<table><thead><tr><th>Pool</th><th>Division</th><th>Matched</th>"
+            "<table><thead><tr><th>Pool</th><th>Your numbers</th><th>Drawn</th>"
+            "<th>Division</th><th>Matched</th>"
             "<th>Draw</th><th>Amount</th><th>Expires</th></tr></thead><tbody>"
             + "".join(rows)
             + "</tbody></table>"
@@ -163,6 +201,7 @@ def _outstanding_section(model):
             out.append(
                 f'<tr><td>{_e(e["ref"])}</td>'
                 f'<td>{_e(e["game"])}/{_e(e["plus_flag"])}</td>'
+                + _boards_cell(e.get("boards"))
                 + (
                     f"<td>{e['draws_remaining']}</td>"
                     if remaining_col
@@ -176,7 +215,8 @@ def _outstanding_section(model):
     if coming:
         parts.append(
             "<h3>Draws still to come</h3><table><thead><tr><th>Ticket</th>"
-            "<th>Pool</th><th>Draws remaining</th></tr></thead><tbody>"
+            "<th>Pool</th><th>Your numbers</th><th>Draws remaining</th>"
+            "</tr></thead><tbody>"
             + rows(coming, True)
             + "</tbody></table>"
         )
@@ -185,7 +225,8 @@ def _outstanding_section(model):
             f"<h3>Not checkable ({len(unchecked):,} entries)</h3>"
             '<p class="muted">Draws remaining is unknown for these: there is '
             "nothing to measure a window against. They are not losses.</p>"
-            "<table><thead><tr><th>Ticket</th><th>Pool</th><th>Why not</th>"
+            "<table><thead><tr><th>Ticket</th><th>Pool</th>"
+            "<th>Your numbers</th><th>Why not</th>"
             "</tr></thead><tbody>" + rows(unchecked, False) + "</tbody></table>"
         )
     if not parts:
@@ -273,6 +314,11 @@ table{border-collapse:collapse;width:100%;margin:.5rem 0}
 th,td{text-align:left;padding:.3rem .5rem;border-bottom:1px solid #e4e4e4}
 th{font-weight:600;font-size:.85rem;color:#555}
 .money{text-align:right;font-variant-numeric:tabular-nums}
+.nums{white-space:nowrap}
+.ball{display:inline-block;min-width:1.6rem;padding:.1rem .3rem;margin:.05rem .1rem;
+ border-radius:.8rem;background:#e8eef6;text-align:center;font-variant-numeric:tabular-nums;
+ font-size:.85rem}
+.ball.special{background:#f6e6cf;font-weight:600}
 .notcheckable{color:#8a5a00;font-style:italic}
 .muted{color:#666;font-size:.9rem}
 .notice{background:#fff8e1;border-left:4px solid #e0a800;padding:.6rem .8rem;margin:.8rem 0}

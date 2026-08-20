@@ -8,6 +8,23 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The page shows the numbers you chose beside the numbers that were drawn (LOTTO-0035)**
+  Every winning line now renders your board and that draw's numbers side by
+  side, and every ticket with draws still to come shows what you played. The
+  special number — the PowerBall, or Lotto's bonus ball — is marked apart from
+  the mains rather than reading as a sixth main number. Holds INV-48.
+
+  The item was filed as "the cheapest on the list, a rendering change alone"
+  and that was wrong: the model carried `len(t.boards)`, the count, never the
+  numbers. Both halves needed `build_model()` work. The scoring engine now
+  reports the numbers it matched, rather than a consumer re-deriving them.
+
+  Writing the red test found a defect in the test rather than in the code, the
+  second time `--break` has done that. The break for the absence rule first
+  patched `page._balls` and the case stayed green, because `_boards_cell()`
+  answers the empty case itself and never calls it — the assertion was being
+  satisfied by a path the break did not touch.
+
 - **The bank's own payout messages, checked against every win this app computed. (LOTTO-0029/0010)**
   369 payout SMSes were sitting unread in the dump. `check.py` now joins them
   to tickets on the VAS reference and reports, per reference, what the bank
