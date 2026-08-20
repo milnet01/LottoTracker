@@ -1264,6 +1264,21 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   New invariants INV-38 and INV-39; `tools/verify_watch.py` goes 7 cases
   to 11, each red-tested. Spec amended at LOTTO-0003 4.7, 4.8 (new), 5,
   6, 7, 9, 10, 11.
+  Progress (2026-08-20): one more, surfaced by CLAUDE.md's review-contract gate
+  in all three loops and deliberately not fixed there, because a docs gate never
+  edits code.
+  (m) `local-CI.sh`'s header (lines 16-23) says "Three of the five verifiers
+  read data that is deliberately not in the repo" and calls `verify_privacy.py`
+  "the fourth"; `.github/workflows/ci.yml` lines 6-7 say the same "three". The
+  tree has SEVEN verifiers and the script gates FOUR - sources, coverage, pools
+  and payouts (lines 125-131), the last of which the same file calls "the one
+  thing that must never reach one". Both comments predate `verify_payouts.py`.
+  The reason this is worth more than a stale count: `CLAUDE.md` line 51 sends
+  the reader to that header as the authoritative statement of the two lanes'
+  asymmetry, so someone adding a fifth data-dependent verifier updates a comment
+  that is already wrong and reasons from it. The document's own numbers are
+  correct; only the two comments it delegates to are stale. Fix is two comment
+  edits, and worth folding into the next change that opens either file.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
