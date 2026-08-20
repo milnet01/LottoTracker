@@ -5,8 +5,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A personal tool that reads South African National Lottery ticket SMSes (Standard
-Bank wording) off an Android phone, scores every ticket against real draw
-results, and reports what is still claimable. Pure Python 3.8+ standard library
+Bank wording) off an Android phone and builds **one consolidated ledger** of
+every ticket: what was chosen, what was drawn, what it won, what it cost.
+
+**Its primary job is telling the user when a ticket is about to run out, so
+they buy the next one** — they buy for ten draws at a time. That was settled
+with the user on 2026-08-20 and it corrects the project's own earlier framing,
+which led with surfacing wins before the 365-day claim deadline. That framing
+was never the user's main need, and the bank pays most small wins back
+automatically anyway (LOTTO-0011). **The five signs of success are in
+`README.md` § How you would know it works** — read them before adding a
+feature; three of the five are open, and the primary one is the least built.
+The claim-deadline material is still true and still useful, but it is not the
+headline.
+
+Pure Python 3.8+ standard library
 plus `dbus-python` (`find_lotto_sms.py`, `watch_sms.py`) and PySide6 (`tray.py`,
 and the one `verify_page.py` case that starts it in a subprocess). No package
 manager, no virtualenv, no test framework, no build step — everything runs as

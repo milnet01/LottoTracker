@@ -1023,6 +1023,115 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   populations, the categories and how to list them are all there.
   Source: in-session-2026-08-19 (measured by LOTTO-0029 on shipping).
 
+- 📋 [LOTTO-0034] **Tell the user a ticket is about to run out, before the last draw.**
+  **The project's primary job, and the least built of the five signs of success**
+  (README § How you would know it works, item 1). Settled with the user
+  2026-08-20 during discovery: they buy for ten draws at a time, and knowing
+  when to re-buy is the main reason the tool exists. The earlier framing —
+  surface wins before the 365-day claim deadline — was never the main need.
+  A tray notification a draw or two before the last one, NOT a page panel: the
+  user's stated requirement is to find out without going to look. Reuses the
+  notification path LOTTO-0019 built and LOTTO-0028 is extending; those two are
+  the dependency, since a notification is only as timely as the refresh behind
+  it.
+  The data already exists: `draws_remaining` is in the model and rendered as a
+  column by `page.py`. What is missing is the DATE of an entry's final draw and
+  anything that reaches the user unprompted. Deriving the final-draw date needs
+  the draw calendar per pool, which `history.py` has for past draws but not for
+  future ones — that is the real unknown and should be measured before design.
+  Not yet specced. spec-format.md §1 probably applies: it crosses the watcher,
+  the supervisor and the tray, and gets the timing wrong in a way the user
+  notices.
+  **Layman:** The app tells you your ticket is nearly used up so you can buy the next one, instead of you having to remember
+  Kind: feature.
+  Source: user-discovery-2026-08-20.
+
+- 📋 [LOTTO-0035] **Show the numbers chosen beside the numbers drawn.**
+  Sign of success 2 (README § How you would know it works). **The cheapest item
+  on this list: the model already carries `boards` and `page.py` renders it
+  nowhere** — verified 2026-08-20 by grep, no occurrence in the file. So the
+  chosen half is a rendering change alone.
+  The drawn half is not: `history.py` holds `main` and `special` per draw, but
+  the model carries no per-entry draw detail, so `serve.py::build_model()` has
+  to put it there first. Keep the two halves in one item — a page showing your
+  numbers with nothing to compare them against is worse than showing neither.
+  Watch the cardinal rule: an entry that could not be scored has no drawn
+  numbers to show, and the cell must say so rather than rendering blank
+  (page.py `_money_cell` and `_draws_cell` are the pattern to copy).
+  **Layman:** The page shows the numbers on your ticket next to the numbers that actually came up
+  Kind: feature.
+  Source: user-discovery-2026-08-20.
+
+- 📋 [LOTTO-0036] **Total cost against winnings over a period the user chooses.**
+  Sign of success 4 (README § How you would know it works), and **the one with
+  nothing built at all** — verified 2026-08-20: no occurrence of year, month or
+  any period concept in `page.py`, `serve.py` or `check.py`.
+  The user asked for a specific year, year to date, a specific month, month to
+  date, and similar. Today § Spend against winnings reports exactly three
+  lifetime figures: spent on scorable entries, won on those same entries, and
+  lifetime spend across every entry.
+  The hard part is not the arithmetic, it is which date a figure belongs to.
+  A ticket bought in January covering ten draws wins in February: the cost falls
+  in one period and the winnings in another, and summing both by purchase date
+  quietly misstates every period. Decide that with the user before building.
+  INV-16's compared-spend rule (spend is compared over CHECKABLE entries only)
+  has to survive the split, or a period total silently becomes lifetime-shaped.
+  **Layman:** See what you spent and won in any month or year, not just over all time
+  Kind: feature.
+  Source: user-discovery-2026-08-20.
+
+- 📋 [LOTTO-0037] **Explain the 15 references where the app computes low, and the 4 scorable tickets it missed.**
+  Sign of success 5 (README § How you would know it works). **The bar settled
+  with the user 2026-08-20 is NOT that the figures match — it is that nothing is
+  a mystery.** Every disagreement falls into a named reason and the unexplained
+  pile is empty. That is deliberately compatible with LOTTO-0029 §7's refusal to
+  assert a count that is true today and is not a contract.
+  The population, from LOTTO-0029 §2: lifetime R3,343.20 computed against
+  R8,332.70 paid, a gap of R4,989.50. Most of it is honest — 142 of 147 silent
+  references involve an entry nothing can score, and LOTTO-0006 is the unlock.
+  What this item owns is the residue: 15 references where the app computes LOW,
+  and 4 fully scorable tickets that reached no paying division.
+  The one figure that must not move: ZERO references where the app claims a win
+  the bank never paid. The app may under-report; it may never over-report. If a
+  fix makes that number non-zero it is the wrong fix.
+  Overlaps LOTTO-0033, which owns the same residue from the pricing side —
+  check it before starting, and merge rather than duplicating.
+  **Layman:** Work out why the app's figures disagree with what the bank actually paid, so nothing is left unexplained
+  Kind: investigate.
+  Source: user-discovery-2026-08-20.
+
+- ✅ [LOTTO-0038] **Migrate the roadmap to the Ants store and make it the source of truth.**
+  **Four commits on 2026-08-20 carry the prefix `LOTTO-0034` and this is the
+  item they mean.** That id was written into commit subjects before any item was
+  filed, and the allocator later gave `LOTTO-0034` to the re-buy notification.
+  The commits are pushed and are not being rewritten; read `LOTTO-0034:` in
+  `git log` for 2026-08-20 as this item. Filed as the correction rather than
+  left as a silent mismatch.
+
+  Migrated with `roadmap_migrate` (ants-v1, 33 items, `store_backed: true`).
+  `roadmap_query` now answers `source: "store"`. Writes go through `roadmap_log`,
+  reads through `roadmap_query` by id.
+
+  Measured before touching the real file, in an isolated throwaway copy: all 33
+  ids and statuses survive the render identically, nested sub-bullets keep their
+  indentation, and the file grows 1603 to 1631 lines as the two id dialects
+  normalise into one.
+
+  One real defect found that way and pre-empted: the renderer keeps only the
+  FIRST sentence of a `Layman:` line and discards the rest permanently. This
+  item's own predecessor line was rewritten to one sentence before rendering, so
+  nothing was lost. Filed as Ants MCP feedback with a repro, along with the
+  misleading `file_ahead_of_store` flag and the absence of any deregister verb.
+
+  CLAUDE.md's conventions were rewritten to match and gated with
+  `review-contract` (genre standard, 3 loops, 16 verified findings, all fixed) —
+  `docs/reviews/CLAUDE-md-review-2026-08-20.md`. The gate reached a VIOLENT cap:
+  4 of loop 3's 6 findings landed on text the run itself wrote, so the document's
+  review is closed rather than continued.
+  **Layman:** The roadmap now lives in a database and the file is generated from it, so every project follows one format
+  Kind: chore.
+  Source: user-request-2026-08-20.
+
 ## Hardening
 
 - ✅ [LOTTO-0025] **A pre-push gate, and the CI that mirrors it.**

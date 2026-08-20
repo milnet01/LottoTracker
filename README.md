@@ -1,11 +1,43 @@
 # LottoTracker
 
-Reads the lottery ticket confirmations your bank sends by SMS, remembers every
-ticket, and checks them against the real draw results — so a small win doesn't
-sit unnoticed until it expires.
+**One consolidated view of every lottery ticket you have bought** — what you
+chose, what came up, what it won, what it cost — built from the confirmations
+your bank already sends by SMS. It tells you **when a ticket is about to run
+out, so you know to buy the next one**, and keeps a running tally of spend
+against winnings over whatever period you care about.
+
+The bank texts you one message at a time. This is the ledger those messages
+never add up to.
 
 Runs entirely on your own machine. No account, no API key, no subscription,
 nothing paid.
+
+## How you would know it works
+
+The five things it is judged against. They are here rather than in a spec
+because they are what the tool is *for*, and a stranger should be able to read
+them without being told where to look.
+
+1. **It tells you when to buy again, before you have to think about it.** A
+   ticket bought for ten draws is used up after the tenth; you are told while
+   there is still time to buy the next one, without opening anything. This is
+   the primary job, and today it is the least built of the five.
+2. **It shows the numbers you chose beside the numbers that came up.** Per
+   entry, both — whether you picked them or took a quick pick.
+3. **It shows what each ticket won**, consolidated in one place, rather than
+   scattered across one bank SMS per event.
+4. **It totals cost against winnings over a period you choose** — a given year,
+   year to date, a given month, month to date.
+5. **Every disagreement with the bank's own record is explained.** Not "the
+   figures match": the bar is that nothing is a mystery. Where the app and the
+   bank differ, each case falls into a named reason, and the unexplained pile
+   is empty. The app may under-report; it must never claim a win that was not
+   paid.
+
+**Where it stands against those today:** 3 is done, 1 is partly done (the page
+shows draws remaining, but nothing tells you), and 2, 4 and 5 are open — 5 has
+15 unexplained references and 4 fully scorable tickets that were missed. See
+`ROADMAP.md`.
 
 ## Is this for you?
 
