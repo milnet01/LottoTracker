@@ -152,8 +152,13 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   the watcher must reach for it, because the bus name is D-Bus *activatable* and
   the act of reaching starts it. `RETRY_EVERY` is 60s, not 2s, so it cannot
   resurrect a daemon the user stopped on purpose. LOTTO-0003 §4.8.
-- **`tickets.py`** is the only bank-specific file, and it reads **two** message
-  kinds. `rows()` is the dump
+- **`tickets.py`** holds the bank's *parsing*, and reads **two** message kinds.
+  It is not the only bank-specific file: `watch_sms.py::INCLUDE` and
+  LOTTO-0001 §4.1's adb `WHERE` clause hold the bank's *admission filter*, and
+  `INCLUDE` carries the reference prefix `vas00`. **A bank wording change
+  touches both**, and INV-32 asserts the two filters agree — fixing the parser
+  alone leaves a message the parser handles correctly and never receives, which
+  is exactly how LOTTO-0030 excluded 366 payouts. `rows()` is the dump
   format's one reader, and both writers depend on that staying true — a second
   reader that drifts would duplicate every record it failed to recognise.
   `parse_payout()` reads the bank's statement of a prize it paid; it and
@@ -308,20 +313,31 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   re-renders the whole file; that re-render is now the mechanism enforcing one
   roadmap standard across projects, not a defect to route around.
   **The store is machine-local — `~/.local/share/ants-terminal/roadmap.sqlite`,
-  outside the repo and in no `.gitignore` — so a clone gets the rendered file
-  and nothing else.** On a fresh clone run `roadmap_migrate` against the tracked
-  `ROADMAP.md` *before* the first `roadmap_log` write. A session with no Ants
-  MCP cannot write at all, and leaves the file alone rather than hand-editing.
+  outside the repo and in no `.gitignore` — so the tracked `ROADMAP.md` is the
+  only thing that crosses machines.** Two consequences, both easy to get wrong.
+  **Re-run `roadmap_migrate` whenever that file changes underneath the store** —
+  a clone, a pull, a checkout, a revert — and always before the next
+  `roadmap_log` write. The store cannot tell a pull from a hand edit, so a
+  write after an un-migrated pull reverts what you pulled, and the large diff
+  the next paragraph tells you to expect is exactly what hides it. And **commit
+  the re-rendered `ROADMAP.md` with the work it records**: the render is the
+  only copy that leaves this machine, an uncommitted one is a lost item, and
+  nothing catches it — a `.md`-only change skips the gate. A session with no
+  Ants MCP cannot write at all, and leaves the file alone rather than
+  hand-editing.
   **Two things that follow, and neither is optional.** Any write re-renders all
   1,600 lines, so a status flip that changes nothing still produces a large
   diff. Review it by checking that every REMOVED line's text still appears
   somewhere in the new file — **not** by a census of ids, statuses and word
   count, which passes the loss below untouched: dropping a full stop moves none
   of those three. And **a `Layman:` line must be ONE sentence**: the renderer
-  keeps only the first and discards the rest permanently. It also drops the
-  trailing full stop from a bold `**Layman:**` line, and normalises into one
-  the two id dialects this file had accumulated — expect both on the first
-  render, and neither again. Ids, statuses, nested sub-bullets and their
+  keeps only the first and discards the rest permanently — and **write it with
+  no trailing full stop**, because a bold `**Layman:**` line can lose one on any
+  render (4 of the 7 in this file did). That one is a standing authoring rule,
+  not a one-off: it applies to every line you write from now on. The id-dialect
+  normalisation *is* one-off — the two dialects this file had accumulated
+  collapse into one on the first render and never again. Ids, statuses, nested
+  sub-bullets and their
   indentation all survive (measured 2026-08-20 in an isolated copy, filed as
   Ants MCP feedback).
   `CHANGELOG.md` follows Keep a Changelog and each entry cites its id.
@@ -343,5 +359,7 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   missing, the first build failed, or `LOTTO_NO_BUILD` is set) — three states,
   one rule. `tools/verify_page.py::uncheckable_not_a_loss` is what catches a
   breach, and its forbidden-strings list includes the empty string.
-- Known deferred rough edges are listed under `LOTTO-0007` in `ROADMAP.md`;
-  check there before reporting one as new.
+- Known deferred rough edges hang off `LOTTO-0007` as a lettered list in its
+  body; `roadmap_query` it by id before reporting one as new — an id fetch
+  returns the body, so the whole list comes back. **Add one with `roadmap_log`,
+  never by editing the file**, or the next write reverts it.
