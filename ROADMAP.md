@@ -1,10 +1,12 @@
+<!-- ants-roadmap-format: 1 -->
+
 # ROADMAP — LottoTracker
 
 Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 
 ## Core
 
-- ✅ **LOTTO-0001** Parse Standard Bank ticket SMSes and score them against real draws.
+- ✅ [LOTTO-0001] **Parse Standard Bank ticket SMSes and score them against real draws.**
   Kind: implement. Source: user-request-2026-08-01.
   Layman: the PC reads your lottery texts and tells you whether any won.
   Spec: `docs/specs/LOTTO-0001-lottery-ticket-tracker.md`.
@@ -14,8 +16,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Superseded 2026-08-01 by LOTTO-0009, which counts in entries rather than
   tickets: 1,233 entries, 259 checkable, R2,423.00 still claimable. Its §4.2,
   §4.4 and INV-6 are amended accordingly.
+  Source: user-request-2026-08-01.
 
-- ✅ **LOTTO-0002** Local web page showing tickets, results and claimable winnings.
+- ✅ [LOTTO-0002] **Local web page showing tickets, results and claimable winnings.**
   Kind: implement. Source: user-request-2026-08-01.
   Layman: a page in your browser instead of a wall of terminal text.
   Spec: `docs/specs/LOTTO-0002-local-web-page.md`. Unblocked 2026-08-01 —
@@ -113,8 +116,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Gate stopped at two re-gate loops by user decision rather than at the 3-loop
   cap: CRITICALs 1 → 0, nothing verified outstanding. One code gap found in
   passing is filed as LOTTO-0017.
+  Source: user-request-2026-08-01.
 
-- ✅ **LOTTO-0014** The local page's HTTP surface and security boundary.
+- ✅ [LOTTO-0014] **The local page's HTTP surface and security boundary.**
   Kind: security. Source: split from LOTTO-0002 on 2026-08-02 (second cut).
   Layman: the rules that stop a website you happen to be visiting from reading
   your lottery tickets off the page running on your own machine.
@@ -130,8 +134,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   reaching a response header or a written file.
   Ships with LOTTO-0002 and LOTTO-0013 in one change; the three share
   `tools/verify_page.py`.
+  Source: split from LOTTO-0002 on 2026-08-02 (second cut).
 
-- ✅ **LOTTO-0013** Tray icon and server supervisor for the local page.
+- ✅ [LOTTO-0013] **Tray icon and server supervisor for the local page.**
   Kind: implement. Source: split from LOTTO-0002 on 2026-08-02 (first cut, per
   that spec's §12).
   Layman: the icon next to the clock that starts the page, opens it, refreshes
@@ -149,8 +154,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   each `QRunnable`'s Python wrapper alive while `QThreadPool` owns the C++ side,
   and `setQuitOnLastWindowClosed(False)` so dismissing a notification does not
   end the application and take the server with it.
+  Source: split from LOTTO-0002 on 2026-08-02 (first cut, per.
 
-- ✅ **LOTTO-0009** Score every pool a ticket was entered in, not just the top tier.
+- ✅ [LOTTO-0009] **Score every pool a ticket was entered in, not just the top tier.**
   Kind: fix. Source: in-session-2026-08-01 (found while sizing LOTTO-0008).
   Layman: you paid for three lottery draws and we were only checking one of them.
   Spec: `docs/specs/LOTTO-0009-entered-pools.md` (umbrella, covers LOTTO-0008).
@@ -194,8 +200,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   were loop 4's own fixes. §4 remains the split candidate before any further
   editing. LOTTO-0001 was retrofitted in the same pass (its own loop 4, 17
   findings) — its unit is now the entry.
+  Source: in-session-2026-08-01 (found while sizing LOTTO-0008).
 
-- ✅ **LOTTO-0010** Read the payout SMSes and reconcile them against computed wins.
+- ✅ [LOTTO-0010] **Read the payout SMSes and reconcile them against computed wins.**
   Kind: implement. Source: user-correction-2026-08-02.
   Layman: the bank already told you what it paid you — check our maths against it.
   The dump holds 575 messages: 558 ticket purchases and 17 others.
@@ -270,8 +277,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Shipped 2026-08-19 with LOTTO-0029** — one spec, one piece of work.
   `tools/verify_payouts.py` is the shape this item predicted, and the VAS
   reference was the join, exactly as it argued.
+  Source: user-correction-2026-08-02.
 
-- 📋 **LOTTO-0011** Stop saying "still claimable" — the bank pays automatically.
+- 📋 [LOTTO-0011] **Stop saying "still claimable" — the bank pays automatically.**
   Kind: fix. Source: user-correction-2026-08-02.
   Layman: the wording implies you have to go and collect money that is already
   in your account.
@@ -289,8 +297,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Do not simply delete the expiry logic: an unpaid large prize is exactly the
   case where a deadline would matter, and that is the case this project exists
   to catch.
+  Source: user-correction-2026-08-02.
 
-- ✅ **LOTTO-0003** Pick up new tickets automatically as the SMS arrives.
+- ✅ [LOTTO-0003] **Pick up new tickets automatically as the SMS arrives.**
   Kind: implement. Source: user-request-2026-08-01.
   Layman: new tickets appear by themselves, without plugging the phone in.
   KDE Connect emits `conversationCreated` / `conversationUpdated` over D-Bus;
@@ -317,8 +326,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   an arrival triggers one, and two invariant halves are stated but
   unchecked (INV-37, and INV-36's tray notification) - see
   LOTTO-0003 §11 for why, and LOTTO-0007 for the deferred reconnect gap.
+  Source: user-request-2026-08-01.
 
-- ✅ **LOTTO-0008** Record what each ticket cost, so prizes can be compared against spend.
+- ✅ [LOTTO-0008] **Record what each ticket cost, so prizes can be compared against spend.**
   Kind: implement. Source: user-request-2026-08-01.
   Layman: show what you paid for a ticket next to what it won.
   Spec: `docs/specs/LOTTO-0009-entered-pools.md` (umbrella, covers this id).
@@ -333,8 +343,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   rands the SMS charged for the whole ticket — every board, draw and tier
   (INV-10) — and the same price is what derives the entered pools. The display
   itself is LOTTO-0002; the checkable-entries-only rule is spec §4.7.
+  Source: user-request-2026-08-01.
 
-- 📋 **LOTTO-0015** Ship a Linux AppImage and a Windows executable, both build-tested locally first.
+- 📋 [LOTTO-0015] **Ship a Linux AppImage and a Windows executable, both build-tested locally first.**
   Kind: package. Source: user-request-2026-08-02.
   Layman: One file you can double-click, instead of needing Python and PySide6 installed.
   Verified 2026-08-02: the project has no packaging manifest and no `.github/`
@@ -371,8 +382,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Windows), the requirement that the absent fetcher be NAMED in the UI, and
   the rule that the local check must RUN the built artifact from outside the
   repository rather than merely build it. Those are the parts to design to.
+  Source: user-request-2026-08-02.
 
-- ✅ **LOTTO-0016** Run the CI locally before pushing, from the same script CI runs.
+- ✅ [LOTTO-0016] **Run the CI locally before pushing, from the same script CI runs.**
   Kind: chore. Source: user-request-2026-08-02.
   Layman: Catch the breakage on your own machine instead of finding it on GitHub.
   Pairs with LOTTO-0015, which adds the first workflow this repo has ever had.
@@ -414,8 +426,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Worth reopening only if a divergence appears that a rule lock cannot fix.
   (b) "Print that the Windows half is uncovered" belongs to LOTTO-0015, which
   has not shipped. There is no Windows lane yet to disclaim.
+  Source: user-request-2026-08-02.
 
-- ✅ **LOTTO-0018** The tray says "Results refreshed." before the refresh has happened, and even when it fails.
+- ✅ [LOTTO-0018] **The tray says "Results refreshed." before the refresh has happened, and even when it fails.**
   Kind: fix. Source: in-session-2026-08-02.
   Layman: The icon tells you it is done about a second in, while it is still working — and it says the same thing when the update actually failed.
   Verified 2026-08-02 by reading the path end to end.
@@ -456,8 +469,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   breaks observed red: `notify_on_202` (the shipped defect itself),
   `stale_is_success` (a patient lie is still a lie) and `success_wording`.
   This unblocks LOTTO-0019.
+  Source: in-session-2026-08-02.
 
-- ✅ **LOTTO-0019** Tell the user they won, instead of waiting for them to come and look.
+- ✅ [LOTTO-0019] **Tell the user they won, instead of waiting for them to come and look.**
   Kind: feature. Source: in-session-2026-08-02.
   Layman: The icon pops up "2 new winning lines, R240" — the whole point of the app, delivered without you opening anything.
   The project exists to surface a win before it is discovered by accident, and
@@ -484,8 +498,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   is a more convincing wrong answer than the generic string it replaces.
   Spec: `docs/specs/LOTTO-0019-build-reporting.md` — an umbrella covering this item, LOTTO-0012 and LOTTO-0020, because all three change `results.py::_post()` and `GET /status`'s body. Accepted 2026-08-05 after a 3-loop cold-eyes gate: 77 findings verified, 77 fixed, 5 dismissed, nothing deferred. Unblocked by LOTTO-0018. The scheduling half is split out as LOTTO-0028 — this item makes a refresh REPORT what it found; nothing yet makes one HAPPEN unasked.
   Resolved 2026-08-05: `GET /status` carries `found` (new winning lines and their total) and `supervise.refresh_message()` turns it into the tray's sentence. Three DONE states kept distinct — "nothing was compared" never reads as "compared, found nothing" — and the body is two integers, no ticket data (INV-29, INV-30). Also fixed the counter freezing under a live "Checking your tickets…" notice when an opening build fails. Spec `docs/specs/LOTTO-0019-build-reporting.md`; 17/17 verifier cases green, 30/30 breaks red. Scheduling stays open as LOTTO-0028.
+  Source: in-session-2026-08-02.
 
-- ✅ **LOTTO-0020** Show what the first build is actually doing instead of "building" for half a minute.
+- ✅ [LOTTO-0020] **Show what the first build is actually doing instead of "building" for half a minute.**
   Kind: enhancement. Source: in-session-2026-08-02.
   Layman: A page that says "checking draw 9 of 27" instead of sitting there looking broken for thirty seconds.
   `serve.py` binds before it builds (LOTTO-0002 §4.2), so the first page answers
@@ -511,8 +526,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   LOTTO-0012, whose retries make the wait longer and therefore worth narrating.
   Specced under `docs/specs/LOTTO-0019-build-reporting.md` (umbrella; see LOTTO-0019). Resolved 2026-08-05: the figure ships with NO denominator — `check.py` fetches lazily, so this build's total is unknowable until it ends, and this bullet's own warning about 27 being a dated measurement is what rules it out. It counts HTTP *attempts*, which is what makes it move during the retry storms LOTTO-0012 introduces.
   Resolved 2026-08-05: `GET /status` reports `requests` and the opening page interpolates it. No denominator — the bullet's own warning about 27 being a dated measurement is what ruled it out, and `check.py` fetches lazily so this build's total is unknowable until it ends. Counts ATTEMPTS, so it keeps moving through LOTTO-0012's retries. Holds INV-28; three breaks observed red, including `reset_on_worker_thread` for the window where a late reset would report the previous build's total.
+  Source: in-session-2026-08-02.
 
-- 📋 **LOTTO-0021** Extend the page's filter beyond game, reusing the pattern already there.
+- 📋 [LOTTO-0021] **Extend the page's filter beyond game, reusing the pattern already there.**
   Kind: enhancement. Source: in-session-2026-08-02.
   Layman: Narrow 1,233 rows down to the year, or to just the ones that could be checked — not only by which game.
   **Not a new feature — an extension, and the existing one sets the pattern.**
@@ -535,6 +551,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Free-text search over ticket references is deliberately **excluded**: a
   reference identifies a real ticket, and putting one in a search box invites it
   into the places INV-21 exists to keep it out of.
+  Source: in-session-2026-08-02.
 
 - ✅ [LOTTO-0024] **The server takes its port from $PORT, and the tray runs without an icon under a process manager.**
   Two knobs, both read at startup, and one live bug fixed on the way.
@@ -582,7 +599,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   lists six and §11 says "four of the six"; pre-existing, code-side, one
   word, and not this run's to edit under a docs gate.
 
-  **Layman:** An external manager can now put the page on whatever port it likes, and start it without an icon appearing next to the clock.
+  **Layman:** An external manager can now put the page on whatever port it likes, and start it without an icon appearing next to the clock
   Kind: feature.
   Source: user-request-2026-08-03.
 
@@ -607,7 +624,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   LOTTO-0019's comparison baseline is the other constraint: it lives in
   the server process and is reset by a restart, so a scheduled refresh is
   also what would make that baseline long-lived enough to be worth having.
-  **Layman:** The tray checks for new draws on its own, instead of only when you ask it to.
+  **Layman:** The tray checks for new draws on its own, instead of only when you ask it to
   Kind: feature.
   Source: in-session-2026-08-05 (split out while speccing LOTTO-0019).
 
@@ -813,7 +830,6 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
     better lead now, being a difference in AMOUNT on tickets that did win
     - a pricing question rather than a matching one.
 
-
   **Shipped 2026-08-19.** `tickets.py::parse_payout()` reads the bank's payout
   wording beside `parse()`, through the one dump reader; `check.py::reconcile()`
   joins them per VAS reference and sorts every reference into seven categories
@@ -830,6 +846,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   The original headline was written before the dump could hold a payout at all
   and is left as filed; LOTTO-0030 is what made them collectable, and the body
   above records the correction. The page surface is LOTTO-0032, blocked on this.
+
 - ✅ [LOTTO-0030] **The import filter matched game names, so it excluded every payout SMS.**
   **Layman:** The command that copies lottery texts off the phone only looked for messages naming a game. The bank's "you won" texts don't name one, so 149 of them were skipped every time. Now they come across.
   Kind: fix.
@@ -952,7 +969,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   red build. It also means the *next* wording change will be silent again
   until someone re-pulls, which is an argument for LOTTO-0003 (automatic
   ingest) beyond convenience: a stale dump hides parser rot.
-  **Layman:** A ticket bought on 8 August was quietly ignored, because the bank's text now calls the game "Lotto 5 Max" and the code only knew the old name. Fixed, and the ticket is now scored.
+  **Layman:** A ticket bought on 8 August was quietly ignored because the bank's text now calls the game "Lotto 5 Max" and the code only knew the old name — now fixed, and the ticket is scored
   Kind: fix.
   Source: in-session-2026-08-13 (surfaced by LOTTO-0030's first re-pull).
 
@@ -979,6 +996,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   (b) INV-21 forbids a filter or control that puts ticket data in a query
   parameter, a fragment or a history entry, and a payout amount is ticket data.
   **Blocked by:** LOTTO-0029.
+  Source: in-session-2026-08-19 (split out while speccing LOTTO-0029).
 
 - 📋 [LOTTO-0033] **The app under-counts real money on 15 references, and 4 paid tickets reach no paying division.**
   Kind: investigate. Source: in-session-2026-08-19 (measured by LOTTO-0029 on shipping).
@@ -1003,6 +1021,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   era `tools/verify_sources.py` cannot cross-check.
   **Read `docs/specs/LOTTO-0029-payout-reconciliation.md` §2 first** — the
   populations, the categories and how to list them are all there.
+  Source: in-session-2026-08-19 (measured by LOTTO-0029 on shipping).
 
 ## Hardening
 
@@ -1056,11 +1075,11 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   and the version pair printed in the gate header is what makes any residual
   difference visible. Revisit if a release ever diverges *within* the selected
   rule families.
-  **Layman:** One command now checks everything before your work leaves the machine, and GitHub runs the half it is allowed to see.
+  **Layman:** One command now checks everything before your work leaves the machine, and GitHub runs the half it is allowed to see
   Kind: chore.
   Source: user-request-2026-08-03.
 
-- 📋 **LOTTO-0004** Automated guard that no SMS content can be committed.
+- 📋 [LOTTO-0004] **Automated guard that no SMS content can be committed.**
   Kind: security. Source: in-session-2026-08-01.
   Layman: make it impossible to accidentally publish your messages.
   `tools/verify_privacy.py` now does the checking, but someone must remember
@@ -1083,8 +1102,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   So the hook is worth building and must not be mistaken for completeness. Note
   it in the README as "catches copied content, not inferred identity", and keep
   the reviewer's eye on aggregates in any prose that quotes figures.
+  Source: in-session-2026-08-01.
 
-- ✅ **LOTTO-0012** Retry the results API instead of dying on its first refusal.
+- ✅ [LOTTO-0012] **Retry the results API instead of dying on its first refusal.**
   Kind: fix. Source: in-session-2026-08-02.
   Layman: the lottery website drops connections a lot; try again instead of
   giving up.
@@ -1103,14 +1123,16 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   so that item does not block on this one; this reduces how often it happens.
   Specced under `docs/specs/LOTTO-0019-build-reporting.md` (umbrella; see LOTTO-0019), as INV-27. Bounded to 3 attempts with 1 s/2 s backoff, re-raising the ORIGINAL exception on exhaustion. `HTTPError` is never retried — the server answered. `socket.timeout` is caught explicitly because it is only an alias of `TimeoutError` from Python 3.10 and this project pins 3.8+.
   Resolved 2026-08-05: `results.py::_post()` retries a transport failure up to 3 attempts with 1 s/2 s backoff and re-raises the ORIGINAL exception on exhaustion. `HTTPError` is caught first and never retried — the server answered. Holds INV-27; `tools/verify_page.py::post_retries_transport_failure` checks it, with `no_retry` and `retry_http_error` observed red.
+  Source: in-session-2026-08-02.
 
-- 💭 **LOTTO-0005** Support other banks' ticket SMS formats.
+- 💭 [LOTTO-0005] **Support other banks' ticket SMS formats.**
   Kind: feature. Source: user-request-2026-08-01.
   Layman: let people at other banks use this too.
   Only `tickets.py::parse()` is bank-specific. Needs a sample message per
   bank; see the "Adding your bank" section of README.md.
+  Source: user-request-2026-08-01.
 
-- 📋 **LOTTO-0007** Close the cold-eyes deferred tail.
+- 📋 [LOTTO-0007] **Close the cold-eyes deferred tail.**
   Kind: review-fix. Source: cold-eyes-2026-08-01 loop 3.
   Layman: a short list of known rough edges, written down so they are not
   rediscovered by another expensive review.
@@ -1242,8 +1264,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   New invariants INV-38 and INV-39; `tools/verify_watch.py` goes 7 cases
   to 11, each red-tested. Spec amended at LOTTO-0003 4.7, 4.8 (new), 5,
   6, 7, 9, 10, 11.
+  Source: cold-eyes-2026-08-01 loop 3.
 
-- ✅ **LOTTO-0026** A feed-side rename of `MATCH n` scores every line as a loss.
+- ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
   Kind: fix. Source: in-session-2026-08-03; approach approved by the user
   before the CI work interrupted it.
   Layman: if the lottery site renames its prize categories, every win would
@@ -1368,8 +1391,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   divisions across three live pools, exit 1. The pending markers are off §4.4,
   §5, §6 and §11, and §7 now records the red test. `./local-CI.sh` PASS,
   `python3 check.py` unchanged at R2,731.60 claimable.
+  Source: in-session-2026-08-03; approach approved by the user.
 
-- ✅ **LOTTO-0027** The API's PowerBall division labels never matched, so 53 wins read as losses.
+- ✅ [LOTTO-0027] **The API's PowerBall division labels never matched, so 53 wins read as losses.**
   Kind: fix. Source: in-session-2026-08-03, found while writing LOTTO-0026's
   spec amendment — the grammar was read off the live feed rather than out of
   the document, and the document was wrong.
@@ -1413,8 +1437,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   illustrate what the page displays rather than stating a contract, so they
   are refreshed the next time that document is gated rather than edited here
   — an edit would owe it a cold-eyes loop of its own for no design benefit.
+  Source: in-session-2026-08-03, found while writing LOTTO-0026's.
 
-- 📋 **LOTTO-0006** Backfill results earlier than 2025-01-01.
+- 📋 [LOTTO-0006] **Backfill results earlier than 2025-01-01.**
   Kind: enhancement. Source: in-session-2026-08-01; re-valued 2026-08-02.
   Layman: check really old tickets too — and it would prove the maths is right.
   The 2025-01-01 floor is a configured default in
@@ -1434,8 +1459,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   is that script. 142 references sit in `unscored` because an entry nothing
   can score may be what the bank paid on; backfilling converts them into
   known-correct answers. That is this item's value, now measurable.
+  Source: in-session-2026-08-01; re-valued 2026-08-02.
 
-- ✅ **LOTTO-0017** INV-19 says "no Qt" but cannot see a PyQt import.
+- ✅ [LOTTO-0017] **INV-19 says "no Qt" but cannot see a PyQt import.**
   Kind: fix. Source: cold-eyes-2026-08-02 (LOTTO-0013 re-gate, loop 4).
   Layman: A safety check has a blind spot: it would miss one of the two ways of importing the graphics library.
   `tools/verify_page.py::serve_is_headless` collects the child interpreter's
@@ -1466,8 +1492,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   had added eight since this was written), and CLAUDE.md was already correct at
   thirty. LOTTO-0013 §5 and §11 updated in the same change; the §11 row now
   names both red-tests instead of naming the gap.
+  Source: cold-eyes-2026-08-02 (LOTTO-0013 re-gate, loop 4).
 
-- ✅ **LOTTO-0022** LOTTO-0001 owes a cold-eyes loop for INV-22.
+- ✅ [LOTTO-0022] **LOTTO-0001 owes a cold-eyes loop for INV-22.**
   Kind: doc. Source: in-session-2026-08-02 (LOTTO-0007a).
   Layman: A safety review that is due on the spec we just changed, so it does not quietly go unread.
   LOTTO-0007(a) added **INV-22** to
@@ -1497,6 +1524,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   and one of those doubles is INV-22's own probe — so the obvious repair
   deletes a guard on the cardinal money rule. Both were found independently by
   both lanes. Loop 6 found no CRITICAL, confirming the fixes held.
+  Source: in-session-2026-08-02 (LOTTO-0007a).
 
 - ✅ [LOTTO-0023] **A win in a retired prize division is dropped silently, with no count.**
   Found by a cold-eyes lane on LOTTO-0001 during the LOTTO-0022 gate, and

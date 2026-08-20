@@ -296,15 +296,24 @@ staged. `git add -A` first, then run the check, if the change adds a file.
 
 - Roadmap items are `LOTTO-000N` in `ROADMAP.md`; commits are
   `LOTTO-000N: <description>`.
-  **`ROADMAP.md` is edited by hand, and the Ants `roadmap_query` verb can be
-  stale against it — trust the file.** `roadmap_log` re-renders the WHOLE file
-  on every write: appending one bullet rewrote 233 lines, restyled all 31
-  existing headlines and flattened a nested sub-bullet (measured 2026-08-19,
-  filed as Ants MCP feedback). That is not a diff anyone can review, so writes
-  go in by hand — which leaves the verb's own store behind, and it then reports
-  shipped items as still open. Read `ROADMAP.md` itself before believing a
-  status from the verb. `CHANGELOG.md` follows Keep a Changelog and
-  each entry cites its id.
+  **The roadmap DB is the source of truth, and `ROADMAP.md` is its rendered
+  output — migrated 2026-08-20 (`roadmap_migrate`, `ants-v1`, 33 items).**
+  So writes go through `roadmap_log` and reads through `roadmap_query`; the
+  file is no longer hand-edited, and a hand edit is reverted by the next write
+  rather than merged. Query one item by id instead of reading the file — at
+  1,600 lines that is the whole point of the change. This reverses the previous
+  convention, which had writes going in by hand precisely *because* the verb
+  re-renders the whole file; that re-render is now the mechanism enforcing one
+  roadmap standard across projects, not a defect to route around.
+  **Two things that follow, and neither is optional.** Any write re-renders all
+  1,600 lines, so a status flip that changes nothing still produces a large
+  diff — review it by *census* (ids, statuses, word count) rather than by
+  eyeballing, which is what caught the item below. And **a `Layman:` line must
+  be ONE sentence**: the renderer keeps only the first and discards the rest
+  permanently (measured 2026-08-20 in an isolated copy, filed as Ants MCP
+  feedback). Everything else round-trips — all 33 ids and statuses, nested
+  sub-bullets and their indentation.
+  `CHANGELOG.md` follows Keep a Changelog and each entry cites its id.
 - Specs live in `docs/specs/LOTTO-000N-<topic>.md` and carry numbered
   invariants (INV-n), failure modes, and a cold-eyes loop log. Code comments
   reference those invariants — when changing behaviour, update the spec's
