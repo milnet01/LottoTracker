@@ -7,9 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A personal tool that reads South African National Lottery ticket SMSes (Standard
 Bank wording) off an Android phone, scores every ticket against real draw
 results, and reports what is still claimable. Pure Python 3.8+ standard library
-plus `dbus-python` (only for `find_lotto_sms.py` and `watch_sms.py`). No package manager, no
-virtualenv, no test framework, no build step — everything runs as `python3 <file>`
-from the repository root.
+plus `dbus-python` (`find_lotto_sms.py`, `watch_sms.py`) and PySide6 (`tray.py`,
+and the one `verify_page.py` case that starts it in a subprocess). No package
+manager, no virtualenv, no test framework, no build step — everything runs as
+`python3 <file>` from the repository root.
 
 ## Commands
 
@@ -53,8 +54,9 @@ the reasoning.
 Verification — there is no test runner; these seven scripts *are* the test
 suite, and each maps to a numbered invariant in the specs. Run from the
 repository root, after `backfill.py`, with `lotto_sms_raw.txt` present
-(`verify_watch.py` is the exception: it needs no dump, no phone and no
-`dbus-python`, which is why it runs in the CI lane):
+(three need no dump and are therefore the CI lane: `verify_watch.py`, which
+needs no phone and no `dbus-python` either, `verify_page.py`, and
+`verify_privacy.py` in its weaker pattern-only mode):
 
 ```bash
 python3 tools/verify_sources.py   # INV-3: the two results sources agree on overlap
@@ -305,14 +307,23 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   convention, which had writes going in by hand precisely *because* the verb
   re-renders the whole file; that re-render is now the mechanism enforcing one
   roadmap standard across projects, not a defect to route around.
+  **The store is machine-local — `~/.local/share/ants-terminal/roadmap.sqlite`,
+  outside the repo and in no `.gitignore` — so a clone gets the rendered file
+  and nothing else.** On a fresh clone run `roadmap_migrate` against the tracked
+  `ROADMAP.md` *before* the first `roadmap_log` write. A session with no Ants
+  MCP cannot write at all, and leaves the file alone rather than hand-editing.
   **Two things that follow, and neither is optional.** Any write re-renders all
   1,600 lines, so a status flip that changes nothing still produces a large
-  diff — review it by *census* (ids, statuses, word count) rather than by
-  eyeballing, which is what caught the item below. And **a `Layman:` line must
-  be ONE sentence**: the renderer keeps only the first and discards the rest
-  permanently (measured 2026-08-20 in an isolated copy, filed as Ants MCP
-  feedback). Everything else round-trips — all 33 ids and statuses, nested
-  sub-bullets and their indentation.
+  diff. Review it by checking that every REMOVED line's text still appears
+  somewhere in the new file — **not** by a census of ids, statuses and word
+  count, which passes the loss below untouched: dropping a full stop moves none
+  of those three. And **a `Layman:` line must be ONE sentence**: the renderer
+  keeps only the first and discards the rest permanently. It also drops the
+  trailing full stop from a bold `**Layman:**` line, and normalises into one
+  the two id dialects this file had accumulated — expect both on the first
+  render, and neither again. Ids, statuses, nested sub-bullets and their
+  indentation all survive (measured 2026-08-20 in an isolated copy, filed as
+  Ants MCP feedback).
   `CHANGELOG.md` follows Keep a Changelog and each entry cites its id.
 - Specs live in `docs/specs/LOTTO-000N-<topic>.md` and carry numbered
   invariants (INV-n), failure modes, and a cold-eyes loop log. Code comments
