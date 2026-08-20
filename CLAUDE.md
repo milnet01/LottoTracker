@@ -62,7 +62,7 @@ needs no phone and no `dbus-python` either, `verify_page.py`, and
 python3 tools/verify_sources.py   # INV-3: the two results sources agree on overlap
 python3 tools/verify_coverage.py  # INV-6: each entry scored over exactly its draws
 python3 tools/verify_privacy.py   # INV-4: no real SMS content is tracked by git
-python3 tools/verify_pools.py     # INV-7/INV-11: prices resolve; partly-checkable
+python3 tools/verify_pools.py     # INV-7/11/22/26/31: prices resolve; partly-checkable
                                   # tickets are never written off whole
 python3 tools/verify_page.py      # INV-12..INV-21, INV-23..INV-25 and INV-27..INV-30:
                                   # the page, its security boundary, the tray's
@@ -93,8 +93,11 @@ defect in a *case* rather than in the code — see CHANGELOG.
 Exit code is the signal, not the printed counts (`&& echo PASS`). Counts in the
 specs are dated snapshots that grow — **except** the unscorable ratio, which
 fails above 90% because that is what a missing `archive_results.json` looks
-like. The remaining invariants (INV-1, INV-2, INV-5) are one-line `python3 -c`
-commands recorded in §5 of `docs/specs/LOTTO-0001-lottery-ticket-tracker.md`;
+like. The remaining invariants are one-line `python3 -c` commands recorded in
+their own spec's §5 — INV-1, INV-2 and INV-5 in
+`docs/specs/LOTTO-0001-lottery-ticket-tracker.md`, and INV-8, INV-9 and INV-10
+in `docs/specs/LOTTO-0009-entered-pools.md`. **INV-10 has no verifier at all**,
+so that command is the only thing checking it;
 run them from there rather than re-inventing them.
 
 ## Architecture
@@ -315,11 +318,13 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   **The store is machine-local — `~/.local/share/ants-terminal/roadmap.sqlite`,
   outside the repo and in no `.gitignore` — so the tracked `ROADMAP.md` is the
   only thing that crosses machines.** Two consequences, both easy to get wrong.
-  **Re-run `roadmap_migrate` whenever that file changes underneath the store** —
-  a clone, a pull, a checkout, a revert — and always before the next
-  `roadmap_log` write. The store cannot tell a pull from a hand edit, so a
-  write after an un-migrated pull reverts what you pulled, and the large diff
-  the next paragraph tells you to expect is exactly what hides it. And **commit
+  **Re-run `roadmap_migrate` when that file changes underneath the store from
+  GIT** — a clone, a pull, a checkout, a revert — and always before the next
+  `roadmap_log` write. A write after an un-migrated pull reverts what you
+  pulled, and the large diff the next paragraph tells you to expect is exactly
+  what hides it. **Never re-migrate to pick up a local hand edit.** The store
+  cannot tell one from a pull, so migrating would launder into it precisely
+  what the rule above forbids; discard a hand edit by writing over it. And **commit
   the re-rendered `ROADMAP.md` with the work it records**: the render is the
   only copy that leaves this machine, an uncommitted one is a lost item, and
   nothing catches it — a `.md`-only change skips the gate. A session with no
@@ -328,13 +333,17 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   **Two things that follow, and neither is optional.** Any write re-renders all
   1,600 lines, so a status flip that changes nothing still produces a large
   diff. Review it by checking that every REMOVED line's text still appears
-  somewhere in the new file — **not** by a census of ids, statuses and word
-  count, which passes the loss below untouched: dropping a full stop moves none
+  somewhere in the new file, **comparing with markup and trailing full stops
+  stripped from both sides** — the renderer rewrites both deliberately (below),
+  so a raw comparison flags dozens of correct lines and teaches you to wave the
+  check through, which is the one habit it exists to prevent. A census of ids,
+  statuses and word count is not a substitute: dropping a full stop moves none
   of those three. And **a `Layman:` line must be ONE sentence**: the renderer
   keeps only the first and discards the rest permanently — and **write it with
   no trailing full stop**, because a bold `**Layman:**` line can lose one on any
   render (4 of the 7 in this file did). That one is a standing authoring rule,
-  not a one-off: it applies to every line you write from now on. The id-dialect
+  not a one-off: it applies to every `Layman:` line written from now on, and to
+  no other line. The id-dialect
   normalisation *is* one-off — the two dialects this file had accumulated
   collapse into one on the first render and never again. Ids, statuses, nested
   sub-bullets and their
@@ -361,5 +370,7 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   breach, and its forbidden-strings list includes the empty string.
 - Known deferred rough edges hang off `LOTTO-0007` as a lettered list in its
   body; `roadmap_query` it by id before reporting one as new — an id fetch
-  returns the body, so the whole list comes back. **Add one with `roadmap_log`,
-  never by editing the file**, or the next write reverts it.
+  returns the body, so the whole list comes back. **Add one with
+  `roadmap_log op:"annotate"` against `LOTTO-0007`, never by editing the file**
+  — that appends into the item's body, and a hand edit is reverted by the next
+  write.
