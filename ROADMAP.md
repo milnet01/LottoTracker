@@ -1405,6 +1405,23 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   that is already wrong and reasons from it. The document's own numbers are
   correct; only the two comments it delegates to are stale. Fix is two comment
   edits, and worth folding into the next change that opens either file.
+  Progress (2026-08-20): (m) is DONE. (b) to (h) remain open.
+  (m) `local-CI.sh`'s header now says "Four of the seven verifiers" and names
+  all four gated ones including `verify_payouts.py`, plus the three that are the
+  CI lane; `.github/workflows/ci.yml` says "four of the seven" to match. The
+  header also records that it read "three of the five" until today and why that
+  mattered — CLAUDE.md points the reader there as authoritative, so the stale
+  count was reasoned from rather than merely read.
+  Two further sites were checked and deliberately NOT changed. `LOTTO-0029` §7's
+  "the five verifiers that need the dump" counts the four that FAIL without it
+  plus `verify_privacy.py`, which needs it for full strength; that is a different
+  claim from the header's and it is true. And `CHANGELOG.md`'s LOTTO-0016 entry
+  says three because three is what was true when LOTTO-0016 shipped —
+  `verify_payouts.py` arrived with LOTTO-0029. Editing it would back-date a
+  record, which is the same reason (f) above is left alone on purpose.
+  Found by the `review-contract` gate on CLAUDE.md, which surfaced it in all
+  three of its loops and fixed it in none of them, because a docs gate does not
+  edit code. `./local-CI.sh --force`: PASS.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**

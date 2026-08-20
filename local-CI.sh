@@ -13,14 +13,23 @@
 #
 # WHY THERE ARE TWO LANES, AND WHY THEY CANNOT BE ONE
 #
-# Three of the five verifiers read data that is deliberately not in the repo:
+# Four of the seven verifiers read data that is deliberately not in the repo:
 # lotto_sms_raw.txt is real SMS content and archive_results.json/archive_cache/
 # are a scraped archive that is large and not ours to redistribute (.gitignore
 # says both). A fresh clone - which is exactly what a runner gets - therefore
-# fails verify_sources, verify_coverage and verify_pools on missing input, and
-# no amount of workflow YAML fixes that without publishing the private data.
+# fails verify_sources, verify_coverage, verify_pools and verify_payouts on
+# missing input, and no amount of workflow YAML fixes that without publishing
+# the private data. The remaining three - verify_page, verify_watch and
+# verify_privacy - are the CI lane.
 #
-# The fourth is the one that matters. tools/verify_privacy.py compares tracked
+# This paragraph said "three of the five" until 2026-08-20, and had said it
+# since before verify_payouts.py existed. It was found by the review-contract
+# gate on CLAUDE.md, in all three of its loops, and matters more than a stale
+# count usually would: CLAUDE.md points the reader HERE as the authoritative
+# statement of the asymmetry, so someone adding a fifth data-dependent verifier
+# would have reasoned from a comment that was already wrong.
+#
+# The privacy check is the one that matters most. tools/verify_privacy.py compares tracked
 # files against the dump's actual text; with no dump it falls back to pattern
 # checks alone and says so ("pattern only (no dump present)"). That mode still
 # exits 0. So a green runner does NOT mean "no leak" - it means the strong half

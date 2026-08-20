@@ -3,9 +3,9 @@ name: CI
 # The runner executes ./local-CI.sh --ci, and nothing else. The list of checks
 # lives in that one script so a runner and a developer machine cannot drift
 # apart: there is no second copy here to forget to update. What --ci does NOT
-# cover, and why, is documented at the top of local-CI.sh - in short, three
-# verifiers need the real SMS dump and the scraped archive, neither of which
-# may reach a public runner, and verify_privacy.py silently drops to its weaker
+# cover, and why, is documented at the top of local-CI.sh - in short, four of
+# the seven verifiers need the real SMS dump and the scraped archive, neither
+# of which may reach a public runner, and verify_privacy.py silently drops to its weaker
 # pattern-only mode without the dump. A green tick here is therefore weaker
 # than a green ./local-CI.sh, by construction rather than by accident.
 

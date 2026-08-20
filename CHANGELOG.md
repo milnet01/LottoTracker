@@ -265,6 +265,17 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The CI header said three verifiers need the SMS dump; four do (LOTTO-0007m)**
+  `local-CI.sh`'s header and `.github/workflows/ci.yml` both predated
+  `verify_payouts.py` and still said three. This mattered more than a stale
+  count usually would: `CLAUDE.md` sends the reader to that header as the
+  authoritative statement of why the two lanes are unequal, so anyone adding a
+  fifth data-dependent verifier would have reasoned from a comment that was
+  already wrong.
+
+  Surfaced by the `review-contract` gate on `CLAUDE.md` in all three of its
+  loops, and fixed in none of them — a documentation gate does not edit code.
+
 - **The watcher no longer dies when the phone link is merely not ready yet** (LOTTO-0007)
   Starting the tray at login, before the phone has re-paired, used to kill
   the collector outright. It now waits and retries.
