@@ -33,7 +33,8 @@ What exists today falls short in three separate ways.
 1. **Nothing reaches the user unprompted about expiry.** `tray.py` runs one
    `QTimer` at `POLL_MS`, whose `timeout` is connected to `TrayIcon.sync()`;
    `sync()` sets the icon, the tooltip and the menu enablement from
-   `Supervisor.is_running()`, and nothing else. The only unprompted notice the
+   `Supervisor.is_running()`, then delegates to `check_new_tickets()` — so it
+   already ends in a call to a helper that owns a decision. The only unprompted notice the
    tray produces is `supervise.new_ticket_notice()`, which fires when the dump
    grows — the opposite event to the one this item is about.
 
@@ -64,7 +65,8 @@ All four were preference rather than deduction, taken with the user on
    days' notice; on Daily Lotto it is two days, which the user accepted.
 
 2. **It is said once and not repeated.** A ticket that crosses the threshold
-   produces exactly one notice, ever. The user rejected a daily repeat and a
+   produces exactly one re-buy notice, ever. (§4.7's unrecognised-game notice
+   is not a re-buy notice and deliberately recurs.) The user rejected a daily repeat and a
    once-per-startup repeat. The cost is stated honestly in §6: a user whose
    machine is off for the whole window is never told.
 
@@ -108,6 +110,12 @@ def final_draw_date(game, start, ndraws):
 def draws_left(game, start, ndraws, today):
     """How many of this ticket's draws have not happened yet, as of `today`."""
 ```
+
+**A draw falling on `today` counts as NOT yet happened.** So a ticket reads
+`draws_left == 1` on its own final draw day and `0` the day after. The other
+boundary is pinned the same way and for the same reason (INV-51): `start` is
+inclusive, because a ticket bought on a draw day is entered in that day's
+draw. Leaving either open shifts every date by one.
 
 **A game absent from `DRAW_DAYS` raises `KeyError`; neither function returns
 `None`.** `check.py::paying_combinations()` raises for the same reason — an
@@ -270,7 +278,7 @@ date-guarded call:
 today = datetime.date.today()
 if today != self.expiry_checked_on:
     self.expiry_checked_on = today
-    for body in supervise.expiry_notices(tickets.load(), today):
+    for body in supervise.expiry_notices(today):
         self.note(body)
 ```
 
@@ -280,8 +288,8 @@ midnight rollover while the tray is running, and resume from suspend — because
 it keys on the date changing rather than on elapsed time.
 
 `self.expiry_checked_on` starts as `None`, so the first `sync()` after startup
-always checks. `tray.py` gains `import tickets`; it supplies the input and
-displays the output, and decides nothing (§4.7).
+always checks. The tray supplies a date and displays strings; it decides
+nothing (§4.7).
 
 ### 4.7 What the notice says
 
@@ -294,27 +302,31 @@ and this project has no Qt-constructing test. The tray keeps only the call.
 def expiry_notice(game_name, final_draw, draws_left):
     """One ticket's re-buy warning, as a string. LOTTO-0034 §4.7, INV-54."""
 
-def expiry_notices(tickets, today, state_path=None):
+def expiry_notices(today, tickets=None, state_path=None):
     """Every notice owed right now, and the state write that makes it once.
 
-    Applies §4.4's qualifying test, reads and prunes the §4.5 state file,
-    records each qualifying reference BEFORE its notice is emitted, and
-    returns a list of strings — empty when nothing is owed.
+    Loads the dump itself when `tickets` is None, treating a missing or
+    unreadable one as no tickets rather than raising — `read_settings()`'s
+    rule, for `read_settings()`'s reason. Applies §4.4's qualifying test,
+    reads and prunes the §4.5 state file, records each qualifying reference
+    BEFORE its notice is emitted, and returns a list of strings, empty when
+    nothing is owed.
     LOTTO-0034 §4.7; INV-52, INV-53, INV-55, INV-56.
     """
 ```
 
-**`expiry_notices()` owns selection and the state file; `tray.py` owns
-neither.** The tray passes `tickets.load()` and today's date in, and passes
-each returned string to `note()`. That is what makes INV-52, INV-53, INV-55
-and INV-56 reachable from a headless script: everything except the call site
-sits outside Qt, which is the same reason the wording is here. `tickets` and
-`today` are arguments rather than reads so a verifier can construct both, and
-`state_path` defaults to `expiry_state_path()` so a test can redirect it.
+**`expiry_notices()` owns loading, selection and the state file; `tray.py`
+owns none of them.** The tray passes today's date in and passes each returned
+string to `note()` — it holds no decision, which is what makes INV-52, INV-53,
+INV-55 and INV-56 reachable from a headless script. `tickets` and `state_path`
+are injectable so a verifier can supply constructed tickets and a temporary
+file, and both default to the real thing.
 
-The dependency edges this adds, all downward and none circular: `tray.py` →
-`tickets`, and `supervise.py` → `expiry`. `expiry.py` keeps importing nothing
-but `datetime` (INV-50).
+The dependency edges this adds are `supervise.py` → `expiry` and
+`supervise.py` → `tickets`. **Both widen LOTTO-0013 §4.1, whose module table
+says `supervise.py  stdlib only`** — deliberately, and §11 carries the
+amendment that document needs. `expiry.py` still imports nothing but
+`datetime` (INV-50), and `tray.py` gains no new import at all.
 
 The display name comes from a second table beside `DRAW_DAYS`:
 
@@ -337,11 +349,22 @@ Nothing else from the ticket appears: no reference, no board numbers, no cost,
 no prize, no purchase date. INV-54 holds that line, and it is the whole of the
 §3.3 exception.
 
-**An unrecognised game gets its own notice, and names nothing.** Where
+**An unrecognised game gets one notice per call, and names nothing.** Where
 `DRAW_DAYS` has no entry for a ticket's game, `expiry_notices()` skips that
-ticket and appends one notice saying a ticket names a game this version does
-not recognise. It does **not** name the game: that string came from an SMS,
-and §3.3's exception is bounded to the three games above. INV-56.
+ticket and appends **at most one** such notice however many tickets carry that
+game — a rebrand makes every new ticket unknown at once (LOTTO-0031), and one
+per ticket would be a burst of hundreds. It does **not** name the game: that
+string came from an SMS, and §3.3's exception is bounded to the three games
+above.
+
+**It is deliberately NOT recorded in the state file, so it recurs every day
+until the table is updated.** Two reasons, and the first is mechanical: §4.5's
+record needs a `final`, and `final_draw_date()` raises for exactly these
+games, so there is nothing to key it on — while a `final: null` entry would
+have no prune rule and would breach INV-55. The second is the point of it.
+This notice reports a defect rather than nudging a re-buy, §3.2's *say it
+once* is a decision about re-buy notices, and going quiet about a game the app
+cannot score is LOTTO-0031's failure exactly. INV-53 and INV-56 both say so.
 
 ## 5. Invariants
 
@@ -389,7 +412,9 @@ and §3.3's exception is bounded to the three games above. INV-56.
   *Test:* `tools/verify_expiry.py`, case `notice_is_said_once`.
   *Breaks when:* the state record is keyed on something not unique per
   purchase, or is written after the notice and the process dies between them.
-  **Scope: `expiry_notices()`, not `sync()`.** Whether the tray's date guard
+  **Scope: tickets qualifying under §4.4, and `expiry_notices()` rather than
+  `sync()`.** The unrecognised-game notice (§4.7) is outside this invariant by
+  design — it cannot be keyed, and it is meant to recur. Whether the tray's date guard
   calls it once a day is §4.6's claim and is checked by nothing, needing a
   `QSystemTrayIcon`; §10 records that half as uncovered rather than letting
   this invariant imply coverage it does not have. Same honesty LOTTO-0003
@@ -412,20 +437,24 @@ and §3.3's exception is bounded to the three games above. INV-56.
 
 - **INV-56** — A ticket whose game is absent from `DRAW_DAYS` is never
   silently dropped: `expiry.final_draw_date()` raises rather than returning
-  `None`, and `expiry_notices()` returns one notice reporting an unrecognised
-  game while naming no game.
+  `None`, and `expiry_notices()` returns **exactly one** notice reporting an
+  unrecognised game — however many tickets carry it — naming no game, and
+  returns it again on the next call rather than recording it as said.
   *Test:* `tools/verify_expiry.py`, case `unknown_game_is_loud`.
   *Breaks when:* a rebrand introduces a game name the table has no entry for
-  and the call is wrapped in a bare `except`. This is LOTTO-0031's failure
+  and the call is wrapped in a bare `except`; or the notice is emitted per
+  ticket, which after a rebrand is a burst of hundreds. This is LOTTO-0031's failure
   class, where a rebranded name parsed to `None` and the ticket was silently
   never scored.
 
 ## 6. Failure modes
 
-- **The dump is missing or unreadable.** `tickets.load()` has nothing to
-  return, no ticket qualifies, and no notice is shown. Correct: the app cannot
-  know about a ticket it has never seen. The tray's existing empty-dump
-  behaviour is unchanged.
+- **The dump is missing or unreadable.** `tickets.load()` **raises**
+  `FileNotFoundError` — it opens the path directly rather than guarding it —
+  so `expiry_notices()` catches it and returns no notices. Correct: the app
+  cannot know about a ticket it has never seen. Letting it propagate would put
+  the exception in the tray's timer slot, which is why the catch is named here
+  rather than left to the implementer.
 
 - **A draw day changes and nobody notices.** Every projected date drifts, and
   the warning fires early or late by however much the schedule moved. INV-49
@@ -451,6 +480,13 @@ and §3.3's exception is bounded to the three games above. INV-56.
 - **A ticket names a game `DRAW_DAYS` does not know.** The ticket is skipped
   and one notice reports an unrecognised game, naming none. Loud rather than
   silent, and the notice is what sends someone to update the table. INV-56.
+
+- **The managed run never warns at all.** Under `LWSM_MANAGED=1`, `tray.py`
+  takes `run_headless()`, which starts the server and waits; it never
+  constructs a `QSystemTrayIcon`, so `sync()` never runs and no notice is
+  possible. That follows from LOTTO-0013 §4.7 (INV-25) rather than from
+  anything here, and it is not worked around: a run with no icon has nowhere
+  to put a notification. Stated so nobody reads silence there as a defect.
 
 - **The clock is wrong.** A machine whose date is far in the past shows no
   warning; far in the future, tickets read as expired and are silent. Both are
@@ -563,6 +599,14 @@ directory via `$XDG_CONFIG_HOME`, never to the user's real config.
   `supervise.py` paragraph gains `expiry_notice()` and `expiry_notices()`
   alongside `new_ticket_notice()`. The privacy paragraph gains §3.3's bounded exception,
   so a later reader does not read the notice rule as absolute and "fix" it.
+  Its § Verification list is the passage that carries a count — "these seven
+  scripts *are* the test suite" — and goes to eight, with the data-dependent
+  group going from four to five and the CI lane unchanged at three.
+- **`docs/specs/LOTTO-0013-tray-and-supervisor.md` §4.1** — its module table
+  says `supervise.py  stdlib only`, which §4.7 widens to stdlib plus `expiry`
+  and `tickets`. That edit is required, not optional: an implementer holding
+  §4.1 as written refuses the import and moves `expiry_notices()` somewhere
+  else, which moves where four invariants are exercised.
 - **`README.md`** — sign of success 1 moves from *partly done* to built. (The
   same standing line still calls sign 2 open, which LOTTO-0035 shipped on
   2026-08-20; that correction is not this item's to make.)
@@ -578,12 +622,21 @@ directory via `$XDG_CONFIG_HOME`, never to the user's real config.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |------|------|-------|----|----|----|----|---------|
 | 1 | 2026-08-22 | 3, cold — genre pinned `spec` | 1 | 4 | 3 | 2 | **Ten verified, ten fixed; none dismissed.** **All three lanes independently found the same defect**, the run's strongest signal: §4.6's tray hook called `supervise.expiry_notices(...)` — arguments elided — and nothing in the document specified it, while §4.5 called the tray the state file's writer and §10 claimed selection sat outside the tray. Three surfaces bound to a function that did not exist, and the two INV cases locking it would have been built against whatever an implementer guessed. Fixed by giving `expiry_notices()` a signature, an owner and its dependency edges. **The most consequential single finding was INV-49's**, raised by two lanes and an open question from the third: the invariant was scoped to `archive_results.json`, which `backfill.py` only advances when re-run by hand and which ended 2026-07-31 — so the half added specifically to catch a *removed* draw day could never fire on a change made after the last scrape, and would have decayed to wholesale failure as the file aged. Rescoped to the merged record with the window measured from its newest draw, then executed: lotto 170/171, powerball 171/171, daily 597/597, every listed weekday covered. **Two contradictions were the document arguing with itself**: INV-54 excluded the draw count its own specimen notice carries, and §4.5 claimed writing-before-notice took "the same direction of failure" as the read rule when it takes the opposite — an implementer harmonising the two would have written the record after the notice, which INV-53 calls a breach. **Two open questions were promoted to findings by the orchestrator** after measuring: no game→display-name map exists in either direction (`GAME_MAP` runs SMS-name→key, `history.POOL_NAMES` is keyed per pool and tracks the wire format), so §4.7's "the display name" invented a surface INV-54 binds to; and §11 said README moves sign 1 "from open", where README says *partly done*. **One gap nobody had covered**: `DRAW_DAYS` has three keys and nothing said what happens to a fourth game — LOTTO-0031's exact failure class — now INV-56. One open question resolved clean and is not counted: `Ticket.ref` is unique per purchase (561 tickets, 561 distinct references, none reused). Invariants went 7 to 8, cases 7 to 8. |
+| 2 | 2026-08-22 | 3, cold — identical brief, packet rebuilt from disk | 2 | 5 | 3 | 0 | **Ten verified, ten fixed; one dismissed as immaterial. Cap reached (2 for a spec); the run ships.** **Four of the ten landed on text loop 1 wrote** — a 40% share, so this is a middling cap rather than a calm or a violent one: loop 1's largest addition, the unrecognised-game contract, was itself underspecified and generated three of them. **All three lanes independently found two defects.** First, §4.7 declared `supervise.py` → `expiry` while LOTTO-0013 §4.1's module table says `supervise.py  stdlib only`, and §11 did not list LOTTO-0013 at all — an implementer holding that document refuses the import and relocates four invariants' code. Second, the unrecognised-game notice could never be recorded as said: §4.5's record needs a `final` and `final_draw_date()` raises for exactly those games, so it would either repeat forever against §3.2 or need a `final: null` entry INV-55 has no prune rule for. Now: one notice per call, deliberately unrecorded and recurring, with INV-53 and §3.2 scoped to re-buy notices. **Two false claims about the code survived loop 1 and were caught by running them.** §6 said `tickets.load()` "has nothing to return" on a missing dump — it raises `FileNotFoundError`, which would have landed in the tray's timer slot. And §13 asserted a purchase rate of one ticket per ten days; measured, it is one per 2.44 days over 1368 days, with 12 inside the trailing 90. **Three gaps nobody had covered:** `draws_left`'s `today` boundary was unpinned while the `start` boundary was pinned two sections away; the managed run (`LWSM_MANAGED=1`) never builds a tray icon so it never warns, which is now stated rather than left as apparent silence; and §11 omitted the one CLAUDE.md passage carrying a count ("these seven scripts"). Loading moved into `expiry_notices()`, so `tray.py` gains no import and holds no decision. One dismissed as true-but-immaterial: §2.1 said `sync()` sets icon, tooltip and menu "and nothing else" while it also calls `check_new_tickets()` — corrected in passing, but it changed nothing anyone would build. |
 
 ## 13. Resource cost
 
 No new dependency; `expiry.py` uses `datetime` only. `DRAW_DAYS` is three
 sets. `expiry_warned.json` holds one record per warned ticket, pruned at 90
-days past the final draw (INV-55); at the observed rate of roughly one ticket
-per ten days that is a bounded few dozen records. The per-day recomputation
-walks the parsed ticket list once — 561 tickets today — and does date
-arithmetic only; the five-second `sync()` path does one date comparison.
+days past the final draw (INV-55). Measured 2026-08-22: 561 tickets span
+2022-11-09 to 2026-08-08, one per 2.44 days, and **12** fall inside the
+trailing 90 days — so the pruned file settles at roughly a dozen records.
+
+The per-day step **re-parses the dump**: `expiry_notices()` calls
+`tickets.load()`, which reads and parses `lotto_sms_raw.txt` rather than
+reusing a cached list — deliberately, because a cached list would never see
+what `watch_sms.py` appended, which is the arrival path LOTTO-0003 exists for.
+It runs inline on the GUI thread, once a day, and that is affordable because
+it was measured rather than assumed: `tickets.load()` over the live dump takes
+**0.018 s**, import included. The five-second `sync()` path does one date
+comparison and nothing else.
