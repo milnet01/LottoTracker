@@ -1454,6 +1454,31 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Found by the `review-contract` gate on CLAUDE.md, which surfaced it in all
   three of its loops and fixed it in none of them, because a docs gate does not
   edit code. `./local-CI.sh --force`: PASS.
+  (n) README audit, 2026-08-22 — started at the user's request, findings
+  recorded before implementation. Four items, the first two real:
+
+  - **The Wi-Fi path in § Getting your messages tells the user to run
+    `find_lotto_sms.py`, which writes nothing.** It prints, by design
+    (CLAUDE.md: "INSPECT ... prints, writes nothing"). The importer is
+    `watch_sms.py` (LOTTO-0003). A user following the README over KDE
+    Connect imports zero tickets and has no way to tell. Worst defect in
+    the file.
+  - **§ Setup omits `dbus-python`.** Both `find_lotto_sms.py` and
+    `watch_sms.py` import `dbus`, and neither zypper nor apt line
+    installs it, so the KDE Connect path fails at import for anyone
+    following the instructions.
+  - **The entry count is stale: 1,233 in two places, 1,238 today.**
+    Re-measured with `python3 check.py`.
+  - **§ How it fits together omits `watch_sms.py`, `serve.py`, `page.py`,
+    `supervise.py` and `tray.py`** — the whole cable-free import path and
+    the whole page/tray half, both of which the prose above the table
+    describes at length.
+
+  Unrelated drift noticed while measuring: the reconcile total moved from
+  R3,343.20 (LOTTO-0029/0033/0037) to R3,342.30. The bank side is
+  unchanged at R8,332.70 over 225 references. Divisions are read live, so
+  a figure moving is not by itself a defect — but LOTTO-0033 quotes the
+  old one.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
