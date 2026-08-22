@@ -265,6 +265,15 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **README sent the Wi-Fi import path to a script that imports nothing** (LOTTO-0007)
+  § Getting your messages told the user to run `find_lotto_sms.py`, which
+  prints by design; the importer is `watch_sms.py`. Anyone following the
+  README over KDE Connect imported zero tickets with nothing to show it.
+  Setup now also installs `dbus-python`, which both scripts import and
+  neither package line had; the entry count is 1,238 in both places it
+  appears; and § How it fits together lists the five files it omitted —
+  `watch_sms.py`, `serve.py`, `page.py`, `supervise.py` and `tray.py`.
+
 - **The CI header said three verifiers need the SMS dump; four do (LOTTO-0007m)**
   `local-CI.sh`'s header and `.github/workflows/ci.yml` both predated
   `verify_payouts.py` and still said three. This mattered more than a stale

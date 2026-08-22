@@ -1479,6 +1479,19 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   unchanged at R8,332.70 over 225 references. Divisions are read live, so
   a figure moving is not by itself a defect — but LOTTO-0033 quotes the
   old one.
+  Resolved (2026-08-22): (n)'s four README items are fixed. The Wi-Fi
+  path now names `watch_sms.py` (`--once` and the listening form), says the
+  tray starts it, and keeps `find_lotto_sms.py` as the inspect-only tool it
+  is. Setup installs the D-Bus binding, named per Python version on
+  openSUSE (`python313-dbus-python`) and `python3-dbus` on Debian. The
+  entry count is 1,238 in both places, re-measured with `check.py`. The
+  `How it fits together` table gained `watch_sms.py`, `serve.py`,
+  `page.py`, `supervise.py` and `tray.py`. One item beyond the four: the
+  sign-5 status line called 15 references `unexplained` when the report
+  prints 15 `low` and 4 `unexplained`, so it now names both by what they
+  mean. The reconcile-total drift is NOT addressed here — LOTTO-0033 still
+  quotes R3,343.20 against today's R3,342.30. `./local-CI.sh --force`:
+  PASS.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**

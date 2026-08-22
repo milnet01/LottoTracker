@@ -36,7 +36,8 @@ them without being told where to look.
 
 **Where it stands against those today:** 2 and 3 are done, 1 is partly done
 (the page shows draws remaining, but nothing tells you), and 4 and 5 are open —
-5 has 15 unexplained references and 4 fully scorable tickets that were missed.
+5 has 15 references where the app computes less than the bank paid, and 4 where
+the bank paid, every entry was checkable, and no win was found at all.
 See `ROADMAP.md`.
 
 ## Is this for you?
@@ -90,9 +91,14 @@ that is the *only* thing that does, so the page still works headless without
 it.
 
 ```bash
-sudo zypper install android-tools kdeconnect-kde   # openSUSE
-sudo apt install android-tools-adb kdeconnect      # Debian/Ubuntu
+sudo zypper install android-tools kdeconnect-kde python313-dbus-python  # openSUSE
+sudo apt install android-tools-adb kdeconnect python3-dbus              # Debian/Ubuntu
 ```
+
+On openSUSE the D-Bus binding is named for your Python version — `python313-`
+for Python 3.13, `python314-` for 3.14. It is what the Wi-Fi path talks to KDE
+Connect through; without it that path fails at import. The USB path does not
+need it.
 
 ### Getting your messages (pick either)
 
@@ -118,8 +124,17 @@ permission** (Settings → Apps → KDE Connect → Permissions → SMS). Pairin
 SMS access are separate grants; pairing alone is not enough.
 
 ```bash
-python3 find_lotto_sms.py
+python3 watch_sms.py --once   # catch up on what the phone already has, then exit
+python3 watch_sms.py          # or stay listening, and append each new one as it arrives
 ```
+
+The tray icon starts the listening form for you, so if you run `tray.py` you do
+not need to run this yourself.
+
+There is also `python3 find_lotto_sms.py`, which **prints and writes nothing**.
+It casts a deliberately wider net than the importer, so it is the thing to run
+when you want to see whether a message is reaching the PC at all. It will not
+import anything, however long you leave it.
 
 ### Checking your tickets
 
@@ -129,7 +144,7 @@ python3 check.py       # score every ticket
 ```
 
 ```
-974 of 1233 ENTRIES CANNOT BE CHECKED. They are not counted below, and are NOT losses.
+974 of 1238 ENTRIES CANNOT BE CHECKED. They are not counted below, and are NOT losses.
   963 predate all draw data for their pool (earliest: 2025-01-01)
   11 in a pool no results source carries: daily/1
   affecting 426 tickets wholly and 11 tickets partly
@@ -165,7 +180,7 @@ treat the total as "check your statement for this", not "this is owed to you".
 
 ## The page and the tray icon
 
-The terminal output is a flat list, and there are 1,233 entries. For something
+The terminal output is a flat list, and there are 1,238 entries. For something
 you can read, there is a small page:
 
 ```bash
@@ -235,7 +250,12 @@ matches the PowerBall. Whatever your bank does, check that case first.
 | `history.py` | Merges both sources into one view |
 | `tickets.py` | Parses SMSes into tickets and into the bank's payout messages; expands Multiplay |
 | `check.py` | Scores tickets, prices wins, flags expiry, and reconciles against what the bank actually paid |
-| `find_lotto_sms.py` | Finds lottery threads via KDE Connect |
+| `watch_sms.py` | Imports new SMSes over KDE Connect, no cable |
+| `find_lotto_sms.py` | Prints lottery threads seen over KDE Connect; imports nothing |
+| `serve.py` | Serves the local page, and does all of its I/O |
+| `page.py` | Turns what `check.py` worked out into the page's HTML |
+| `supervise.py` | Starts, watches and stops the server and the SMS listener |
+| `tray.py` | The icon by the clock; the only file that needs PySide6 |
 | `tools/verify_*.py` | Checks the contracts in `docs/specs/`, including that no real message content is tracked |
 
 The design contract, including why each source is used and where the traps
