@@ -1,6 +1,9 @@
 # LOTTO-0034 — Warn the user a ticket is about to run out
 
-**Status:** spec draft (2026-08-22).
+**Status:** accepted (2026-08-22). Gated by `review-contract` (genre spec):
+two loops, three cold lanes each, 20 verified findings all fixed, 1 dismissed
+as immaterial. Reached the 2-loop cap for a spec, which is the normal exit —
+implementation is the third reviewer. See §12.
 **Kind:** feature.
 **Source:** ROADMAP LOTTO-0034 — the project's primary job, settled with the
 user during discovery on 2026-08-20 and recorded as sign of success 1 in
