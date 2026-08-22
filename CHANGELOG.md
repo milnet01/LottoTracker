@@ -8,7 +8,7 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **The tray tells you a ticket is nearly used up, so you buy the next one (LOTTO-0034)** (LOTTO-0034)
+- **The tray tells you a ticket is nearly used up, so you buy the next one (LOTTO-0034)**
   The project's primary job, and until now the one thing it did not do. Two
   draws before a ticket's last, the tray says so once — naming the game and
   the date of the final draw, so you know what to go and buy. Against the
