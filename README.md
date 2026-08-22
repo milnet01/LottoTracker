@@ -34,10 +34,10 @@ them without being told where to look.
    is empty. The app may under-report; it must never claim a win that was not
    paid.
 
-**Where it stands against those today:** 3 is done, 1 is partly done (the page
-shows draws remaining, but nothing tells you), and 2, 4 and 5 are open — 5 has
-15 unexplained references and 4 fully scorable tickets that were missed. See
-`ROADMAP.md`.
+**Where it stands against those today:** 2 and 3 are done, 1 is partly done
+(the page shows draws remaining, but nothing tells you), and 4 and 5 are open —
+5 has 15 unexplained references and 4 fully scorable tickets that were missed.
+See `ROADMAP.md`.
 
 ## Is this for you?
 
