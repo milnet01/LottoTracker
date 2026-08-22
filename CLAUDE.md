@@ -56,7 +56,7 @@ does not track hooks and `core.hooksPath` is local config:
 git config core.hooksPath .githooks   # .githooks/pre-push then runs the gate
 ```
 
-The two lanes are **not** equal and must not be made so. Four verifiers need
+The two lanes are **not** equal and must not be made so. Five verifiers need
 `lotto_sms_raw.txt` and the scraped archive, neither of which may reach a public
 runner, and `verify_privacy.py` drops to a weaker pattern-only mode without the
 dump — while still exiting 0. So a green tick on GitHub is weaker than a green
@@ -64,7 +64,7 @@ dump — while still exiting 0. So a green tick on GitHub is weaker than a green
 full strength rather than trusting its exit code. `local-CI.sh`'s header holds
 the reasoning.
 
-Verification — there is no test runner; these seven scripts *are* the test
+Verification — there is no test runner; these eight scripts *are* the test
 suite, and each maps to a numbered invariant in the specs. Run from the
 repository root, after `backfill.py`, with `lotto_sms_raw.txt` present
 (three need no dump and are therefore the CI lane: `verify_watch.py`, which
@@ -85,6 +85,12 @@ python3 tools/verify_page.py      # INV-12..INV-21, INV-23..INV-25 and INV-27..I
 python3 tools/verify_payouts.py   # INV-40..INV-47: the bank's own payout SMSes,
                                   # reconciled per VAS reference against every
                                   # computed win; --break/--list like verify_page
+python3 tools/verify_expiry.py    # INV-49..INV-56: the re-buy warning - the draw
+                                  # calendar against real history in BOTH
+                                  # directions, that an EXPIRED ticket is never
+                                  # warned about, and that a notice is said once
+                                  # and names nothing but game, date and count;
+                                  # --break/--list like verify_page
 python3 tools/verify_watch.py     # INV-32..INV-39: the cable-free SMS path writes
                                   # what adb would, never twice, and its child is
                                   # spawned, observed and reaped; two watchers
@@ -142,7 +148,13 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
                                                           (PySide6)   (spawns serve.py AND
                                                                        watch_sms.py; owns the
                                                                        settings reader both
-                                                                       import)
+                                                                       import, and the re-buy
+                                                                       warning)
+                                                                          │
+                                                                          ▼
+                                                                      expiry.py
+                                                            (the draw calendar. Imports
+                                                             NOTHING of the project's.)
 ```
 
 - **`watch_sms.py`** is the cable-free collector (LOTTO-0003). It reads the
@@ -221,6 +233,18 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   *writing*, behind `POST /settings`'s lock. One reader, three callers — do not
   add a second, however local it looks: two readers that agree today pass every
   check and diverge later (LOTTO-0013 §4.1).
+  It also owns the **re-buy warning** (LOTTO-0034): `expiry_notice()` for the
+  wording, `expiry_notices()` for the selection and the state file, and
+  `expiry_state_path()` beside the two settings paths. `tray.py` supplies
+  today's date and displays strings and holds no decision, which is the only
+  reason INV-52 to INV-56 are reachable from a headless script.
+  **`expiry_warned.json` has exactly ONE writer, `expiry_notices()`** — putting
+  warn-state into `settings.json` would give that file a second writer that is
+  not the server, which is the arrangement the one-reader rule above exists to
+  prevent. The record is written **before** the notice is emitted, which is the
+  opposite direction to every read rule here and is deliberate: a crash then
+  costs a missed notice rather than a repeated one, and *say it once* is a user
+  decision. Do not harmonise the two.
   It also owns `new_ticket_notice()`, for the same reason `refresh_message()`
   lives here: **a wording decision inside `tray.py` cannot be checked without
   constructing a `QSystemTrayIcon`**, and the project has no Qt-constructing
@@ -280,6 +304,20 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   so the page cannot render the fictions either (INV-47). Same class as
   LOTTO-0031, where a rebranded game name parsed to `None` and a ticket was
   silently never scored.
+- **The re-buy warning reads the CALENDAR, never the results.** `expiry.py`
+  imports nothing of the project's and touches no file (INV-50), because a
+  ticket's last draw is fixed at purchase — the ndraws-th calendar draw on or
+  after its start — so the warning is right with the server stopped and the
+  machine offline. `draws_left` (calendar: has it *happened*) and
+  `draws_remaining` (results: has it been *scored*) are different quantities
+  that coincide only while results are current, which is exactly when the
+  warning does not need help. **Do not unify them** — same cardinal rule as
+  `_money_cell()`, one layer out. Both boundaries are pinned and moving either
+  shifts every date by one: `start` is inclusive, and a draw falling *today*
+  has not yet happened. `DRAW_DAYS` is the project's second hardcoded table
+  after `TIER_PRICES` and rots the same way, so INV-49 checks it against
+  observed history in **both** directions — a one-directional check passes a
+  *removed* draw day forever.
 - **`paying_combinations()` raises** rather than returning `{}` when a pool has
   no recent draw. An empty set would score the whole pool as losses with no
   diagnostic.
@@ -305,7 +343,14 @@ review loop. Sample references must be the sentinel `VAS00000000000` — **the o
 not a family of them.** Every reference-shaped string that is not exactly that
 is a leak, invented or not, and a test fixture needing a second distinct
 reference uses a name that is not reference-shaped at all (`tools/verify_payouts.py`
-does this). Run
+does this). **One bounded exception, and it is bounded on purpose (LOTTO-0034 §3.3).** The
+re-buy notice names the game, the final draw date and the number of draws left
+— three fields, and INV-54 is what holds that line. The user was shown the
+trade and chose usefulness: with two tickets running, a notice that will not
+name the game cannot say what to go and buy. The rule stands **unchanged** for
+`new_ticket_notice()` and `refresh_message()`, whose "no ticket data in any
+branch" is absolute; do not read the exception as licence to widen those, and
+do not read their rule as licence to narrow this one. Run
 `python3 tools/verify_privacy.py` before any commit that touches prose or
 examples; it compares tracked files against the dump itself, not a guessed
 pattern.

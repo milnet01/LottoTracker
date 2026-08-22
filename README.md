@@ -21,7 +21,8 @@ them without being told where to look.
 1. **It tells you when to buy again, before you have to think about it.** A
    ticket bought for ten draws is used up after the tenth; you are told while
    there is still time to buy the next one, without opening anything. This is
-   the primary job, and today it is the least built of the five.
+   the primary job. The tray warns you once, two draws out, naming the game
+   and the date of the last draw (LOTTO-0034).
 2. **It shows the numbers you chose beside the numbers that came up.** Per
    entry, both — whether you picked them or took a quick pick.
 3. **It shows what each ticket won**, consolidated in one place, rather than
@@ -34,8 +35,8 @@ them without being told where to look.
    is empty. The app may under-report; it must never claim a win that was not
    paid.
 
-**Where it stands against those today:** 2 and 3 are done, 1 is partly done
-(the page shows draws remaining, but nothing tells you), and 4 and 5 are open —
+**Where it stands against those today:** 1, 2 and 3 are done, and 4 and 5 are
+open —
 5 has 15 references where the app computes less than the bank paid, and 4 where
 the bank paid, every entry was checkable, and no win was found at all.
 See `ROADMAP.md`.

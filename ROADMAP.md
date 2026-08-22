@@ -1023,7 +1023,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   populations, the categories and how to list them are all there.
   Source: in-session-2026-08-19 (measured by LOTTO-0029 on shipping).
 
-- 🚧 [LOTTO-0034] **Tell the user a ticket is about to run out, before the last draw.**
+- ✅ [LOTTO-0034] **Tell the user a ticket is about to run out, before the last draw.**
   **The project's primary job, and the least built of the five signs of success**
   (README § How you would know it works, item 1). Settled with the user
   2026-08-20 during discovery: they buy for ten draws at a time, and knowing
@@ -1074,6 +1074,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   something binds to, three or more subsystems, a real design choice,
   edge cases nobody can hold in their head), so this is specced before
   any code.
+  Resolved (2026-08-22): shipped. `expiry.py` holds the draw calendar and two pure functions importing nothing of the project's (INV-50); `supervise.py` gained `expiry_notice()`, `expiry_notices()` and `expiry_state_path()`, so the wording, the selection and the state file are all checkable from a headless script; `tray.py` gained a date guard in `sync()` and five lines that decide nothing. `tools/verify_expiry.py` holds INV-49 to INV-56 - eight cases, all passing, each observed failing under its own `--break` (nine breaks). It joins local-CI.sh's data-dependent lane, taking that group from four to five and the test suite from seven scripts to eight. The spec's predicted figures came back unchanged from the verifier: the calendar matches history 170/171, 171/171 and 597/597, and matches real finished tickets 257/260 exactly with 3 off by one. Walked forward against the live dump, the first notice fires 2026-09-02 for the PowerBall ticket and 2026-09-03 for the Lotto one, each said exactly once - verbatim the specimen sentence §4.7 predicted. The lower bound proved load-bearing rather than theoretical: `--break no_lower_bound` produces 559 notices against the real 561-ticket dump.
   **Layman:** The app tells you your ticket is nearly used up so you can buy the next one, instead of you having to remember
   Kind: feature.
   Source: user-discovery-2026-08-20.

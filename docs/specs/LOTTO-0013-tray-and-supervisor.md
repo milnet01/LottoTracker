@@ -124,9 +124,14 @@ share one test script (§7).
 ### 4.1 Three files, and the direction of the dependency
 
 ```text
-supervise.py  stdlib only. Mints the token, resolves the port, spawns and
-              reaps the server child, and READS the two settings — the paths
-              and the reader, not their format (LOTTO-0002 §4.7 owns that).
+supervise.py  stdlib, plus `expiry` and `tickets` (LOTTO-0034 §4.7 — the
+              re-buy warning's selection and wording live here so a headless
+              script can check them; `expiry` itself imports nothing of the
+              project's, INV-50). This read "stdlib only" until 2026-08-22.
+              Mints the token, resolves the port, spawns and reaps the server
+              child, and READS the two settings — the paths and the reader,
+              not their format (LOTTO-0002 §4.7 owns that). It also owns the
+              expiry state file, whose one writer it is (LOTTO-0034 §4.5).
               Never imports PySide6, serve or page.
 tray.py       PySide6. The menu and the icon — or, under LWSM_MANAGED=1, the
               server and nothing else (§4.7). Imports supervise as a MODULE

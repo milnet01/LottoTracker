@@ -13,21 +13,23 @@
 #
 # WHY THERE ARE TWO LANES, AND WHY THEY CANNOT BE ONE
 #
-# Four of the seven verifiers read data that is deliberately not in the repo:
+# Five of the eight verifiers read data that is deliberately not in the repo:
 # lotto_sms_raw.txt is real SMS content and archive_results.json/archive_cache/
 # are a scraped archive that is large and not ours to redistribute (.gitignore
 # says both). A fresh clone - which is exactly what a runner gets - therefore
-# fails verify_sources, verify_coverage, verify_pools and verify_payouts on
-# missing input, and no amount of workflow YAML fixes that without publishing
-# the private data. The remaining three - verify_page, verify_watch and
-# verify_privacy - are the CI lane.
+# fails verify_sources, verify_coverage, verify_pools, verify_payouts and
+# verify_expiry on missing input, and no amount of workflow YAML fixes that
+# without publishing the private data. The remaining three - verify_page,
+# verify_watch and verify_privacy - are the CI lane.
 #
 # This paragraph said "three of the five" until 2026-08-20, and had said it
 # since before verify_payouts.py existed. It was found by the review-contract
 # gate on CLAUDE.md, in all three of its loops, and matters more than a stale
 # count usually would: CLAUDE.md points the reader HERE as the authoritative
 # statement of the asymmetry, so someone adding a fifth data-dependent verifier
-# would have reasoned from a comment that was already wrong.
+# would have reasoned from a comment that was already wrong. verify_expiry.py
+# (LOTTO-0034) is that fifth verifier, added 2026-08-22, and the counts above
+# were moved with it.
 #
 # The privacy check is the one that matters most. tools/verify_privacy.py compares tracked
 # files against the dump's actual text; with no dump it falls back to pattern
@@ -138,8 +140,13 @@ if [ "$CI_ONLY" -eq 0 ]; then
     # SMSes against every computed win (LOTTO-0029). A public runner has
     # neither, and the payouts are the one thing that must never reach one.
     run "verify_payouts.py"  python3 tools/verify_payouts.py
+    # Three of its eight cases need real data and not the same data: the merged
+    # draw record for the calendar, and the dump of 561 mostly-finished tickets
+    # for the case that proves an expired ticket is never warned about. It has
+    # no weak mode on purpose (LOTTO-0034 §7).
+    run "verify_expiry.py"   python3 tools/verify_expiry.py
 else
-    echo "local-CI: --ci, so the four data-dependent verifiers and the"
+    echo "local-CI: --ci, so the five data-dependent verifiers and the"
     echo "          full-strength privacy assertion are NOT run. A green"
     echo "          result here is weaker than a green ./local-CI.sh."
 fi

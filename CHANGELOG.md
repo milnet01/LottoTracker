@@ -8,6 +8,53 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The tray tells you a ticket is nearly used up, so you buy the next one (LOTTO-0034)** (LOTTO-0034)
+  The project's primary job, and until now the one thing it did not do. Two
+  draws before a ticket's last, the tray says so once — naming the game and
+  the date of the final draw, so you know what to go and buy. Against the
+  live dump the first notice fires on 2 September for the PowerBall ticket
+  and 3 September for the Lotto one.
+
+  It reads the CALENDAR, never the results, and that is the whole design. A
+  ticket's last draw is fixed the moment it is bought — the tenth draw on or
+  after the day you bought it — so the warning is right with the server
+  stopped, with the scraped archive absent, and with the machine offline.
+  `expiry.py` imports nothing else in the project and opens no file.
+
+  The calendar was measured rather than recalled. Projecting the whole of
+  2026 from 2025's draws alone gets the right count in every game and one
+  wrong date in nineteen months. Against every ticket that has already
+  finished, the projected final draw matches the real one exactly 257 times
+  in 260, and is a day out in the other 3 — immaterial to a warning that
+  fires several days ahead.
+
+  Said once, never repeated: that was your call, and it means a record is
+  written before the notice is shown rather than after, so a crash costs a
+  missed notice rather than a repeated one. The record is pruned 90 days
+  past a ticket's final draw, so the file settles at about a dozen entries.
+
+  The bound that mattered most was the one that looks like decoration. A
+  ticket with zero draws left is never warned about, however recently it
+  expired — and `--break no_lower_bound` shows why: without it, the first
+  run against the real dump of 561 mostly-finished tickets fires 559
+  notices.
+
+  The notice names the game, the final draw date and the number of draws
+  left, and nothing else — no reference, no numbers, no cost, no prize.
+  That is a deliberate, bounded exception to the project's rule that a
+  desktop notification carries no ticket data: with two tickets running, a
+  notice that will not name the game cannot say what to buy. INV-54 holds
+  the line, and the rule stands unchanged everywhere else.
+
+  A game the calendar does not know is loud, not silent — one notice per
+  check, naming no game, recurring until the table is fixed. That is
+  LOTTO-0031's failure caught from the other end.
+
+  `tools/verify_expiry.py` holds INV-49 to INV-56. Eight cases, each
+  observed failing under its own `--break`, and it joins local-CI.sh's
+  local-only lane: the test suite goes from seven scripts to eight, and the
+  data-dependent group from four to five.
+
 - **The page shows the numbers you chose beside the numbers that were drawn (LOTTO-0035)**
   Every winning line now renders your board and that draw's numbers side by
   side, and every ticket with draws still to come shows what you played. The

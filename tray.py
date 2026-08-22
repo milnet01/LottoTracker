@@ -13,6 +13,7 @@ Four details are copied from the user's existing stats tray
 rather than stylistic - see the comments at their sites.
 """
 
+import datetime
 import os
 import webbrowser
 
@@ -131,6 +132,9 @@ class LottoTray(QSystemTrayIcon):
         # The baseline for "has a new ticket arrived?". Taken before the
         # watcher is started, so the first thing it appends is noticed.
         self.dump_size = dump_size()
+        # The day the re-buy check last ran (LOTTO-0034 §4.6). None so the
+        # first sync() after startup always checks.
+        self.expiry_checked_on = None
 
         menu = QMenu()
         self.act_open = menu.addAction("Open page", self.open_page)
@@ -169,6 +173,7 @@ class LottoTray(QSystemTrayIcon):
         self.act_refresh.setEnabled(on)
         self.act_open.setEnabled(on)
         self.check_new_tickets()
+        self.check_expiring_tickets()
 
     def check_new_tickets(self):
         """Notice what the watcher appended, say so, and score it (LOTTO-0003).
@@ -195,6 +200,27 @@ class LottoTray(QSystemTrayIcon):
         self.note(supervise.new_ticket_notice(running, self.busy))
         if running and not self.busy:
             self.refresh()
+
+    def check_expiring_tickets(self):
+        """Say once a day which tickets are nearly finished (LOTTO-0034 §4.6).
+
+        No new timer: sync() already runs at POLL_MS, and comparing one date is
+        free where recomputing 561 tickets every five seconds would not be. The
+        date guard also handles the two cases a 24-hour timer gets wrong -
+        midnight rollover while the tray is running, and resume from suspend -
+        because it keys on the date changing rather than on elapsed time.
+
+        Every decision belongs to supervise.expiry_notices() - which tickets
+        qualify, what the notice says, and the state file that makes it once.
+        This supplies today and displays strings, and holds nothing else. That
+        split is what makes INV-52 to INV-56 reachable from a headless script.
+        """
+        today = datetime.date.today()
+        if today == self.expiry_checked_on:
+            return
+        self.expiry_checked_on = today
+        for body in supervise.expiry_notices(today):
+            self.note(body)
 
     def note(self, body):
         self.showMessage("Lotto Tracker", body, self.running_icon, 5000)

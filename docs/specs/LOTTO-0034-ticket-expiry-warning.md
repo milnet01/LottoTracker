@@ -1,6 +1,11 @@
 # LOTTO-0034 — Warn the user a ticket is about to run out
 
-**Status:** accepted (2026-08-22). Gated by `review-contract` (genre spec):
+**Status:** accepted (2026-08-22); **implemented and verified 2026-08-22** —
+all eight cases of `tools/verify_expiry.py` pass and each was observed failing
+under its own `--break` (nine breaks for eight cases). The measured figures the
+spec predicted came back unchanged from the verifier: INV-49 lotto 170/171,
+powerball 171/171, daily 597/597; INV-51 257/260 exact, 3 off by one. Gated by
+`review-contract` (genre spec):
 two loops, three cold lanes each, 20 verified findings all fixed, 1 dismissed
 as immaterial. Reached the 2-loop cap for a spec, which is the normal exit —
 implementation is the third reviewer. See §12.

@@ -1,7 +1,10 @@
 """Own the server child process: its token, its port, its life and its death.
 
-Standard library only, and no Qt at any depth (LOTTO-0013 INV-19). That is the
-whole reason this is a separate module from tray.py: putting the spawn-and-reap
+No Qt at any depth (LOTTO-0013 INV-19), and otherwise the standard library
+plus `expiry` and `tickets` - the two project imports LOTTO-0034 §4.7 adds, so
+that the re-buy warning's selection and wording sit where a headless script can
+reach them. `expiry` itself imports nothing from the project (INV-50). That is
+the whole reason this is a separate module from tray.py: putting the spawn-and-reap
 contract in the tray would make INV-20's check need a QApplication and a running
 display, inside a script that has to sit beside four headless tools/verify_*.py.
 Splitting it out costs one small module and buys a testable lifecycle.
@@ -10,6 +13,7 @@ Importing this module spawns nothing and mints nothing. Module scope holds the
 imports and HERE and no state.
 """
 
+import datetime
 import json
 import os
 import secrets
@@ -19,6 +23,9 @@ import sys
 import time
 import urllib.error
 import urllib.request
+
+import expiry
+from tickets import load as load_tickets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_PORT = 4322
@@ -134,6 +141,163 @@ def new_ticket_notice(running, busy):
     return "A new lottery SMS arrived — refreshing the page."
 
 
+# ------------------------------------------------------------ re-buy warnings
+#
+# LOTTO-0034. The project's primary job: tickets are bought ten draws at a time,
+# and the app has to say when one is nearly finished so the next one gets
+# bought. Here rather than in tray.py for new_ticket_notice()'s reason - the
+# wording, the selection and the state file are all decisions, and a decision
+# inside tray.py cannot be checked without constructing a QSystemTrayIcon.
+
+WARN_AT = 2       # draws left, at or below which a ticket is warned about (§3.1)
+PRUNE_DAYS = 90   # how long a warned ticket's record is kept (INV-55)
+
+UNKNOWN_GAME_NOTICE = (
+    "A ticket names a lottery game this app does not recognise, so it cannot "
+    "say when that ticket runs out. The draw calendar needs updating."
+)
+
+
+def expiry_notice(game_name, final_draw, draws_left):
+    """One ticket's re-buy warning, as a string. LOTTO-0034 §4.7, INV-54.
+
+    The game name, the final draw date and the number of draws left, and NO
+    other field of the ticket: not the reference, the board numbers, the cost,
+    the prize or the purchase date. That bound is the whole of §3.3's exception
+    to new_ticket_notice()'s "no ticket data in any branch" rule - the user was
+    shown the trade and chose usefulness, because with two tickets running a
+    notice that will not name the game cannot say what to go and buy. A desktop
+    notification may be logged and synced off the machine, so the exception is
+    bounded here rather than widened at the call site.
+
+    The date is formatted by hand rather than with %-d: the zero-padded %d
+    reads as a serial number in a sentence, and %-d is glibc-only.
+    """
+    return (
+        f"Your {game_name} ticket has {draws_left} "
+        f"draw{'' if draws_left == 1 else 's'} left — last draw "
+        f"{final_draw:%a} {final_draw.day} {final_draw:%b}. "
+        "Time to buy the next one."
+    )
+
+
+def _read_warned(path):
+    """The state file's records, or none of them.
+
+    A missing, unreadable or malformed file yields an empty list rather than
+    raising - read_settings()'s rule, for read_settings()'s reason. The cost is
+    a REPEATED notice rather than a lost one, which is the right way round for
+    a file the user may delete.
+    """
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, dict) or not isinstance(data.get("warned"), list):
+        return []
+    return [r for r in data["warned"]
+            if isinstance(r, dict) and isinstance(r.get("ref"), str)
+            and isinstance(r.get("final"), str)]
+
+
+def _write_warned(path, records):
+    """The state file's one writer (LOTTO-0034 §4.5)."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump({"warned": records}, fh)
+
+
+def _qualifies(draws_left, ref, warned):
+    """§4.4's test: is this ticket owed a re-buy notice right now?
+
+    Both halves matter. The upper bound is the user's decision (§3.1); the
+    LOWER bound is what stops a first run against a dump of 561 mostly-finished
+    tickets firing hundreds of notices, and it is what makes INV-52 true - an
+    expired ticket is never warned about however recently it expired, because
+    "two draws remain" would then be false.
+    """
+    return 0 < draws_left <= WARN_AT and ref not in warned
+
+
+def expiry_notices(today, tickets=None, state_path=None):
+    """Every notice owed right now, and the state write that makes it once.
+
+    LOTTO-0034 §4.7; INV-52, INV-53, INV-55, INV-56.
+
+    This owns loading, selection and the state file; tray.py owns none of them
+    and holds no decision, which is what makes those four invariants reachable
+    from a headless script. `tickets` and `state_path` are injectable so a
+    verifier can supply constructed tickets and a temporary file.
+
+    A ticket qualifies when BOTH hold: 0 < draws_left <= WARN_AT, and its
+    reference is not already recorded. The LOWER bound is not decoration - it
+    is what stops a first run against a dump of 561 mostly-finished tickets
+    firing hundreds of notices, and an expired ticket must never be warned
+    about however recently it expired, because "two draws remain" would then be
+    false (INV-52).
+
+    The unit is the TICKET, not the entry: a Lotto ticket is entered in up to
+    three pools sharing one start and one ndraws, so all three expire together
+    and warning per entry would say the same thing three times. Ticket.ref is
+    the key - measured 2026-08-22, 561 tickets carry 561 distinct references.
+
+    The record is written BEFORE the notices are returned, not after. A crash
+    between the two then costs a missed notice rather than a repeated one,
+    which is the OPPOSITE direction to _read_warned()'s rule and is deliberate:
+    "say it once" is a user decision, so a duplicate contradicts the contract
+    directly, while a missed notice is a cost the spec already accepts. Do not
+    harmonise the two.
+    """
+    if tickets is None:
+        # tickets.load() opens the dump directly and RAISES on a missing one,
+        # so the catch is here rather than left to the caller: this runs inside
+        # the tray's timer slot, where an exception kills the tray.
+        try:
+            tickets = load_tickets()
+        except (OSError, ValueError):
+            tickets = []
+    path = state_path or expiry_state_path()
+
+    # Pruned on every write, keyed on the ticket's own final draw rather than
+    # on the write date, so the file cannot grow without bound (INV-55).
+    cutoff = (today - datetime.timedelta(days=PRUNE_DAYS)).isoformat()
+    records = [r for r in _read_warned(path) if r["final"] >= cutoff]
+    warned = {r["ref"] for r in records}
+
+    notices, unknown = [], False
+    for t in tickets:
+        try:
+            left = expiry.draws_left(t.game, t.start, t.ndraws, today)
+        except (KeyError, ValueError):
+            # LOTTO-0031's failure class: a rebrand makes every new ticket
+            # unknown at once. Loud, but ONCE per call however many tickets
+            # carry it - one per ticket would be a burst of hundreds.
+            unknown = True
+            continue
+        if not _qualifies(left, t.ref, warned):
+            continue
+        final = expiry.final_draw_date(t.game, t.start, t.ndraws)
+        warned.add(t.ref)
+        records.append({"ref": t.ref, "final": final.isoformat()})
+        notices.append(
+            expiry_notice(expiry.DISPLAY_NAME[t.game], final, left)
+        )
+
+    if records != _read_warned(path):
+        _write_warned(path, records)
+
+    if unknown:
+        # Deliberately NOT recorded, so it recurs every day until the table is
+        # updated. Mechanically it cannot be: §4.5's record needs a `final` and
+        # final_draw_date() raises for exactly these games. And it should not
+        # be - this reports a DEFECT rather than nudging a re-buy, and "say it
+        # once" is a decision about re-buy notices. Going quiet about a game
+        # the app cannot score is LOTTO-0031 exactly (INV-53, INV-56).
+        notices.append(UNKNOWN_GAME_NOTICE)
+    return notices
+
+
 # --------------------------------------------------------------- settings I/O
 #
 # These live here rather than in serve.py because tray.py needs to READ them and
@@ -156,6 +320,20 @@ def autostart_path():
 
 def settings_path():
     return os.path.join(config_home(), "lotto-tracker", "settings.json")
+
+
+def expiry_state_path():
+    """Which tickets have already had their re-buy warning (LOTTO-0034 §4.5).
+
+    Beside settings.json and resolved the same way, but a SEPARATE file, and
+    that is deliberate. settings.json is read here and written only by
+    serve.py::write_settings() behind its lock, because POST /settings is a
+    server route (LOTTO-0013 §4.1). Putting warn-state in it would give it a
+    second writer that is not the server - the exact arrangement that rule
+    exists to prevent. This file has one writer, expiry_notices(), which only
+    the tray process calls.
+    """
+    return os.path.join(config_home(), "lotto-tracker", "expiry_warned.json")
 
 
 def read_settings():
