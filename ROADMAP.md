@@ -382,6 +382,16 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Windows), the requirement that the absent fetcher be NAMED in the UI, and
   the rule that the local check must RUN the built artifact from outside the
   repository rather than merely build it. Those are the parts to design to.
+  Note (2026-08-27), on why no release has been cut. `CHANGELOG.md` holds 49
+  entries under `[Unreleased]` and `git tag -l` is empty — the project has never
+  released. That is a consequence of this item rather than an oversight: there is
+  no version-bearing file and no packaging, so cutting today would be a tag plus
+  a changelog rotation and nothing a user could install. Considered and declined
+  while choosing work on 2026-08-27, on the second ground too: with a sign of
+  success still open, a version number records a claim the project cannot back.
+  Sequencing that follows — do this item, or close sign 5, before reaching for
+  `cut-release`. Not a ruling, and no user decision was taken; recorded so the
+  next session weighing "shouldn't we release?" does not re-derive it.
   Source: user-request-2026-08-02.
 
 - ✅ [LOTTO-0016] **Run the CI locally before pushing, from the same script CI runs.**
