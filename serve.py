@@ -123,6 +123,76 @@ def tier_increments(game, era):
     return {pf: inc for pf, _cum, inc in tickets.TIER_PRICES[(game, era)]}
 
 
+MONTH_NAMES = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
+
+
+def period_buckets(all_tickets, wins, entry_draws, increments):
+    """The per-period rows and the no-result residue (LOTTO-0036 §4.5).
+
+    Pure: no I/O, no globals, no clock. `entry_draws(ticket, plus_flag)` gives
+    the ISO dates of the draws that entry covers, or None when nothing can
+    score it; `increments(game, era)` gives that era's {plus_flag: per-board,
+    per-draw cents}. Both are injected so tools/verify_periods.py can drive the
+    rules over synthetic tickets with no results file (INV-57..INV-60) --
+    tools/verify_page.py cannot, being renderer-only by design.
+
+    Money belongs to the period of the DRAW, never of the purchase (§3.1),
+    over INV-16's population: the scorable entries of RESOLVED tickets, BOTH
+    conditions. check.py::check() gates on scorable() alone, so the resolved
+    filter has to be applied to the win side here or an unresolved ticket's
+    winnings land in a bucket whose cost was excluded (INV-59).
+
+    The key set comes from the SPEND side; the win side only adds into keys
+    that already exist. A win whose period carries no spend is dropped rather
+    than conjuring a bucket, which would be an R0.00 spend against a real win
+    (INV-60).
+    """
+    import tickets as tickets_mod
+
+    months, years, no_result = {}, {}, 0
+    resolved = [t for t in all_tickets if t.resolved]
+    for t in resolved:
+        era = "sizekhaya" if t.bought >= tickets_mod.HANDOVER else "ithuba"
+        inc = increments(t.game, era)
+        for plus_flag, _pool_id in t.pools:
+            dates = entry_draws(t, plus_flag)
+            if dates is None:
+                continue  # not scorable: not spend, and NOT residue either
+            # Derived upward from the per-draw primitive, never by dividing the
+            # entry cost -- LOTTO-0036 4.1. No remainder exists either way.
+            per_draw = inc[plus_flag] * len(t.boards)
+            no_result += per_draw * (t.ndraws - len(dates))
+            for iso in dates:
+                months.setdefault(iso[:7], [0, 0])[0] += per_draw
+                years.setdefault(iso[:4], [0, 0])[0] += per_draw
+
+    resolved_refs = {t.ref for t in resolved}
+    for w in wins:
+        if w["ref"] not in resolved_refs:
+            continue  # INV-59, the win side of the same population
+        cents = round(w["amount"] * 100)
+        if w["date"][:7] in months:
+            months[w["date"][:7]][1] += cents
+        if w["date"][:4] in years:
+            years[w["date"][:4]][1] += cents
+
+    def row(key, kind, label, pair):
+        # Always integers, never None: a bucket exists only where a draw was
+        # scored, so R0.00 here always means "checked, won nothing" (4.5).
+        return {"key": key, "kind": kind, "label": label,
+                "spend_cents": pair[0], "won_cents": pair[1]}
+
+    buckets = [row(k, "year", k, years[k]) for k in sorted(years, reverse=True)]
+    buckets += [
+        row(k, "month", f"{MONTH_NAMES[int(k[5:7]) - 1]} {k[:4]}", months[k])
+        for k in sorted(months, reverse=True)
+    ]
+    return {"buckets": buckets, "no_result_cents": no_result}
+
+
 def build_model():
     """Everything the page renders, computed here so page.py stays pure.
 
@@ -240,6 +310,20 @@ def build_model():
             "wholly": len(counts["wholly"]),
             "partly": len(counts["partly"]),
         },
+        # LOTTO-0036. The scorable gate is written out at the call site rather
+        # than inferred from an empty date list: covered() returns [] both for
+        # an unscorable entry and for a scorable one whose draws have not
+        # happened, and those two must not be conflated (INV-60 vs the residue).
+        "periods": period_buckets(
+            all_tickets,
+            wins,
+            lambda t, pf: (
+                [d["date"] for d in history.covered(t, pf)]
+                if history.scorable(t, pf)
+                else None
+            ),
+            tier_increments,
+        ),
         "spend": {
             "compared_cents": spend_cmp,
             "lifetime_cents": spend_life,

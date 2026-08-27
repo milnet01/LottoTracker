@@ -28,18 +28,27 @@ them without being told where to look.
 3. **It shows what each ticket won**, consolidated in one place, rather than
    scattered across one bank SMS per event.
 4. **It totals cost against winnings over a period you choose** — a given year,
-   year to date, a given month, month to date.
+   year to date, a given month, month to date. The page has a *Spend against
+   winnings by period* section with a dropdown (LOTTO-0036). Money belongs to
+   the period of the **draw**, not of the purchase, so a period's two figures
+   describe the same draws.
 5. **Every disagreement with the bank's own record is explained.** Not "the
    figures match": the bar is that nothing is a mystery. Where the app and the
    bank differ, each case falls into a named reason, and the unexplained pile
    is empty. The app may under-report; it must never claim a win that was not
    paid.
 
-**Where it stands against those today:** 1, 2 and 3 are done, and 4 and 5 are
-open —
-5 has 15 references where the app computes less than the bank paid, and 4 where
-the bank paid, every entry was checkable, and no win was found at all.
+**Where it stands against those today:** 1, 2, 3 and 4 are done, and 5 is open
+— it has 15 references where the app computes less than the bank paid, and 4
+where the bank paid, every entry was checkable, and no win was found at all.
 See `ROADMAP.md`.
+
+Sign 4 carries one limit worth stating plainly: the periods on offer begin in
+January 2025, because the comparison is drawn only over entries something can
+actually score and the results record starts there. That is about 38% of
+lifetime spend. Earlier periods are not shown as R0.00 — they are not offered
+at all, because "nothing to compare" and "spent nothing" are different things.
+`LOTTO-0006` (backfill earlier results) is what would widen it.
 
 ## Is this for you?
 

@@ -64,10 +64,10 @@ dump — while still exiting 0. So a green tick on GitHub is weaker than a green
 full strength rather than trusting its exit code. `local-CI.sh`'s header holds
 the reasoning.
 
-Verification — there is no test runner; these eight scripts *are* the test
+Verification — there is no test runner; these nine scripts *are* the test
 suite, and each maps to a numbered invariant in the specs. Run from the
 repository root, after `backfill.py`, with `lotto_sms_raw.txt` present
-(three need no dump and are therefore the CI lane: `verify_watch.py`, which
+(three of the nine need no dump and are therefore the CI lane: `verify_watch.py`, which
 needs no phone and no `dbus-python` either, `verify_page.py`, and
 `verify_privacy.py` in its weaker pattern-only mode):
 
@@ -82,6 +82,13 @@ python3 tools/verify_page.py      # INV-12..INV-21, INV-23..INV-25 and INV-27..I
                                   # spawn-and-reap lifecycle, what it reports after a
                                   # refresh, the port it binds, the managed (no-icon)
                                   # run, and the results transport underneath them
+python3 tools/verify_periods.py   # INV-57..INV-60: cost against winnings per
+                                  # period. Money belongs to the period of the
+                                  # DRAW, never of the purchase; both sides are
+                                  # drawn over the scorable entries of RESOLVED
+                                  # tickets; a period nothing scored gets no
+                                  # bucket at all. --break/--list like
+                                  # verify_page
 python3 tools/verify_payouts.py   # INV-40..INV-47: the bank's own payout SMSes,
                                   # reconciled per VAS reference against every
                                   # computed win; --break/--list like verify_page
@@ -220,6 +227,16 @@ backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ─
   shell profile must never be indistinguishable from the app being broken. That
   is safe only because a manager range-checks before it sets and launches
   `serve.py` directly, so the fallback can never mislead one (LOTTO-0013 §4.5).
+- **`serve.py::period_buckets()`** owns the per-period figures (LOTTO-0036).
+  It is a **pure function taking its two data sources as arguments**, which is
+  the only reason INV-57 to INV-60 are checkable at all: every case in
+  `tools/verify_page.py` is renderer-only — `fixture_model()` is a hand-authored
+  dict and `render_pure()` installs an `all_draws` double that *raises* — so
+  **nothing in that file calls `build_model()`**, and a builder-side defect
+  cannot be seen there. Do not move these cases into it. Money belongs to the
+  period of the **draw**, never of the purchase (the user's call, 2026-08-27),
+  and the key set is built from the spend side so a win can never conjure a
+  bucket with no spend.
 - **`serve.py`** is `check.py`'s second consumer and adds no third opinion: a
   wrong number on the page is a bug in its rendering or in LOTTO-0001/0009,
   never a separate calculation. It does **all** the I/O; **`page.py`** is a pure
@@ -421,7 +438,13 @@ staged. `git add -A` first, then run the check, if the change adds a file.
 - **The page must never let "no data" read as "did not win"** — the cardinal
   rule, in its newest form. `page.py::_money_cell()` renders `won_cents: None`
   as "not checkable" and an integer `0` as `R0.00`, and they must not converge;
-  `_draws_cell()` does the same for `draws_covered`/`draws_remaining`. An empty
+  `_draws_cell()` does the same for `draws_covered`/`draws_remaining`.
+  **`page.py::_periods_section()` needs neither, and that is the point**: a
+  period bucket exists only where a draw was actually scored, so its cells are
+  always integers and `R0.00` there always means *checked, won nothing*. The
+  three-valued question is settled at the source rather than at the cell — do
+  not "fix" it by adding a `None` branch, and do not emit a bucket for a period
+  nothing scored, which would put the two states back together. An empty
   page is correct only when it carries a notice naming *why* (the dump is
   missing, the first build failed, or `LOTTO_NO_BUILD` is set) — three states,
   one rule. `tools/verify_page.py::uncheckable_not_a_loss` is what catches a

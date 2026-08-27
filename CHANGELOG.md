@@ -8,6 +8,33 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **What you spent against what you won, month by month and year by year** (LOTTO-0036)
+  Sign of success 4, and the last of the five with nothing built at all. The
+  page gains a *Spend against winnings by period* section with a dropdown: one
+  row per calendar month and one per year, 22 of them today, newest first.
+
+  Money belongs to the period of the **draw**, not of the purchase — your call,
+  shown the three options. A ticket bought on 28 March for ten draws has its
+  price spread across the draws it actually paid for, so a period's spend and
+  its winnings describe the same draws and "did August pay for itself?" is a
+  fair question. Filing the whole cost under the month you bought it would have
+  made every period's two figures describe different tickets.
+
+  Nothing is divided: the per-draw price is what the price table already states,
+  and the entry cost is that times the number of draws, so every cent lands in
+  exactly one bucket with no remainder. Against the live dump the months and the
+  years each reconcile exactly to the compared spend, R11,063.50, with R160.00
+  held aside as paid for but not yet drawn.
+
+  Two rules the page will not bend. A period nothing could score gets no row at
+  all rather than a row reading R0.00 — so R0.00 there always means "checked,
+  won nothing". And the periods start in January 2025, where the results record
+  starts, which is about 38% of lifetime spend; the rest is not shown as zero,
+  it is not offered, and LOTTO-0006 is what would widen it.
+
+  The selector changes nothing in the address bar — no query string, no
+  fragment, no history entry — because ticket data must never reach a URL.
+
 - **The tray tells you a ticket is nearly used up, so you buy the next one (LOTTO-0034)**
   The project's primary job, and until now the one thing it did not do. Two
   draws before a ticket's last, the tray says so once — naming the game and

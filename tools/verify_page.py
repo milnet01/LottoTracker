@@ -147,6 +147,18 @@ def fixture_model(**over):
             "lifetime_cents": 5000,
             "unexpired_cents": 5000,
         },
+        # LOTTO-0036. Present so the period control is IN the bytes
+        # nothing_in_the_url scans; without it that case covers a control it
+        # never renders, which is empty cover (LOTTO-0036 §10).
+        "periods": {
+            "buckets": [
+                {"key": "2026", "kind": "year", "label": "2026",
+                 "spend_cents": 500, "won_cents": 5000},
+                {"key": "2026-07", "kind": "month", "label": "July 2026",
+                 "spend_cents": 500, "won_cents": 5000},
+            ],
+            "no_result_cents": 0,
+        },
         "settings": {"autostart": False, "open_on_start": True},
         "built": "2026-08-02T12:00:00",
         "stale": False,

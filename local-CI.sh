@@ -13,12 +13,12 @@
 #
 # WHY THERE ARE TWO LANES, AND WHY THEY CANNOT BE ONE
 #
-# Five of the eight verifiers read data that is deliberately not in the repo:
+# Six of the nine verifiers read data that is deliberately not in the repo:
 # lotto_sms_raw.txt is real SMS content and archive_results.json/archive_cache/
 # are a scraped archive that is large and not ours to redistribute (.gitignore
 # says both). A fresh clone - which is exactly what a runner gets - therefore
-# fails verify_sources, verify_coverage, verify_pools, verify_payouts and
-# verify_expiry on missing input, and no amount of workflow YAML fixes that
+# fails verify_sources, verify_coverage, verify_pools, verify_payouts,
+# verify_expiry and verify_periods on missing input, and no amount of YAML fixes
 # without publishing the private data. The remaining three - verify_page,
 # verify_watch and verify_privacy - are the CI lane.
 #
@@ -29,7 +29,8 @@
 # statement of the asymmetry, so someone adding a fifth data-dependent verifier
 # would have reasoned from a comment that was already wrong. verify_expiry.py
 # (LOTTO-0034) is that fifth verifier, added 2026-08-22, and the counts above
-# were moved with it.
+# were moved with it. verify_periods.py (LOTTO-0036) is the sixth, added
+# 2026-08-27, and the counts above were moved with it again.
 #
 # The privacy check is the one that matters most. tools/verify_privacy.py compares tracked
 # files against the dump's actual text; with no dump it falls back to pattern
@@ -136,6 +137,11 @@ if [ "$CI_ONLY" -eq 0 ]; then
     run "verify_sources.py"  python3 tools/verify_sources.py
     run "verify_coverage.py" python3 tools/verify_coverage.py
     run "verify_pools.py"    python3 tools/verify_pools.py
+    # Needs the dump AND the archive: periods_reconcile recomputes every
+    # bucket from TIER_PRICES and history.covered() over the real tickets
+    # (LOTTO-0036 INV-57). Its other three cases are synthetic, but the file
+    # fails as a whole without its inputs rather than reporting a weaker pass.
+    run "verify_periods.py"  python3 tools/verify_periods.py
     # Needs the dump AND the archive: it reconciles the bank's own payout
     # SMSes against every computed win (LOTTO-0029). A public runner has
     # neither, and the payouts are the one thing that must never reach one.

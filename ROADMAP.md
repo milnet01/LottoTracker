@@ -1112,7 +1112,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: feature.
   Source: user-discovery-2026-08-20.
 
-- 📋 [LOTTO-0036] **Total cost against winnings over a period the user chooses.**
+- ✅ [LOTTO-0036] **Total cost against winnings over a period the user chooses.**
   Sign of success 4 (README § How you would know it works), and **the one with
   nothing built at all** — verified 2026-08-20: no occurrence of year, month or
   any period concept in `page.py`, `serve.py` or `check.py`.
@@ -1126,6 +1126,23 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   quietly misstates every period. Decide that with the user before building.
   INV-16's compared-spend rule (spend is compared over CHECKABLE entries only)
   has to survive the split, or a period total silently becomes lifetime-shaped.
+  Resolved (2026-08-27): shipped. `serve.py::period_buckets()` (pure, both data
+  sources injected), `page.py::_periods_section()` with the client-side selector,
+  and a new data-dependent verifier `tools/verify_periods.py` — INV-57..INV-60,
+  four cases, five breaks, each observed failing under exactly its own break.
+  Specced first at `docs/specs/LOTTO-0036-period-totals.md`, gated by
+  review-contract: two loops, three cold lanes each, 18 verified findings all
+  fixed, cap reached.
+  The attribution rule was the user's call on 2026-08-27, shown three options:
+  money belongs to the period of the DRAW, never of the purchase.
+  Measured against the live dump: 22 buckets (2 years, 20 months, 2025-01 to
+  2026-08); months and years each reconcile exactly to the compared spend of
+  1106350c with 16000c held as the no-result residue.
+  Two things NOT done, deliberately. The periods start 2025-01 because the
+  comparison keeps INV-16's population, which is ~38% of lifetime spend —
+  LOTTO-0006 is the unlock, and earlier periods are absent rather than shown as
+  R0.00. And the cases went in a NEW verifier rather than `tools/verify_page.py`,
+  because nothing in that file calls `build_model()` at all; see LOTTO-0007 (o).
   **Layman:** See what you spent and won in any month or year, not just over all time
   Kind: feature.
   Source: user-discovery-2026-08-20.
@@ -1493,6 +1510,18 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   mean. The reconcile-total drift is NOT addressed here — LOTTO-0033 still
   quotes R3,343.20 against today's R3,342.30. `./local-CI.sh --force`:
   PASS.
+  (o) LOTTO-0002 INV-15 describes a fixture it does not have. Its prose says
+  the case is "built by running the *real* builder over them under a doubled
+  `all_draws` ... not by handing a finished model to the renderer", and the
+  shipped `tools/verify_page.py::uncheckable_not_a_loss` calls `fixture_model()`
+  (a hand-authored dict) and `render_pure()`. No case in that file calls
+  `serve.build_model()` at all — `render_pure()` installs an `all_draws` double
+  that RAISES, to prove `page.py` does no I/O. So the file cannot observe any
+  builder-side defect, and the invariant's *Breaks when* (a renderer that
+  iterates wins rather than entries) is the one thing it can see. Found by the
+  LOTTO-0036 review-contract gate on 2026-08-27, where two cold lanes each
+  pointed at this case as the real-builder pattern to copy. Fix is either to
+  correct INV-15's prose or to give the case the fixture it claims; not decided.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**

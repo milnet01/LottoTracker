@@ -286,6 +286,59 @@ def _spend_section(model):
     )
 
 
+def _periods_section(model):
+    """Spend against winnings, one period at a time (LOTTO-0036).
+
+    Renders serve.py's figures VERBATIM and sums nothing: adding up a displayed
+    column here is exactly INV-16's failure one section down (LOTTO-0002 4.6).
+
+    Every bucket was scored, so both cells are integers and R0.00 always means
+    "checked, won nothing" -- the three-valued question is settled at the
+    source, not in a _money_cell()-style branch here.
+    """
+    p = model.get("periods") or {}
+    buckets = p.get("buckets") or []
+    if not buckets:
+        return ""
+    rows, opts = [], {"year": [], "month": []}
+    for i, b in enumerate(buckets):
+        hide = "" if i == 0 else ' style="display:none"'
+        rows.append(
+            f'<tr data-period="{_e(b["key"])}"{hide}>'
+            f'<td>{_e(b["label"])}</td>'
+            f'<td class="money">{_e(_rands(b["spend_cents"]))}</td>'
+            f'<td class="money">{_e(_rands(b["won_cents"]))}</td></tr>'
+        )
+        opts[b["kind"]].append(
+            f'<option value="{_e(b["key"])}">{_e(b["label"])}</option>'
+        )
+    residue = ""
+    if p.get("no_result_cents"):
+        residue = (
+            f'<p class="muted">Paid for, no result yet: '
+            f'{_e(_rands(p["no_result_cents"]))} &mdash; in no period above, '
+            "and never subtracted from one. A draw has no period until its "
+            "result is in, whether it has not happened yet or has not been "
+            "fetched.</p>"
+        )
+    return (
+        '<section><h2>Spend against winnings by period</h2>'
+        '<p class="muted">By the date of the DRAW, not of the purchase: a '
+        "ticket's price is spread over the draws it paid for, so a period's "
+        "two figures describe the same draws. Drawn over the same entries as "
+        "the comparison below, which is why it starts where the results do "
+        "&mdash; earlier periods have nothing that can be scored.</p>"
+        '<label>Show <select id="periodfilter">'
+        f'<optgroup label="Years">{"".join(opts["year"])}</optgroup>'
+        f'<optgroup label="Months">{"".join(opts["month"])}</optgroup>'
+        "</select></label>"
+        '<table id="periods"><thead><tr><th>Period</th><th>Spent</th>'
+        "<th>Won</th></tr></thead><tbody>"
+        + "".join(rows)
+        + f"</tbody></table>{residue}</section>"
+    )
+
+
 def _settings_section(model):
     st = model.get("settings", {})
 
@@ -385,6 +438,15 @@ if(gf)gf.addEventListener("change",function(){
   rows[i].style.display=(!want||rows[i].getAttribute("data-game")===want)?"":"none";
  }
 });
+// Same rule for the period selector: rows are already in the document and
+// only their visibility changes (INV-21).
+var pf=document.getElementById("periodfilter");
+if(pf)pf.addEventListener("change",function(){
+ var want=pf.value,rows=document.querySelectorAll("#periods tbody tr");
+ for(var i=0;i<rows.length;i++){
+  rows[i].style.display=(rows[i].getAttribute("data-period")===want)?"":"none";
+ }
+});
 // Poll while a build is in flight. Without this the opening "building" page
 // never leaves that state and /status has no consumer at all. It also has to
 // terminate on FAILURE: a failed refresh leaves `built` unchanged, so a poll
@@ -451,6 +513,7 @@ def render(model, token):
             + _wins_section(model)
             + _outstanding_section(model)
             + _entries_section(model)
+            + _periods_section(model)
             + _spend_section(model)
             + _settings_section(model)
             + "<footer><button id=\"refresh\">Refresh results</button> "
