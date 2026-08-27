@@ -411,7 +411,7 @@ staged. `git add -A` first, then run the check, if the change adds a file.
 - Specs live in `docs/specs/LOTTO-000N-<topic>.md` and carry numbered
   invariants (INV-n), failure modes, and a cold-eyes loop log. Code comments
   reference those invariants — when changing behaviour, update the spec's
-  invariant and its §11 "what checks this" row in the same change.
+  invariant and its "what checks this" row in the same change.
 - **Count in entries, not tickets.** `LOTTO-0009` shipped 2026-08-01: all
   1,233 paid entries across 558 tickets are scored, where 558 were before.
   Read `docs/specs/LOTTO-0009-entered-pools.md` before touching `GAME_MAP`,
