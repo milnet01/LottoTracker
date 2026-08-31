@@ -153,9 +153,11 @@ The price of that choice is stated rather than hidden — see §4.4.
 ### 4.3 The population, and where the periods therefore start
 
 Unchanged from INV-16: the scorable entries of resolved tickets. `scorable()`
-excludes an entry whose pool predates all known draw data, and the merged record
-begins on 2025-01-01, so no entry is scorable before then however old the ticket
-is. Measured 2026-08-27:
+excludes an entry whose pool predates all known draw data, so the periods start
+where the merged record does, however old the ticket is. That floor is
+`backfill.FIRST_YEAR`, not a fixed date — LOTTO-0006 moved it back to the year
+of the earliest purchase SMS on 2026-08-31, and the figures below are from
+after that. Measured 2026-08-31:
 
 ```console
 $ python3 - <<'EOF'
@@ -172,16 +174,18 @@ for t in load():
                 months[d["date"][:7]] += inc[pf] * len(t.boards)
 print(len(months), "month buckets,", min(months), "to", max(months))
 EOF
-20 month buckets, 2025-01 to 2026-08
+46 month buckets, 2022-11 to 2026-08
 ```
 
-561 tickets span 2022-11-09 to 2026-08-07 and R28,704.50 of lifetime spend, of
-which R11,063.50 is in the compared population — **38.5%** of it
-(`1106350/2870450`, measured in the §4.4 run). **The period section therefore
-describes rather less than half the money, and says so on the page** — §4.7's caption
-names LOTTO-0006 (backfill results earlier than 2025-01-01) as what would widen
-it. That is the honest form of the limitation and the one the cardinal rule
-requires: a period nobody can score is absent, never a row reading R0.00.
+561 tickets span 2022-11-09 to 2026-08-08 and R28,704.50 of lifetime spend, of
+which R28,323.50 is in the compared population — **98.7%** of it
+(`2832350/2870450`). Before LOTTO-0006 it was 38.5%, over 20 month buckets
+starting 2025-01. **The section still describes a subset rather than the whole,
+and still says so on the page**: §4.7's caption says the periods start where the
+results do, which stays true whatever the floor is, and is why nothing there
+needed changing when the floor moved. That is the honest form of the limitation
+and the one the cardinal rule requires: a period nobody can score is absent,
+never a row reading R0.00.
 
 ### 4.4 A draw with no result yet belongs to no period
 
@@ -509,9 +513,10 @@ against — the `--break` flag is what makes "observed failing" reproducible, an
 
 ## 9. Out of scope
 
-- **Periods before 2025-01.** Not deferrable by this item: it needs draw data
-  that does not exist locally. Tracked by LOTTO-0006 (backfill results earlier
-  than 2025-01-01), which is what widens §4.3's span.
+- **Periods before the archive's floor.** Not deferrable by this item: it needs
+  draw data that does not exist locally. Was tracked by LOTTO-0006, which
+  shipped 2026-08-31 and widened §4.3's span to nearly all of lifetime spend.
+  What remains outside is an entry no source can score at all.
 - **A custom date range** ("2026-03-01 to 2026-06-14"). The user asked for
   years and months; a free range is a different control and a different
   contract. Not tracked — file it if it is wanted.
@@ -530,7 +535,7 @@ against — the `--break` flag is what makes "observed failing" reproducible, an
 | INV-60 | `tools/verify_periods.py::empty_period_is_absent` |
 | §4.7 the period control puts nothing in the URL | `tools/verify_page.py::nothing_in_the_url` — LOTTO-0014 INV-21's existing case scans the whole rendered body, so it covers the control **once the fixture renders it**. It renders through `serve_on(Stub())` and `serve.refresh()`, and `Stub()` with no argument returns `fixture_model()` — a hand-authored dict, never the dump — so that fixture must gain `periods` buckets or the control is simply absent from the bytes being scanned and the row is empty cover. Wiring that is part of this item |
 | §4.6 the current period's bucket is year/month to date, as far as the record goes | **nothing** — it is a property of `covered()` returning only draws in the record, not a separate computation, so there is nothing to assert that INV-57 does not already cover. The freshness half is LOTTO-0002 INV-18's stale notice, which this document adds no opinion to |
-| §4.3's caption naming the span and LOTTO-0006 | **nothing** — no case reads the caption text; code review only. The exposure is a stale sentence, not a wrong figure |
+| §4.7's caption saying the periods start where the results do | **nothing** — no case reads the caption text; code review only. The exposure is a stale sentence, not a wrong figure. It survived LOTTO-0006 unchanged, which is the point of wording it against the results rather than against a date |
 | §6's second row — a win on an unscorable entry having no bucket | **nothing** — the `scorable()` gate in `check.py::check()` is code-comment discipline with no invariant behind it. LOTTO-0009 INV-11 does NOT cover it (§6). Not tracked; file it if the gate is ever touched |
 
 ## 11. Cross-doc impact

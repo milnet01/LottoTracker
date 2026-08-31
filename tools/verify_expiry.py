@@ -136,14 +136,34 @@ def expiry_is_pure():
 
 
 def calendar_matches_real_draws():
-    """INV-51: within one day of the real last draw, exact for >= 98%.
+    """INV-51: never LATE against the real last draw, exact for >= 98%.
 
     Compared against every entry whose history.covered() is COMPLETE, which is
-    the only population where the real final draw is known. A one-day deviation
-    is immaterial to a warning that fires several days ahead; the floor is what
-    stops the projection rotting silently.
+    the only population where the real final draw is known.
+
+    The asymmetry is the invariant, not a tolerance. DRAW_DAYS is a weekly
+    pattern and cannot express a schedule change, so a draw CANCELLED or moved
+    LATER lands the projection EARLY - safe, because the warning still arrives
+    before the ticket runs out. A draw moved EARLIER or an extra draw on an
+    unlisted day would land it LATE, which warns too late to buy, and is what
+    this asserts against.
+
+    Bounding the absolute deviation instead was falsifiable by a public holiday
+    rather than by a defect: measured 2026-08-31 over the full archive, there
+    was no Lotto draw on 2024-12-25, which puts three tickets 3 days early, and
+    the check went red on a fact about the world.
+
+    Zero entries are late TODAY, and that is a measurement rather than a
+    guarantee - every irregularity in the archive is a cancellation or a later
+    move. A red run here is a diagnosis before it is a defect: confirm against
+    the record which event occurred before touching DRAW_DAYS. LOTTO-0034 §6
+    carries it as a live exposure.
+
+    The >= 98% floor is what still stops the projection rotting silently: a
+    DRAW_DAYS that has genuinely fallen out of date moves the exact count, and
+    a skipped draw here and there does not.
     """
-    exact = off_by_one = worse = 0
+    exact = early = late = 0
     for t in load():
         for plus_flag, _pool_id in t.pools:
             rows = covered(t, plus_flag)
@@ -154,18 +174,18 @@ def calendar_matches_real_draws():
                 got = expiry.final_draw_date(t.game, t.start, t.ndraws)
             except KeyError:
                 continue
-            delta = abs((got - real).days)
+            delta = (got - real).days
             if delta == 0:
                 exact += 1
-            elif delta == 1:
-                off_by_one += 1
+            elif delta < 0:
+                early += 1
             else:
-                worse += 1
-    total = exact + off_by_one + worse
+                late += 1
+    total = exact + early + late
     assert total, "no fully-covered entry to compare - run backfill.py"
-    assert not worse, f"{worse} of {total} entries off by more than one day"
+    assert not late, f"{late} of {total} entries project a LATER date than the real draw"
     assert exact / total >= 0.98, f"only {exact}/{total} exact"
-    return f"{exact}/{total} exact, {off_by_one} off by one"
+    return f"{exact}/{total} exact, {early} early (skipped draws), 0 late"
 
 
 def expired_tickets_are_silent():

@@ -1031,6 +1031,19 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   era `tools/verify_sources.py` cannot cross-check.
   **Read `docs/specs/LOTTO-0029-payout-reconciliation.md` §2 first** — the
   populations, the categories and how to list them are all there.
+  Progress 2026-08-31 (LOTTO-0006). The archive now reaches back to the
+  earliest purchase SMS, which changes the ground under this item in two ways.
+  The 14 payout messages for 2023 tickets that this item's oracle argument
+  rested on are scorable at last, and they scored: `agree` went from 61 to
+  198 over the same 225 references.
+  The two populations named here have NOT been explained and are now the whole
+  remaining gap. 15 references computed LOW is unchanged. The 4 fully-
+  checkable references reaching no paying division are unchanged. Computed
+  HIGH rose from 2 to 4, so the pricing question has two more cases than the
+  bullet records - and they arrived with the archive-era pricing path, which
+  is this bullet's own stated place to look.
+  `tools/verify_sources.py` still cannot cross-check the archive era, so that
+  limitation stands. Do not re-run LOTTO-0029's six eliminations.
   Source: in-session-2026-08-19 (measured by LOTTO-0029 on shipping).
 
 - ✅ [LOTTO-0034] **Tell the user a ticket is about to run out, before the last draw.**
@@ -1173,6 +1186,19 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   fix makes that number non-zero it is the wrong fix.
   Overlaps LOTTO-0033, which owns the same residue from the pricing side —
   check it before starting, and merge rather than duplicating.
+  Progress 2026-08-31 (LOTTO-0006). The unlock this bullet names has landed,
+  and it did what the bullet predicted: the 142 silent references it called
+  honest are now 3, and the unexplained difference fell from R4,989.50 to
+  R338.40. The figure this item says must not move has not moved - `unpaid`
+  is still ZERO.
+  The residue this item OWNS is unchanged, and is now the whole of the gap:
+  `low` still 15, `unexplained` still 4. One number moved the wrong way and it
+  is new evidence rather than a regression - `high` rose from 2 to 4 (the bank
+  paid, but less than the app computes). That is not a breach of the never-
+  over-report rule, which is about a win the bank never paid at all, but it is
+  two more cases for the pricing question LOTTO-0033 owns.
+  Re-measure before starting: `python3 check.py` prints the census, and the
+  archive era is now priced from real payout pages rather than being skipped.
   **Layman:** Work out why the app's figures disagree with what the bank actually paid, so nothing is left unexplained
   Kind: investigate.
   Source: user-discovery-2026-08-20.
@@ -1532,6 +1558,27 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   LOTTO-0036 review-contract gate on 2026-08-27, where two cold lanes each
   pointed at this case as the real-builder pattern to copy. Fix is either to
   correct INV-15's prose or to give the case the fixture it claims; not decided.
+  (p) The re-buy warning's state file has no WRITE-failure contract, and the
+  tray binds to that. `supervise.py::_write_warned()` calls `os.makedirs()` and
+  `open(path, "w")` unguarded, and `tray.py` calls `expiry_notices()` with no
+  `try` — so a read-only home, an unwritable `$XDG_CONFIG_HOME` or a full disk
+  puts the exception in the tray's timer slot and kills the tray. That is the
+  outcome LOTTO-0034 §6 names the READ-side catch to prevent; only one of the
+  two I/O paths was ever pinned. The remedy is a decision, not a default:
+  swallowing it turns "say it once" into a repeated notice, which §3.2 records
+  the user rejecting, while letting it propagate loses the tray. Documented as
+  shipped in LOTTO-0034 §4.5 and §6 rather than resolved. Found by the
+  review-contract loop 3 on that spec, 2026-08-31.
+
+  (q) A ticket with `ndraws < 1` is reported to the user as an UNRECOGNISED
+  GAME. `expiry.draw_dates()` raises `ValueError` for it and
+  `supervise::expiry_notices()` catches `(KeyError, ValueError)` together, so
+  the notice says the draw calendar needs updating when the real defect is a
+  malformed ticket — a wrong diagnosis, the class LOTTO-0031 is cited against.
+  Not known to be reachable from real dump data; the binding is real either
+  way. Widening the catch is NOT the fix — the fix is a second wording, or a
+  reason the case cannot arise. LOTTO-0034 §4.1 now states the precondition and
+  the exception. Same origin as (p).
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
@@ -1707,7 +1754,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   — an edit would owe it a cold-eyes loop of its own for no design benefit.
   Source: in-session-2026-08-03, found while writing LOTTO-0026's spec amendment — the grammar was read off the live feed rather than out of the document, and the document was wrong.
 
-- 📋 [LOTTO-0006] **Backfill results earlier than 2025-01-01.**
+- ✅ [LOTTO-0006] **Backfill results earlier than 2025-01-01.**
   Kind: enhancement. Source: in-session-2026-08-01; re-valued 2026-08-02.
   Layman: check really old tickets too — and it would prove the maths is right.
   The 2025-01-01 floor is a configured default in
@@ -1727,6 +1774,33 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   is that script. 142 references sit in `unscored` because an entry nothing
   can score may be what the bank paid on; backfilling converts them into
   known-correct answers. That is this item's value, now measurable.
+  Resolved 2026-08-31. `backfill.build()` now scrapes from `FIRST_YEAR`
+  (2022, the year of the earliest purchase SMS) to the current year, replacing
+  the literal `(2025, 2026)`. The top end is computed so it cannot silently
+  stop fetching each January. The floor is data-driven rather than a limit of
+  the archive, which carries earlier years: `history.scorable()` reports an
+  older ticket as UNCHECKABLE rather than scoring it against the wrong draws,
+  so a floor set too high fails safe.
+  Purely additive: every previously-known draw is byte-identical.
+  The test oracle this item promised paid out. Uncheckable entries fell from
+  974 to 11, and those 11 are the `daily/1` pool no source carries, so no
+  ticket is now excluded wholly. Reconciliation against the bank: `unscored`
+  142 -> 3, `agree` 61 -> 198, computed lifetime R3,343.20 -> R7,994.30
+  against the same R8,332.70 paid, and the unexplained difference R4,989.50 ->
+  R338.40. `unpaid` is still ZERO - the figure LOTTO-0037 says must not move.
+  The residue is NOT explained by this and stays with LOTTO-0033/0037: `low`
+  still 15, `unexplained` still 4, and `high` rose from 2 to 4.
+  LOTTO-0036's period view widened with it: 20 month buckets from 2025-01
+  became 46 from 2022-11, and the compared share of lifetime spend went from
+  38.5% to 98.7%.
+  One contract change fell out, and it was a fact about the world rather than
+  a defect. There was no Lotto draw on 2024-12-25, so INV-51's "within one
+  day" bound went red on three tickets spanning it. `DRAW_DAYS` is a weekly pattern and cannot express a schedule change, so a cancelled or later-moved draw lands the projection EARLY - the safe direction for a warning, since it still arrives before the ticket runs out. A draw moved EARLIER would land it late, which is not safe; nothing in the archive has ever done that, and the spec carries it as a live exposure rather than an impossibility.
+  INV-51 now asserts the SIGN (never later than the real draw) with the 98%
+  exact floor unchanged; measured zero late. User's call, 2026-08-31, shown
+  four options. LOTTO-0034 amended and re-gated.
+  Verified: `./local-CI.sh` 13/13 PASS, and INV-51's own `--break
+  exclusive_start` still reddens it (1213 late) with no new collateral.
   Source: in-session-2026-08-01; re-valued 2026-08-02.
 
 - ✅ [LOTTO-0017] **INV-19 says "no Qt" but cannot see a PyQt import.**

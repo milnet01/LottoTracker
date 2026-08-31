@@ -15,7 +15,10 @@ which led with surfacing wins before the 365-day claim deadline. That framing
 was never the user's main need, and the bank pays most small wins back
 automatically anyway (LOTTO-0011). **The five signs of success are in
 `README.md` § How you would know it works** — read them before adding a
-feature; three of the five are open, and the primary one is the least built.
+feature, and take which are open from the standing line THERE rather than from
+a count here. This sentence carried its own tally until 2026-08-31 and was
+wrong for three consecutive items, most recently claiming the primary sign was
+the least built after LOTTO-0034 built it.
 The claim-deadline material is still true and still useful, but it is not the
 headline.
 
@@ -29,7 +32,8 @@ manager, no virtualenv, no test framework, no build step — everything runs as
 
 ```bash
 python3 backfill.py            # one-off: scrape pre-2026-06-01 results into
-                               # archive_results.json + archive_cache/ (12 fetches)
+                               # archive_results.json + archive_cache/. One fetch
+                               # per pool per year, backfill.FIRST_YEAR..today
 python3 check.py               # score every ticket, print claimable wins
 python3 results.py             # smoke-test the official API (prints 3 recent draws/game)
 python3 find_lotto_sms.py      # INSPECT SMSes over KDE Connect: prints, writes
@@ -138,7 +142,7 @@ phone ──watch_sms.py─────────┘   (two writers,        �
         messages, no cable)
 
 results.py    (official API, 2026-06-01 on, has payouts) ──┐
-backfill.py   (scraped archive, 2025-01-01 on, no payouts) ┴─ history.py ──┐
+backfill.py   (scraped archive, FIRST_YEAR on, no payouts) ┴─ history.py ──┐
                                                                            │
                       [Ticket] + history.py ─────────────────────────────> check.py::check()
                                                                                   │

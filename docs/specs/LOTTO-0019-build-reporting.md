@@ -89,7 +89,7 @@ it. The one most worth re-opening is the last.
   bullet suggests "fetched N of M", and the M is not honest: `check.py`
   fetches lazily as it prices wins, so the total for *this* build is unknown
   until it ends. LOTTO-0002 §4.2's figure of 27 requests is a dated
-  measurement against one dump, not a constant — and LOTTO-0006 would move it.
+  measurement against one dump, not a constant — and LOTTO-0006 moved it.
   A bare count is the largest true statement available.
 - **The count is of HTTP attempts, not of draws fetched.** A retried request
   is a request the network really carried, and under LOTTO-0012 retries are

@@ -505,7 +505,7 @@ def uncheckable_not_a_loss():
     forbidden = {"", "-", "–", "—", "0", "0.00", "R0.00",
                  "R0", "0,00", "R 0.00", "n/a", "N/A"}
     partly_reason = "no results source carries this pool"
-    wholly_reason = "predates all draw data for this pool (earliest 2025-01-01)"
+    wholly_reason = "predates all draw data for this pool (earliest 2022-01-01)"
     model = fixture_model(
         entries=[
             # partly uncheckable: one pool scorable, one not

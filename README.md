@@ -39,16 +39,21 @@ them without being told where to look.
    paid.
 
 **Where it stands against those today:** 1, 2, 3 and 4 are done, and 5 is open
-— it has 15 references where the app computes less than the bank paid, and 4
-where the bank paid, every entry was checkable, and no win was found at all.
-See `ROADMAP.md`.
+but much smaller than it was. `LOTTO-0006` (2026-08-31) pushed the results
+record back to the earliest ticket, which explained most of the gap outright:
+the unexplained difference fell from R4,989.50 to R338.40. What is left is a
+residue — references where the app computes less than the bank paid, a few
+where it computes more, and a few where the bank paid, every entry was
+checkable, and no win was found at all. The app still claims no win the bank
+did not pay. See `ROADMAP.md`.
 
-Sign 4 carries one limit worth stating plainly: the periods on offer begin in
-January 2025, because the comparison is drawn only over entries something can
-actually score and the results record starts there. That is about 38% of
-lifetime spend. Earlier periods are not shown as R0.00 — they are not offered
-at all, because "nothing to compare" and "spent nothing" are different things.
-`LOTTO-0006` (backfill earlier results) is what would widen it.
+Sign 4 carries one limit worth stating plainly: the periods on offer begin
+where the results record does, because the comparison is drawn only over
+entries something can actually score. `LOTTO-0006` moved that floor back to the
+year of the earliest ticket on 2026-08-31, so the periods now cover almost all
+of lifetime spend rather than about 38% of it. A period nothing can score is
+still not shown as R0.00 — it is not offered at all, because "nothing to
+compare" and "spent nothing" are different things.
 
 ## Is this for you?
 
@@ -149,15 +154,15 @@ import anything, however long you leave it.
 ### Checking your tickets
 
 ```bash
-python3 backfill.py    # one-off: fetch pre-June-2026 results (12 requests)
+python3 backfill.py    # one-off: fetch pre-June-2026 results
+                       # (one request per pool per year)
 python3 check.py       # score every ticket
 ```
 
 ```
-974 of 1238 ENTRIES CANNOT BE CHECKED. They are not counted below, and are NOT losses.
-  963 predate all draw data for their pool (earliest: 2025-01-01)
+11 of 1238 ENTRIES CANNOT BE CHECKED. They are not counted below, and are NOT losses.
   11 in a pool no results source carries: daily/1
-  affecting 426 tickets wholly and 11 tickets partly
+  affecting 0 tickets wholly and 11 tickets partly
     a partly-checkable ticket IS scored on its remaining pools, below
 
 2026-05-04  VAS00000000000  lotto/0  line A2  DIV 7 (match 2 + Bonus)  R18.30  expires 2027-05-04
@@ -176,8 +181,8 @@ only ever names the highest one — and since June 2026 it doesn't name it at
 all.
 
 Entries are reported as **uncheckable** rather than as losses when nothing
-can score them — either they predate the results data (before 2025-01-01), or
-they are in a pool no source publishes. That distinction is deliberate and
+can score them — either they predate the results data, or they are in a pool no
+source publishes. That distinction is deliberate and
 load-bearing: a ticket nobody can check is not a ticket that lost. It works
 per entry, so a ticket that can be checked in one draw and not another is
 still scored on the one that can — it is never written off whole.
@@ -276,6 +281,8 @@ are, is in [`docs/specs/LOTTO-0001-lottery-ticket-tracker.md`](docs/specs/LOTTO-
 - The official feed's endpoints are the ones the operator's own website calls.
   They are public and unauthenticated, but carry no compatibility promise and
   could change without notice.
-- Results before 2025-01-01 are not available from either source.
+- The archive is scraped from `backfill.FIRST_YEAR` onward — the year of the
+  earliest ticket in the dump. Anything older is reported as uncheckable
+  rather than scored against the wrong draws.
 - This is a personal tool, not a licensed service. Always confirm a win
   against the official result before acting on it.

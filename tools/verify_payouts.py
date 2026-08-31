@@ -22,8 +22,8 @@ Three constraints, from LOTTO-0029 §7 and binding on all eight cases:
     and `unscored`, not only `unpaid`. §8 rejects `assert unpaid == 0`
     because a count that is true today is not thereby a contract; the same
     reasoning covers the other two from the other direction. `unexplained` is
-    a defect residue this project intends to explain away, and LOTTO-0006's
-    whole value is turning today's `unscored` references into an oracle. An
+    a defect residue this project intends to explain away, and LOTTO-0006
+    turned most of the `unscored` references into an oracle on 2026-08-31. An
     assertion that either stays non-empty goes red on exactly that progress,
     in local-CI.sh's local-only lane, blocking a push.
   * BUILD THE POPULATION INDEPENDENTLY. categories_partition takes its

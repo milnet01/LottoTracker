@@ -87,6 +87,16 @@ to them.
    per draw. Anything comparing one payment against one ticket reports 77
    false shortfalls.
 
+**Update 2026-08-31 — LOTTO-0006 drained consequence 3.** The figures above are
+the shipping measurement and are left as written. Re-measured after the archive
+floor moved back to the earliest purchase SMS: `unscored` fell from 142 to 3,
+`agree` rose from 61 to 198, computed lifetime rose to R7,994.30 against the
+same R8,332.70 paid, and the unexplained difference fell from R4,989.50 to
+R338.40. `unpaid` is still zero, which is the figure that must not move. What
+did **not** move is the residue LOTTO-0033 and LOTTO-0037 own: `low` is still
+15, `unexplained` still 4, and `high` rose from 2 to 4. Consequence 3's argument
+is unchanged — it is why the categories are separate — but its 142 is history.
+
 Consequence 3 is why this cannot be built as a scoring correction. An
 unexplained payout is a fact about the domain — the traced case reaches no
 paying division in any of its three pools against numbers now verified twice,
@@ -427,7 +437,8 @@ partition, and the **synthetic** fixtures of INV-43, INV-44 and INV-46.
 `assert unpaid == 0` because it is true today and is not a contract, and the
 same reasoning covers the other two from the other direction: `unexplained` is
 a defect residue this project intends to explain away, and LOTTO-0006's whole
-value (§9) is turning today's 142 `unscored` references into an oracle. An
+value (§9) was turning the `unscored` references into an oracle — which it did
+on 2026-08-31, draining most of that category. An
 assertion that either stays non-empty goes red on the exact progress this spec
 exists to enable, in `local-CI.sh`'s local-only lane, blocking a push.
 
@@ -579,9 +590,9 @@ print(len(p), len({re.sub(r'VAS\d+','R',re.sub(r'[\d][\d,.]*','N',x)).strip() fo
   populations visible and counted; it does not explain either. LOTTO-0010 is
   closed with this spec and is not the owner.
 - **The claim wording and `CLAIM_DAYS`** — LOTTO-0011, per §3.
-- **Backfilling earlier than 2025-01-01** — LOTTO-0006. That item's value is
-  that this reconciliation turns the 142 currently-`unscored` references (plus
-  the 1 `no_ticket`) into an oracle, so it is downstream of this, not part of
+- **Backfilling further back** — LOTTO-0006, shipped 2026-08-31. That item's
+  value was that this reconciliation turns the `unscored` references (plus the
+  `no_ticket` one) into an oracle, so it was downstream of this, not part of
   it.
 - **Anything that writes to the dump** — LOTTO-0003 owns the only writer.
 

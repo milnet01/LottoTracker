@@ -17,11 +17,16 @@ one (INV-51):
   * a draw falling on `today` has NOT yet happened - so a ticket reads
     `draws_left == 1` on its own final draw day and 0 the day after.
 
-Accuracy is within one day, not exact, and it was measured rather than assumed:
-projecting the whole of 2026 from 2025's draws alone gives the right count in
-every pool and one wrong date in nineteen months (a Wednesday Lotto draw that
-ran on the Thursday). LOTTO-0034 §4.2 carries the numbers; INV-51 states the
-floor. A day either way is immaterial to a warning that fires two draws ahead.
+Accuracy is one-directional in practice, not by construction, and it was
+measured rather than assumed. A weekly pattern cannot express a schedule
+change, so a draw CANCELLED or moved LATER makes this name an EARLY date - the
+safe side, since the warning still arrives before the ticket runs out. A draw
+moved EARLIER, or an extra draw on an unlisted day, would make it name a LATE
+one, which is not safe. INV-51 asserts that sign and an exactness floor.
+Enumerated over the whole archive: every irregularity is a cancellation or a
+later move (six Christmas cancellations and one Wednesday-to-Thursday move), so
+nothing projects late today - but that is a measurement, and LOTTO-0034 §4.2
+and §6 carry it as a live exposure rather than an impossibility.
 """
 
 import datetime

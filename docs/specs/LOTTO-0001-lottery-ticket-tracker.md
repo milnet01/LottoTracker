@@ -230,7 +230,7 @@ Two traps, both of which produce plausible-looking wrong answers:
 | Source | Covers | Has payouts | Module |
 |--------|--------|-------------|--------|
 | Sizekhaya JSON API | 2026-06-01 → | yes, per division | `results.py` |
-| za.national-lottery.com | 2025-01-01 → | only per-draw pages | `backfill.py` |
+| za.national-lottery.com | `backfill.FIRST_YEAR`-01-01 → | only per-draw pages | `backfill.py` |
 
 Three conventions this project depends on, none of them derivable from the
 shape above:
@@ -321,14 +321,18 @@ the pair must not be read as one statement about one row.
 scorable and must be excluded, never truncated.** `history.py::scorable()`
 gates this and `covered()` returns empty for such an entry. Both take the pool
 as an argument rather than reading it off the ticket, because a ticket can be
-checkable in one pool and not another. Without the gate a 2022 ticket silently
-takes the first N draws of 2025 — real draws, wrong ones — and every
-count-based check still reports it as correct. **963 of 1233 entries** fall in
-this window, on 426 of 558 tickets that fall in it wholly. A further 11 entries
-are uncheckable for the *other* reason — `daily/1`, which no source publishes
-(§4.2) — for 974 uncheckable entries in total. The two reasons are counted
+checkable in one pool and not another. Without the gate a ticket older than the
+record silently takes the first N draws the record *does* hold — real draws,
+wrong ones — and every count-based check still reports it as correct.
+**Since LOTTO-0006 (2026-08-31) that window is empty**: the archive reaches back
+to the year of the earliest purchase SMS, so no entry predates its pool's data.
+Every uncheckable entry today is uncheckable for the *other* reason — `daily/1`,
+which no source publishes (§4.2). **The gate is not thereby spent**, and neither
+is the split: the window reopens the moment an older ticket is imported, which
+is precisely the failure this exists to make safe. The two reasons are counted
 separately and must stay that way: merging them is how "nobody publishes this"
-starts reading as "the data does not go back far enough". `check.py` reports
+starts reading as "the data does not go back far enough" — and with one of them
+now usually zero, a merged count would read as a clean bill of health. `check.py` reports
 both as uncheckable rather than as losses, at entry granularity
 (LOTTO-0009 §4.6).
 
@@ -855,12 +859,14 @@ run.
   dependency-free (LOTTO-0002's `tools/verify_page.py` needs PySide6). (No
   count here on purpose — it has rotted twice as scripts were added.)
 - Tickets predating all draw data (the count is §4.4's, which owns the gate).
-  The gate is per pool (each
-  pool's own earliest known draw, 2025-01-01 for the earliest), not a global
-  date. The limit is a configured default, not a source limit —
-  `backfill.build(years=(2025, 2026))` — and all are long past the 365-day
-  claim deadline. They are excluded by `history.py::scorable()` and reported
-  as uncheckable, not silently dropped. Extending coverage is LOTTO-0006.
+  The gate is per pool — each pool's own earliest known draw — not a global
+  date. The floor was always a configured default rather than a source limit,
+  and LOTTO-0006 lowered it on 2026-08-31 to `backfill.FIRST_YEAR`, the year of
+  the earliest purchase SMS, which emptied this category. It stays out of scope
+  here because the *gate* is what this section is about: such a ticket is
+  excluded by `history.py::scorable()` and reported as uncheckable, not silently
+  dropped, and that is what protects the next dump that reaches back further
+  than the archive does.
 
 ## 10. Resource cost
 

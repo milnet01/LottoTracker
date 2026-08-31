@@ -239,6 +239,35 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The re-buy warning's calendar check asserts direction, not distance** (LOTTO-0034)
+  INV-51 required the projected final draw to be within one day of the real
+  one. The wider archive falsified that with a fact about the world rather than
+  a defect: there was no Lotto draw on 2024-12-25, so tickets spanning it
+  project three days early. `DRAW_DAYS` is a weekly pattern and cannot express a
+  schedule change, so a cancelled or later-moved draw lands the projection
+  early — the safe side, since the warning still arrives before the ticket runs
+  out. INV-51 now forbids the unsafe direction instead: never a date later than
+  the real draw, which would warn too late to buy. Every irregularity in the
+  archive is of the safe kind and nothing projects late, but that is a
+  measurement rather than a guarantee and the spec carries the residual case.
+  The 98%-exact floor that stops the calendar rotting silently is unchanged.
+  User's decision, 2026-08-31.
+
+- **Spend-against-winnings by period now covers almost all of lifetime spend** (LOTTO-0006)
+  The period section is drawn over scorable entries, so widening the results
+  record widened it: 46 month buckets from 2022-11 where there were 20 from
+  2025-01, and 98.7% of lifetime spend compared where it was 38.5%. The page's
+  own caption needed no change — it says the periods start where the results
+  do, which is true whatever the floor is.
+
+- **Backfill draw results to the earliest ticket, not just to 2025** (LOTTO-0006)
+  `backfill.build()` scrapes from `FIRST_YEAR` to the current year instead of
+  a literal `(2025, 2026)`. The floor is the year of the earliest purchase SMS;
+  the top end is computed so it cannot stop fetching each January. Purely
+  additive — every previously-known draw is unchanged.
+  Uncheckable entries fell from 974 to 11, and no ticket is now excluded
+  wholly: the 11 are the `daily/1` pool no source carries.
+
 - **Catching up reads the message file once instead of once per message** (LOTTO-0007)
   543 messages took 543 full re-reads of the file (~114 MB) on every start;
   they now take one.
@@ -338,6 +367,15 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importing the derivation it is testing.
 
 ### Fixed
+
+- **Most of the gap against the bank's own record is now explained** (LOTTO-0006)
+  With the wider archive, reconciliation moves from `unscored` 142 to 3 and
+  `agree` 61 to 198 over the same 225 references. Computed lifetime rises from
+  R3,343.20 to R7,994.30 against R8,332.70 paid, so the unexplained difference
+  falls from R4,989.50 to R338.40. `unpaid` — a win claimed that the bank
+  never paid — is still zero.
+  The residue is not explained and stays with LOTTO-0033/0037: 15 computed low,
+  4 unexplained, and 4 computed high, up from 2.
 
 - **README sent the Wi-Fi import path to a script that imports nothing** (LOTTO-0007)
   § Getting your messages told the user to run `find_lotto_sms.py`, which

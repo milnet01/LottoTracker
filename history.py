@@ -4,6 +4,7 @@
 Two sources, because neither alone covers the ticket history:
   - official Sizekhaya API  2026-06-01 onward (authoritative, has payouts)
   - za.national-lottery.com archive, earlier   (scraped, numbers only)
+    back to backfill.FIRST_YEAR, the year of the earliest purchase SMS
 
 Where they overlap the two agree exactly (148 draws across all six pools --
 `python3 tools/verify_sources.py`), so the official one wins on conflict and
@@ -79,9 +80,13 @@ def all_draws(game, plus_flag):
 def scorable(ticket, plus_flag):
     """False when no source reaches back to this ticket's draws in this pool.
 
-    Without this, a 2022 ticket silently takes the first N draws of 2025 --
-    real draws, wrong ones -- and every check downstream reports it as fine
-    because the count matches. 426 of 558 tickets fall in this window.
+    Without this, a ticket bought before the archive reaches back silently
+    takes the first N draws it does reach -- real draws, wrong ones -- and
+    every check downstream reports it as fine because the count matches.
+    LOTTO-0006 pushed the archive back to the earliest purchase SMS, so the
+    window is now empty of whole tickets; what remains is the daily/1 pool no
+    source carries. The guard stays: the window reopens the moment an older
+    ticket is imported, which is the safe failure this exists for.
 
     The pool is passed in rather than read off the ticket: a ticket is entered
     in every tier its price paid for, and one of them can be checkable while

@@ -499,9 +499,10 @@ a handle.
   derivation would test a different claim from the one stated. The `11` is
   informational and moves with the dump; it holds today because `daily/1` is the
   only pool with no results at all, every other pool sharing its game's earliest
-  known draw (`lotto:0/1/2` all 2025-01-01, `powerball:0/1` both 2025-01-03,
-  and `daily/0` alone in its game, per `archive_results.json`), so no other pool
-  can make a ticket partly uncheckable.
+  known draw (`lotto:0/1/2` share one date, `powerball:0/1` share another, and
+  `daily/0` is alone in its game, per `archive_results.json`), so no other pool
+  can make a ticket partly uncheckable. LOTTO-0006 moved those dates back
+  without disturbing the shape, which is what this argument rests on.
   *Breaks when:* the uncheckable report is written per ticket, as it is today,
   so the 11 `Daily Lotto Plus` tickets keep reporting as uncheckable while
   their base entries are scored — the two statements contradicting each other
@@ -600,8 +601,10 @@ and each produced the stated result.
 - Displaying any of this — LOTTO-0002.
 - The rest of the LOTTO-0007 tail. INV-7 incidentally makes item (d) loud
   rather than silent, but does not implement Multiplay for non-Lotto games.
-- Widening results coverage before 2025-01-01 — LOTTO-0006. Entries this fix
-  adds to tickets that predate all draw data remain unscorable.
+- Widening results coverage backwards — LOTTO-0006, shipped 2026-08-31. It
+  moved the floor to the earliest purchase SMS, so the entries this fix adds to
+  older tickets became scorable; what stays unscorable is `daily/1`, for the
+  other reason.
 - A test framework — LOTTO-0001 §9.
 
 ## 10. Resource cost
@@ -687,8 +690,7 @@ Twelve rows, three `nothing`.
   prices an archive-era win through `backfill.py::payouts()`, which looks the
   pool up in `PAYOUT_SLUG` — a missing key is a `KeyError` on a money path.
   Verified 2026-08-01: `PAYOUT_SLUG[("lotto", 1)]` is `lotto-plus-1`, `SLUGS`
-  carries the same, and `archive_results.json` holds 165 `lotto:1` draws from
-  2025-01-01. `history.py::POOL_NAMES` needs the key too, and is the least
+  carries the same, and `archive_results.json` holds `lotto:1` draws. `history.py::POOL_NAMES` needs the key too, and is the least
   forgiving of the three — `all_draws()` indexes it unguarded, so a missing
   entry there fails on **every** run rather than only when a win lands. Nothing
   checks any of this automatically.

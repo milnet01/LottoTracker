@@ -5,9 +5,9 @@ The official Sizekhaya feed only starts 2026-06-01 (the licence handover), so
 tickets bought before that cannot be checked against it. This scrapes an
 archive that still carries the Ithuba era.
 
-Twelve page fetches total - one per pool per year - cached to disk so a
-re-run costs nothing. Prize amounts are NOT scraped here: per-draw payout pages are
-fetched later, only for draws a ticket actually won, rather than all ~1000.
+One page fetch per pool per year, cached to disk so a re-run costs nothing.
+Prize amounts are NOT scraped here: per-draw payout pages are fetched later,
+only for draws a ticket actually won, rather than for every draw.
 
 Ball roles come from the CSS class, not position:
     class="... ball"        main number
@@ -15,6 +15,7 @@ Ball roles come from the CSS class, not position:
     class="... powerball"   PowerBall
 """
 
+import datetime
 import json
 import os
 import re
@@ -85,7 +86,19 @@ def parse_page(html, slug=None):
     return out
 
 
-def build(years=(2025, 2026)):
+# The archive is scraped from the year of the earliest purchase SMS to the
+# current one. 2022 is not a limit of the site (it carries 2021 and earlier) -
+# it is where this dump's tickets start. An older ticket arriving later reads
+# as UNCHECKABLE rather than being scored against the wrong draws, because
+# history.scorable() gates on the first date a source actually reaches, so the
+# floor being too high fails safe. The top end is computed, not written down,
+# or the last year silently stops being fetched each January.
+FIRST_YEAR = 2022
+
+
+def build(years=None):
+    if years is None:
+        years = range(FIRST_YEAR, datetime.date.today().year + 1)
     archive = {}
     for slug, (game, plus) in SLUGS.items():
         rows = {}
