@@ -122,9 +122,18 @@ def draws_left(game, start, ndraws, today):
 
 **A draw falling on `today` counts as NOT yet happened.** So a ticket reads
 `draws_left == 1` on its own final draw day and `0` the day after. The other
-boundary is pinned the same way and for the same reason (INV-51): `start` is
-inclusive, because a ticket bought on a draw day is entered in that day's
-draw. Leaving either open shifts every date by one.
+boundary is `start`, inclusive, because a ticket bought on a draw day is
+entered in that day's draw. Leaving either open shifts every date by one.
+
+**Only the `start` boundary is checked, and INV-51 is what checks it.** The
+`today` boundary is pinned by nothing: `calendar_matches_real_draws` never
+calls `draws_left` and takes no `today` at all. Confirmed 2026-08-31 by
+mutation — changing `draws_left`'s `d >= today` to `d > today` leaves **all
+eight cases green**, because the one fixture whose draw falls on `TODAY`
+interpolates the value into a message and never asserts it. A flip there
+silently costs every ticket its final-day warning, which is the day the warning
+matters most. §10 records it as uncovered rather than letting this sentence
+imply otherwise; a ninth case is filed against LOTTO-0007.
 
 **A game absent from `DRAW_DAYS` raises `KeyError`; neither function returns
 `None`.** `check.py::paying_combinations()` raises for the same reason — an
@@ -225,24 +234,39 @@ the wider archive falsified with a fact about the world rather than a defect:
 there was no Lotto draw on 2024-12-25, and three tickets spanning that gap
 project three days early.
 
-**Two events land the projection early, and two land it late.** A weekly
+**The direction depends on the ticket, not only on the event.** A weekly
 pattern disagrees with history whenever the schedule does something the pattern
-cannot express. A draw **cancelled**, or **moved later**, means the calendar has
-counted a draw on a day nothing ran, so its n-th draw is reached before the
-record's — **early**. A draw **moved earlier**, or an **extra** draw on an
-unlisted day, means the record reaches its n-th draw first — **late**. Early is
-safe: the warning still arrives before the ticket runs out. Late is not: it
-names a final draw after the ticket has actually ended, which is too late to
+cannot express, and there are three ways it can:
+
+| Event | Ticket spans the ORIGINAL date | Ticket starts AFTER it |
+|---|---|---|
+| Draw **cancelled** | **early** — the calendar counted a day nothing ran | exact |
+| Draw **moved later** | **early** — same reason | **LATE** |
+| Draw **moved earlier**, or an **extra** draw | **LATE** — the record reaches its n-th draw first | exact |
+
+Early is safe: the warning still arrives before the ticket runs out. Late is
+not — it names a final draw after the ticket has already ended, too late to
 buy.
 
-**INV-51 asserts the sign, and the sign is a claim about the record rather than
-a bound on how far it may drift.** Enumerated 2026-08-31 over the whole archive
-(2022-01-01 to 2026-07-31), every irregularity is of the safe kind: six
-cancellations — Daily Lotto on 2022-12-25, 2023-12-25, 2024-12-25 and
-2025-12-25, Lotto on 2024-12-25 and 2026-04-29 — and one move later, the Lotto
-draw of 2026-04-29 running on 2026-04-30. No draw has ever moved earlier and
-none has been added, so zero entries are late. **That is a measurement, not a
-guarantee**, and §6 carries it as a live exposure.
+**The middle row's right-hand cell is the one to know**, and it was missed when
+this section was first amended. A draw moved later sits on a day `DRAW_DAYS`
+does not list, so the calendar never counts it — but `covered()` filters on
+`date >= start` and therefore *does*, for any ticket starting on or after the
+moved date and before the next scheduled one. The record then runs a draw
+ahead. Worked against the one move in the archive, a Lotto ticket bought
+2026-04-30 for 10 draws projects 2026-06-03 against a real last draw of
+2026-05-30 — **four days late**.
+
+**INV-51 asserts the sign, and zero entries are late today for a contingent
+reason.** Enumerated 2026-08-31 over the whole archive (2022-01-01 to
+2026-07-31) there are seven irregularities: five Christmas cancellations —
+Daily Lotto on 2022-12-25, 2023-12-25, 2024-12-25 and 2025-12-25, Lotto on
+2024-12-25 — and one draw moved later, the Lotto draw due 2026-04-29 running on
+2026-04-30, which the enumeration sees as a missing date plus an extra one. **A
+later move HAS happened, so the unsafe class is not empty of events — it is
+empty of tickets**: no ticket in the dump starts on 2026-04-30. **That is a
+measurement about the dump, not a property of the calendar**, and §6 carries it
+as a live exposure.
 
 Bounding the absolute deviation made the check fail on a holiday; asserting the
 sign makes it fail only where the warning would actually mislead. The 98% exact
@@ -344,8 +368,11 @@ catches is the write being *removed*. The ordering is held by keeping the write
 inside `expiry_notices()` and by this paragraph, and §10 records it as
 uncovered rather than letting the invariant imply a guard it does not have.
 
-`final` is stored so entries can be pruned (INV-55); nothing reads it back to
-make a decision.
+`final` is stored so entries can be pruned (INV-55), and the prune is the only
+thing that reads it back. No *warning* decision does — that is `draws_left()`'s,
+from the calendar. Said this way since 2026-08-31: it read "nothing reads it
+back to make a decision", which the prune contradicts in the same sentence that
+describes it.
 
 ### 4.6 When the check runs
 
@@ -404,7 +431,12 @@ The dependency edges this adds are `supervise.py` → `expiry` and
 `supervise.py` → `tickets`. **Both widened LOTTO-0013 §4.1, whose module table
 said `supervise.py  stdlib only` until 2026-08-22** — deliberately, and §11 carries the
 amendment that document needs. `expiry.py` still imports nothing but
-`datetime` (INV-50), and `tray.py` gains no new import at all.
+`datetime` (INV-50), and **`tray.py` gains `datetime` and nothing else** — no
+project import and no decision, which is the point the accounting is making.
+Corrected 2026-08-31: this said `tray.py` gained no import at all, while §4.6's
+own snippet calls `datetime.date.today()` and cannot be written without one.
+Confirmed against the commit that shipped this item — `tray.py` had no
+`import datetime` before it.
 
 The display name comes from a second table beside `DRAW_DAYS`:
 
@@ -490,18 +522,23 @@ cannot score is LOTTO-0031's failure exactly. INV-53 and INV-56 both say so.
 
 - **INV-51** — For every entry whose `history.covered()` is complete,
   `final_draw_date()` never names a date **later** than the last covered draw,
-  and names it exactly for at least 98% of them. Earlier is permitted and is
-  the only direction a cancelled draw can produce (§4.2).
+  and names it exactly for at least 98% of them. Earlier is permitted; it is
+  what a cancelled draw produces, and what a later move produces for a ticket
+  spanning it (§4.2).
   *Test:* `tools/verify_expiry.py`, case `calendar_matches_real_draws`.
+  *Scope: the `start` boundary only. `draws_left`'s `today` boundary is pinned
+  by nothing* — §10 records it.
   *Breaks when:* a draw day changes; the ndraws-th-draw rule is off by one at
   the start boundary — an entry bought on a draw day is entered in that day's
   draw, and treating `start` as exclusive shifts every date later, which is
-  exactly the direction this forbids; **or a draw is moved earlier or added on
-  an unlisted day**, which is a fact about the world rather than a defect and
-  is diagnosed, not patched (§4.2, §6). Check that third cause before the other
-  two: the first red run against a genuine schedule change looks identical to
-  an off-by-one, and the previous form of this invariant was withdrawn for
-  exactly that confusion.
+  exactly the direction this forbids; **or the schedule changed**, which is a
+  fact about the world rather than a defect and is diagnosed, not patched
+  (§4.2, §6). **Check the schedule first, and within it the gap-ticket case**:
+  a ticket starting in the gap left by a draw moved later is the only unsafe
+  case with a precedent in the archive. A red run against it looks identical to
+  an off-by-one, and "fixing" the start boundary would shift all 1,210
+  currently-exact entries. The previous form of this invariant was withdrawn
+  for exactly that confusion.
 
 - **INV-52** — No notice is ever produced for a ticket whose `draws_left` is
   zero.
@@ -514,7 +551,9 @@ cannot score is LOTTO-0031's failure exactly. INV-53 and INV-56 both say so.
   on the first and not on the second, across restarts.
   *Test:* `tools/verify_expiry.py`, case `notice_is_said_once`.
   *Breaks when:* the state record is keyed on something not unique per
-  purchase, or is written after the notice and the process dies between them.
+  purchase. **Not** the write being reordered after the notice: §4.5 and §10
+  both record that as undetectable here, and every other *Breaks when* in this
+  section names something its case actually reddens.
   **Scope: tickets qualifying under §4.4, and `expiry_notices()` rather than
   `sync()`.** The unrecognised-game notice (§4.7) is outside this invariant by
   design — it cannot be keyed, and it is meant to recur. Whether the tray's date guard
@@ -578,16 +617,20 @@ cannot score is LOTTO-0031's failure exactly. INV-53 and INV-56 both say so.
   from the path nobody pinned. §4.5 records that the remedy is a decision
   rather than a default, and it is filed against LOTTO-0007.
 
-- **A draw moved EARLIER, or an extra draw on an unlisted day.** The mirror of
-  the above and the one that is not safe: the record reaches the ticket's last
-  draw before the calendar does, so the notice names a date after the ticket
-  has already ended and the user is told too late to buy. It also reddens
-  INV-51, which is the only thing that would surface it — and only when the
-  verifier is run. Neither has ever happened: enumerated over the whole archive
-  (§4.2), every irregularity is a cancellation or a later move. Accepted on
-  that evidence rather than on an argument that it cannot occur, because a
-  weekly pattern cannot rule it out. A red INV-51 is a diagnosis first: confirm
-  against the record which event occurred before touching `DRAW_DAYS`.
+- **A ticket bought in the gap left by a draw moved LATER** — and this is the
+  live one, because such a move has already happened. The moved draw sits on a
+  day `DRAW_DAYS` does not list, so the calendar misses it while `covered()`
+  counts it, and the record runs a draw ahead: the notice names a date after
+  the ticket has already ended and the user is told too late to buy. Measured
+  four days against the 2026-04-29 → 2026-04-30 move (§4.2). **No ticket in the
+  dump falls in that gap, which is why INV-51 reads zero late** — a fact about
+  the dump, not about the calendar. A draw moved EARLIER or added on an
+  unlisted day does the same thing; neither has occurred.
+
+  INV-51 is the only thing that would surface any of them, and only when the
+  verifier is run. **A red INV-51 is a diagnosis before it is a defect**: check
+  the record for a schedule change first, and this gap-ticket case before the
+  other two, since it is the only one with a precedent.
 
 - **The machine is off for the whole window.** The ticket crosses two draws
   remaining, then reaches zero, all while the tray is not running. No notice is
@@ -657,8 +700,23 @@ most rot-prone cases on a public runner would be the degraded-mode trap
 `verify_privacy.py` already carries and `local-CI.sh`'s header warns about;
 this one does not get a weak mode.
 
-`notice_is_said_once` and `state_file_is_pruned` write to a temporary
-directory via `$XDG_CONFIG_HOME`, never to the user's real config.
+**Every case that calls `expiry_notices()` passes a temporary `state_path`,
+and there are five of them** — `expired_tickets_are_silent`,
+`notice_is_said_once`, `notice_names_nothing_else`, `state_file_is_pruned` and
+`unknown_game_is_loud`. **The isolation is the injected argument §4.7 provides,
+not an environment variable**: `_tmp_state()` returns a path under
+`tempfile.mkdtemp()`, and the verifier never sets `$XDG_CONFIG_HOME`.
+
+Corrected 2026-08-31, having been wrong in both halves — two cases named where
+five touch the file, and an environment variable the verifier does not use.
+The same sentence had been copied into the verifier's own module docstring, so
+the spec and the code agreed with each other and both disagreed with the code.
+**It is the most expensive error this document has carried.** An implementer
+isolating only the two named cases leaves the other three defaulting to the
+real `expiry_warned.json`, and `expired_tickets_are_silent` runs against the
+REAL dump — so one run of the test suite records every live ticket as already
+warned, and §3.2's *say it once* then means the user is never told. The suite
+would silently destroy the feature it exists to check, before every push.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -724,6 +782,7 @@ directory via `$XDG_CONFIG_HOME`, never to the user's real config.
 | INV-56 | `tools/verify_expiry.py::unknown_game_is_loud` |
 | §4.6's date guard firing once a day — INV-53's `sync()` half | **nothing** — it lives in `tray.py::sync()`, which needs a `QSystemTrayIcon`; the project has no Qt-constructing test. The wording, the selection and the state file are all checkable because §4.7 puts them in `supervise.py`; the call site is not. Same exposure LOTTO-0003 INV-37 records. |
 | A draw day changing in the real world | **nothing in production** — INV-49 catches it only when the verifier is run. Accepted, as for `TIER_PRICES`. |
+| `draws_left`'s `today` boundary (§4.1) | **nothing** — INV-51 pins the `start` boundary only. Verified by mutation 2026-08-31: `d >= today` → `d > today` leaves all eight cases green, and the ticket loses its final-day warning. A ninth case is filed against LOTTO-0007. |
 | §4.5's write-before-notice ORDERING | **nothing** — inside `expiry_notices()` both orderings look identical to two successive calls, so INV-53 catches the write being removed and not its being moved. Observing it needs the process to die between the two statements. Held by the paragraph in §4.5. |
 | A state-file WRITE failure (§4.5) | **nothing** — `_write_warned()` is unguarded and `tray.py` adds no `try`, so it reaches the timer slot. Contract unresolved; filed against LOTTO-0007. |
 | `DISPLAY_NAME` covering every `DRAW_DAYS` key (§4.7) | **nothing** — INV-56 covers a game missing from `DRAW_DAYS`, which is the opposite direction. A game added to one table and not the other raises in the timer slot. |
@@ -769,6 +828,7 @@ directory via `$XDG_CONFIG_HOME`, never to the user's real config.
 | 1 | 2026-08-22 | 3, cold — genre pinned `spec` | 1 | 4 | 3 | 2 | **Ten verified, ten fixed; none dismissed.** **All three lanes independently found the same defect**, the run's strongest signal: §4.6's tray hook called `supervise.expiry_notices(...)` — arguments elided — and nothing in the document specified it, while §4.5 called the tray the state file's writer and §10 claimed selection sat outside the tray. Three surfaces bound to a function that did not exist, and the two INV cases locking it would have been built against whatever an implementer guessed. Fixed by giving `expiry_notices()` a signature, an owner and its dependency edges. **The most consequential single finding was INV-49's**, raised by two lanes and an open question from the third: the invariant was scoped to `archive_results.json`, which `backfill.py` only advances when re-run by hand and which ended 2026-07-31 — so the half added specifically to catch a *removed* draw day could never fire on a change made after the last scrape, and would have decayed to wholesale failure as the file aged. Rescoped to the merged record with the window measured from its newest draw, then executed: lotto 170/171, powerball 171/171, daily 597/597, every listed weekday covered. **Two contradictions were the document arguing with itself**: INV-54 excluded the draw count its own specimen notice carries, and §4.5 claimed writing-before-notice took "the same direction of failure" as the read rule when it takes the opposite — an implementer harmonising the two would have written the record after the notice, which INV-53 calls a breach. **Two open questions were promoted to findings by the orchestrator** after measuring: no game→display-name map exists in either direction (`GAME_MAP` runs SMS-name→key, `history.POOL_NAMES` is keyed per pool and tracks the wire format), so §4.7's "the display name" invented a surface INV-54 binds to; and §11 said README moves sign 1 "from open", where README says *partly done*. **One gap nobody had covered**: `DRAW_DAYS` has three keys and nothing said what happens to a fourth game — LOTTO-0031's exact failure class — now INV-56. One open question resolved clean and is not counted: `Ticket.ref` is unique per purchase (561 tickets, 561 distinct references, none reused). Invariants went 7 to 8, cases 7 to 8. |
 | 2 | 2026-08-22 | 3, cold — identical brief, packet rebuilt from disk | 2 | 5 | 3 | 0 | **Ten verified, ten fixed; one dismissed as immaterial. Cap reached (2 for a spec); the run ships.** **Four of the ten landed on text loop 1 wrote** — a 40% share, so this is a middling cap rather than a calm or a violent one: loop 1's largest addition, the unrecognised-game contract, was itself underspecified and generated three of them. **All three lanes independently found two defects.** First, §4.7 declared `supervise.py` → `expiry` while LOTTO-0013 §4.1's module table says `supervise.py  stdlib only`, and §11 did not list LOTTO-0013 at all — an implementer holding that document refuses the import and relocates four invariants' code. Second, the unrecognised-game notice could never be recorded as said: §4.5's record needs a `final` and `final_draw_date()` raises for exactly those games, so it would either repeat forever against §3.2 or need a `final: null` entry INV-55 has no prune rule for. Now: one notice per call, deliberately unrecorded and recurring, with INV-53 and §3.2 scoped to re-buy notices. **Two false claims about the code survived loop 1 and were caught by running them.** §6 said `tickets.load()` "has nothing to return" on a missing dump — it raises `FileNotFoundError`, which would have landed in the tray's timer slot. And §13 asserted a purchase rate of one ticket per ten days; measured, it is one per 2.44 days over 1368 days, with 12 inside the trailing 90. **Three gaps nobody had covered:** `draws_left`'s `today` boundary was unpinned while the `start` boundary was pinned two sections away; the managed run (`LWSM_MANAGED=1`) never builds a tray icon so it never warns, which is now stated rather than left as apparent silence; and §11 omitted the one CLAUDE.md passage carrying a count ("these seven scripts"). Loading moved into `expiry_notices()`, so `tray.py` gains no import and holds no decision. One dismissed as true-but-immaterial: §2.1 said `sync()` sets icon, tooltip and menu "and nothing else" while it also calls `check_new_tickets()` — corrected in passing, but it changed nothing anyone would build. |
 | 3 | 2026-08-31 | 3, cold — genre pinned `spec`; new run, trigger LOTTO-0006 | 5 | 1 | 3 | 1 | **Ten verified, ten fixed; two dismissed. First loop of a NEW run** (the 2026-08-22 run reached its cap at loop 2). Trigger: LOTTO-0006 widened the scraped archive from 2025 to 2022, which falsified INV-51's *within one day* bound with a public holiday rather than a defect, and the user chose to assert the SIGN instead. **All three lanes independently found the same two defects, and both were in the amendment written that morning** — the strongest signal of the run and an argument for gating a contract change however confident its author is. First, the justification *"a disagreement can only ever be the calendar counting a draw that did not happen"* is unsound: a draw moved EARLIER, or an extra draw on an unlisted day, makes the record reach the ticket's last draw first and projects LATE — the unsafe direction, and the one INV-51 now asserts against unconditionally. The claim is replaced by the four events and their two directions, with the safe-only result restated as a MEASUREMENT (enumerated over the whole archive: six cancellations and one later move, zero earlier moves) rather than an impossibility, and §6 carries the residual late case as a live exposure. Second, §9 said LOTTO-0006 *"changes nothing here: this item reads the calendar, never the results"* while the header and §4.2 two hundred lines apart said it forced this very amendment — true of the production path, false of the checks, since INV-49 reads `all_draws()` and INV-51's population grew from 260 entries to 1,223. A maintainer widening the archive again would have re-run nothing. **All three also found the evidence base stale**: §4.2's *"the one other irregularity in the file"* is false (there are seven), and §4.1's embedded census still printed its pre-backfill output. Both are now dated to the archive they measured. **Two lanes found §11 omitted the one `CLAUDE.md` passage this item falsified** — *"the primary one is the least built"*, of the sign this item BUILT, still false on disk three items later in the file every session loads. Fixed at its home and rot-proofed by pointing at the README instead of restating a tally that had been wrong three times running. **Three Q3 gaps, each a coupling the code already binds to and the contract never stated:** `DISPLAY_NAME` must cover every `DRAW_DAYS` key, and the subscript sits OUTSIDE the guard that catches an unknown game, so a one-table edit kills the tray; `ndraws < 1` raises `ValueError` and `expiry_notices()` routes it to the *unrecognised-game* notice, diagnosing a malformed ticket as a rebrand; and the state file's WRITE path has no failure contract at all while the READ path's is pinned, so an unwritable home reaches the tray's timer slot. The last two are documented as-shipped and filed against LOTTO-0007 (p) and (q) rather than resolved inside a docs gate — the remedy is a decision, not a default. **One Q4**: §4.5 named INV-53 as the guard on write-before-notice ordering, which INV-53 cannot observe — both orderings look identical to two successive calls, and its break removes the write rather than moving it. §10 now records it uncovered, with two more rows beside it. **The run's own lesson is a fix-one-copy failure caught by 4b**: the unsound *early-only* argument had been written into `expiry.py`, `tools/verify_expiry.py`, `CHANGELOG.md` and the `ROADMAP.md` note as well as the spec, all within the hour. Five copies, one sweep. Two dismissed as true-but-immaterial: `TrayIcon.sync()` names a class that does not exist (it is `LottoTray`), which a reader resolves in one grep; and the status header's *"3 off by one"* snapshot, which §4.2 already tells the reader is a floor and not a snapshot. Four lane open questions resolved clean and counted nowhere: `all_draws()` does return sorted rows, INV-54's forbidden clauses are reachable, and the 13 early entries decompose EXACTLY into the two documented causes (9 lotto + 1 daily from 2024-12-25, 3 lotto from the 2026-04-30 move), which also verifies §6's three-day worst case. `check-doc-facts` equivalents run via `doc_integrity` / `spec_lint` / `doc_citations`: clean before and after, except that `spec_lint`'s three test-surface checks did NOT run (no `tests/features/` directory — ANTS-4393), so those clauses were read by hand. |
+| 4 | 2026-08-31 | 3, cold — identical brief, packet rebuilt from disk and given a `tray.py` window | 5 | 1 | 0 | 0 | **Six verified, six fixed; three dismissed. Cap reached (2 for a spec); the run files its tail — which is empty — and exits.** **A MIDDLING cap: 3 of the 6 landed on text loop 3 wrote**, so the run is neither calm nor oscillating, and the three that did not are old defects two cold reads had already walked past. **All three lanes independently found the same defect, and it is the most expensive this document has carried.** §7 said *"`notice_is_said_once` and `state_file_is_pruned` write to a temporary directory via `$XDG_CONFIG_HOME`"* — wrong in both halves. FIVE cases call `expiry_notices()` and each passes an injected `tempfile.mkdtemp()` path; `$XDG_CONFIG_HOME` appears nowhere in the verifier. An implementer isolating only the two named cases leaves the other three defaulting to the user's REAL `expiry_warned.json`, and `expired_tickets_are_silent` runs against the REAL dump — so one run of the suite records every live ticket as already warned and *say it once* means the user is never told again. The suite would destroy the feature it checks, before every push. §7 also contradicted itself six lines earlier, saying "the other five". The identical sentence sat in the verifier's own docstring, so spec and code agreed with each other and both disagreed with the code. **One lane falsified loop 3's own taxonomy by construction, and the counter-example was reproduced before it was believed.** Loop 3 wrote that a cancelled *or later-moved* draw "can only ever" land EARLY. It cannot: the moved draw sits on an unlisted day, so the calendar misses it while `covered()` counts it (`date >= start`) — for any ticket starting IN THE GAP the move leaves, the record runs a draw ahead. Executed: a Lotto ticket bought 2026-04-30 for 10 draws projects 2026-06-03 against a real last draw of 2026-05-30, **four days LATE**, the direction INV-51 forbids. §4.2 now carries a three-by-two table instead of a two-way split, and §6's acceptance no longer rests on "neither has ever happened" — a later move HAS happened; the unsafe class is empty of TICKETS, not of events, and only because no ticket starts in that one gap. INV-51's diagnosis order named causes with no precedent and now names this one first. Filed as LOTTO-0007 (s). **One lane proved a coverage hole by mutation and the orchestrator re-ran it: `draws_left`'s `today` boundary is pinned by nothing**, while §4.1 credited INV-51 with pinning it. Changing `d >= today` to `d > today` leaves ALL EIGHT cases green — the one fixture whose draw falls on `TODAY` interpolates the value and never asserts it — so a flip silently costs every ticket its final-day warning and the suite still reports PASS. §4.1 and §10 now record it; a ninth case is filed as LOTTO-0007 (r). **Two lanes found §4.7's *"`tray.py` gains no new import at all"*** false — it imports `datetime`, used only by §4.6's own date guard. One lane could not prove it without git and said so; confirmed against the shipping commit. Also fixed: INV-53's *Breaks when* claimed a cause §4.5 and §10 both call undetectable — loop 3's own collateral, since loop 3 wrote those two passages; and §4.2's enumeration described the moved draw's origin date as a sixth cancellation, double-counting one event (five are Christmas). **Collateral fixed outside the subject, at its home:** `local-CI.sh` said *"the five data-dependent verifiers"* against its own header's six of nine. Two lanes noticed §4.5's *"nothing reads it back to make a decision"* is contradicted by the prune in the same sentence, neither filed it, and it is fixed. Three dismissed as true-but-immaterial: §11's parenthetical that the README "still calls sign 2 open"; the status header's pre-LOTTO-0006 snapshots; and INV-49's first half being arithmetically vacuous for `daily`, whose `DRAW_DAYS` is all seven weekdays — recorded because a reader may take that figure as validation, but no line changes. Lane open questions resolved clean: `expiry.py` has three functions against §4.1's "two" (§4.7 places the second table unambiguously, nothing built differs), and INV-54's forbidden clauses are all reachable. **Routing at the cap: the tail is empty and the document goes to no further gate as it stands.** The 2026-08-31 run took 16 fixes over two loops, and the early/late claim alone has now been wrong twice. What settles it is not a third cold read but the two filed items — (r)'s missing case and (s)'s measured bound — which exercise the contract against real code. `doc_integrity` / `spec_lint` / `doc_citations` clean; `spec_lint`'s test-surface checks did not run (ANTS-4393). |
 
 ## 13. Resource cost
 

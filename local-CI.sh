@@ -152,7 +152,7 @@ if [ "$CI_ONLY" -eq 0 ]; then
     # no weak mode on purpose (LOTTO-0034 §7).
     run "verify_expiry.py"   python3 tools/verify_expiry.py
 else
-    echo "local-CI: --ci, so the five data-dependent verifiers and the"
+    echo "local-CI: --ci, so the six data-dependent verifiers and the"
     echo "          full-strength privacy assertion are NOT run. A green"
     echo "          result here is weaker than a green ./local-CI.sh."
 fi

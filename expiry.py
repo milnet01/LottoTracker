@@ -17,16 +17,20 @@ one (INV-51):
   * a draw falling on `today` has NOT yet happened - so a ticket reads
     `draws_left == 1` on its own final draw day and 0 the day after.
 
-Accuracy is one-directional in practice, not by construction, and it was
-measured rather than assumed. A weekly pattern cannot express a schedule
-change, so a draw CANCELLED or moved LATER makes this name an EARLY date - the
-safe side, since the warning still arrives before the ticket runs out. A draw
-moved EARLIER, or an extra draw on an unlisted day, would make it name a LATE
-one, which is not safe. INV-51 asserts that sign and an exactness floor.
-Enumerated over the whole archive: every irregularity is a cancellation or a
-later move (six Christmas cancellations and one Wednesday-to-Thursday move), so
-nothing projects late today - but that is a measurement, and LOTTO-0034 §4.2
-and §6 carry it as a live exposure rather than an impossibility.
+Accuracy is one-directional in practice, not by construction, and the
+direction depends on the TICKET as well as the event. A weekly pattern cannot
+express a schedule change. For a ticket spanning the original date, a draw
+cancelled or moved later makes this name an EARLY date - the safe side, since
+the warning still arrives before the ticket runs out. For a ticket starting
+INSIDE the gap a later move leaves, the moved draw is one covered() counts and
+this does not, so it names a LATE date instead - too late to buy. A draw moved
+earlier, or an extra draw, does the same.
+
+INV-51 asserts that sign and an exactness floor. Enumerated over the whole
+archive there are seven irregularities: five Christmas cancellations and one
+draw moved from a Wednesday to a Thursday. Nothing projects late TODAY only
+because no ticket starts in that one gap - a fact about the dump, not about
+this module. LOTTO-0034 §4.2 and §6 carry it as a live exposure.
 """
 
 import datetime

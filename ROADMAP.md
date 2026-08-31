@@ -1579,6 +1579,29 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   way. Widening the catch is NOT the fix — the fix is a second wording, or a
   reason the case cannot arise. LOTTO-0034 §4.1 now states the precondition and
   the exception. Same origin as (p).
+  (r) `draws_left`'s `today` boundary is checked by nothing, and LOTTO-0034
+  §4.1 credited INV-51 with pinning it. INV-51's case never calls `draws_left`
+  and takes no `today` at all. Confirmed 2026-08-31 by mutation: changing
+  `expiry.py::draws_left`'s `d >= today` to `d > today` leaves **all eight**
+  cases of `tools/verify_expiry.py` green — the one fixture whose draw falls on
+  `TODAY` (`expiry_is_pure`) interpolates the value into its message and never
+  asserts it. A flip there silently costs every ticket its final-day warning,
+  which is the day the warning matters most, and the whole suite still reports
+  PASS. Wanted: a ninth case and a tenth break — a ticket whose final draw is
+  exactly `today`, asserting `draws_left == 1`. The spec now records the gap in
+  §4.1 and §10 rather than implying coverage. Found by the review-contract
+  loop 4 on that spec.
+
+  (s) A ticket bought in the gap left by a draw moved LATER is warned about too
+  late. The moved draw sits on a day `DRAW_DAYS` does not list, so the calendar
+  misses it while `history.covered()` counts it (`date >= start`), and the
+  record runs a draw ahead. Measured against the archive's one such move
+  (2026-04-29 → 2026-04-30): a Lotto ticket bought 2026-04-30 for 10 draws
+  projects 2026-06-03 against a real last draw of 2026-05-30 — four days LATE,
+  the direction INV-51 forbids. It does not fire today only because no ticket
+  in the dump starts in that gap. Not fixable from the calendar alone, which is
+  the whole design (INV-50), so this is a known bound rather than a defect to
+  patch; LOTTO-0034 §4.2 and §6 carry it. Same origin as (r).
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**

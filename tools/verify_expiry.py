@@ -27,8 +27,17 @@ verifier echoing real content puts it where verify_privacy.py cannot see it.
 The two constructed fixtures use the one sentinel reference and a name that is
 not reference-shaped at all.
 
-The two cases that touch a state file write to a temporary directory via
-$XDG_CONFIG_HOME, never to the user's real config.
+The FIVE cases that call expiry_notices() each pass a temporary state_path -
+expired_tickets_are_silent, notice_is_said_once, notice_names_nothing_else,
+state_file_is_pruned and unknown_game_is_loud. The isolation is that injected
+argument, never $XDG_CONFIG_HOME: _tmp_state() returns a path under
+tempfile.mkdtemp() and nothing here touches the environment.
+
+This said "two cases" and named $XDG_CONFIG_HOME until 2026-08-31, as did
+LOTTO-0034 §7. Isolating only two leaves the rest defaulting to the user's
+real expiry_warned.json, and expired_tickets_are_silent runs against the REAL
+dump - so one run would record every live ticket as already warned and the
+user would never be told. Do not narrow this.
 """
 
 import datetime
@@ -142,22 +151,26 @@ def calendar_matches_real_draws():
     the only population where the real final draw is known.
 
     The asymmetry is the invariant, not a tolerance. DRAW_DAYS is a weekly
-    pattern and cannot express a schedule change, so a draw CANCELLED or moved
-    LATER lands the projection EARLY - safe, because the warning still arrives
-    before the ticket runs out. A draw moved EARLIER or an extra draw on an
-    unlisted day would land it LATE, which warns too late to buy, and is what
-    this asserts against.
+    pattern and cannot express a schedule change, and the direction depends on
+    the TICKET as well as the event. Spanning the original date, a draw
+    cancelled or moved later lands the projection EARLY - safe, because the
+    warning still arrives before the ticket runs out. Starting INSIDE the gap a
+    later move leaves, the same event lands it LATE, because covered() counts
+    the moved draw and the calendar does not. A draw moved earlier or added
+    does the same. LATE warns too late to buy, and is what this asserts
+    against.
 
     Bounding the absolute deviation instead was falsifiable by a public holiday
     rather than by a defect: measured 2026-08-31 over the full archive, there
     was no Lotto draw on 2024-12-25, which puts three tickets 3 days early, and
     the check went red on a fact about the world.
 
-    Zero entries are late TODAY, and that is a measurement rather than a
-    guarantee - every irregularity in the archive is a cancellation or a later
-    move. A red run here is a diagnosis before it is a defect: confirm against
-    the record which event occurred before touching DRAW_DAYS. LOTTO-0034 §6
-    carries it as a live exposure.
+    Zero entries are late TODAY because no ticket starts in the one gap the
+    archive's single later move leaves - a fact about the dump rather than a
+    guarantee. A red run here is a diagnosis before it is a defect: confirm
+    against the record which event occurred, checking the gap-ticket case
+    first, before touching DRAW_DAYS. LOTTO-0034 §6 carries it as a live
+    exposure.
 
     The >= 98% floor is what still stops the projection rotting silently: a
     DRAW_DAYS that has genuinely fallen out of date moves the exact count, and
