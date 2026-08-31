@@ -491,7 +491,7 @@ def make_server(build_model_fn, token, port):
         server_version = "lotto"
         sys_version = ""
 
-        def log_message(self, *args):
+        def log_message(self, format, *args):
             """Silenced. log_request passes self.requestline - a request-derived
             string - to stderr, which under the tray is inherited and under a
             unit lands in the journal."""

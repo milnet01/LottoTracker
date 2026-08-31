@@ -1602,6 +1602,34 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   in the dump starts in that gap. Not fixable from the calendar alone, which is
   the whole design (INV-50), so this is a known bound rather than a defect to
   patch; LOTTO-0034 §4.2 and §6 carry it. Same origin as (r).
+  (t) Three files state how many verifiers need the private data, and no
+  two agree. `local-CI.sh` line 16 says "Six of the nine" and names the
+  six; `.github/workflows/ci.yml` line 6 says "four of the seven";
+  `CLAUDE.md` says "Five verifiers need `lotto_sms_raw.txt` and the
+  scraped archive" while also saying three of the nine need no dump,
+  which implies six. The script's figure is the corrected one (2026-08-20)
+  and the other two were not moved with it. Surfaced again by the
+  check-code sweep of 2026-08-31, which is the fourth time it has been
+  raised. Not fixed here because the repair is a consolidation rather
+  than a count: `CLAUDE.md` already names `local-CI.sh` as the
+  authoritative statement of the asymmetry, so the question is whether
+  the other two should carry a number at all, and "needs the dump AND the
+  archive" may honestly be five where "needs data not in the repo" is
+  six. Deciding that is what the fix is.
+
+  (u) `ruff.toml` is the only declared lint contract, and three other
+  tool families have none — so their defaults decide the verdict, which
+  is the exact failure `ruff.toml`'s own header was written to stop.
+  Measured 2026-08-31: `yamllint` on defaults reports three style
+  findings on `.github/workflows/ci.yml` and `.github/FUNDING.yml`, one
+  of which (`truthy` on the mandatory `on:` key) cannot be acted on
+  without breaking the workflow; `typos` reports 119 findings of which
+  112 are the bank's own reference prefix `VAS`; and `pyright` reports 38
+  diagnostics and `mypy` one against a project with no annotations, all
+  38 triaged as narrowing the checker cannot do. None of the four tools
+  runs in `local-CI.sh`, so nothing is gated on any of it today. The
+  decision is per tool: declare a contract, or record that the tool is
+  not this project's and stop re-triaging it every sweep.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
@@ -1994,3 +2022,34 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   A downgraded guarantee is exactly the kind of change a gate exists to catch,
   so whoever runs it should start there. The split argument is unchanged and
   still the user's call.
+
+- ✅ [LOTTO-0039] **Pin the CI actions to commits and narrow the runner's token.**
+  A whole-tree `check-code` run produced 191 raw findings across twelve
+  tools. 182 were false positives and are recorded with their reasoning in
+  `.ants_review_falsepos.jsonl`; five were real and are fixed here.
+
+  Three were `zizmor` findings on `.github/workflows/ci.yml`.
+  `actions/checkout` and `actions/setup-python` were pinned to `@v7`, a
+  tag the publisher can repoint at other code after the line was
+  reviewed — both now name the commit `v7` resolved to on 2026-08-31
+  (checkout v7.0.1, setup-python v7.0.0), with the readable version kept
+  beside them as a comment. The job declared no permissions, so its token
+  took the repository default; it is now `contents: read`, which is all a
+  gate that pushes nothing and uploads no artifact needs. And checkout
+  left its credentials in `.git/config`, which is what turns a later
+  artifact upload into a leak — `persist-credentials: false` now.
+
+  Two were internal. `serve.py::log_message` overrode its base with a
+  signature that dropped the `format` parameter; it stays the no-op
+  LOTTO-0014 requires and now matches what the standard library calls it
+  with. `watch_sms.py` carried a `seen_signals` counter that was
+  incremented on every signal and read nowhere in the tree — its sibling
+  `last_signal` is the one `idle_for()` actually uses.
+
+  Verified: `zizmor` 4 findings to 0, `pyright` on `serve.py` 3 to 2 (the
+  two remaining are the guarded `int(raw)` false positive), `vulture` on
+  `watch_sms.py` 2 to 0, and `./local-CI.sh` green across all twelve
+  checks with both lanes running and the privacy check at full strength.
+  **Layman:** The automated check on GitHub now runs with the least power it needs, and against exactly the code that was reviewed
+  Kind: security.
+  Source: check-code-tree-2026-08-31.

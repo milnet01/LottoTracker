@@ -284,6 +284,33 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- **The CI workflow runs against reviewed code, with the least token it needs** (LOTTO-0039)
+  Three hardening fixes to `.github/workflows/ci.yml`, from a whole-tree
+  `check-code` sweep.
+
+  The two GitHub actions were pinned to `@v7`. A tag is mutable: whoever
+  publishes it can point it at different code after the line was read and
+  approved, and the workflow would pick that up silently on the next run.
+  Both now name the exact commit `v7` resolved to on 2026-08-31 —
+  `actions/checkout` v7.0.1 and `actions/setup-python` v7.0.0 — with the
+  version kept beside each as a comment, so the readable half is still
+  there and moves with the pin.
+
+  The job declared no permissions, so the token GitHub hands it took the
+  repository-wide default. It is now `contents: read`. The gate reads the
+  repository, runs the tests and stops; it pushes no commit, opens no
+  issue and uploads nothing, so nothing wider was ever used. Saying so
+  explicitly also stops a job added later inheriting more by accident.
+
+  And checkout leaves its credentials in `.git/config` unless told not
+  to, which is the thing that turns a later artifact upload into a
+  credential leak. Nothing after that step needs the token, so
+  `persist-credentials: false`.
+
+  None of this changes what the gate checks or what a green tick means.
+  `./local-CI.sh` is green across all twelve checks, both lanes, with the
+  privacy check at full strength.
+
 - ****A PyQt import into the server could pass the "no Qt" check** (LOTTO-0017)**
   INV-19 says `serve.py` and `supervise.py` pull in no Qt at all — that is what
   keeps the page servable with no desktop. Its check looked for the name

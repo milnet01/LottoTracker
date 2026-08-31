@@ -20,13 +20,28 @@ on:
     paths-ignore: ['**.md']
   workflow_dispatch:
 
+# The gate reads the repository and nothing else: it pushes no commit, opens no
+# issue and uploads no artifact. Stating that here means a later job cannot
+# quietly inherit a wider default token (zizmor excessive-permissions).
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      # Pinned to a commit, not to @v7: a tag is mutable and can be repointed
+      # at other code after this line was reviewed. The trailing comment is
+      # the readable half - move both together. actions/checkout v7.0.1.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          # Nothing after this step needs the token, and leaving it behind in
+          # .git/config is what turns a later artifact upload into a leak
+          # (zizmor artipacked).
+          persist-credentials: false
 
-      - uses: actions/setup-python@v7
+      # actions/setup-python v7.0.0, pinned for checkout's reason.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
 

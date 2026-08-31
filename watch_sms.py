@@ -308,12 +308,10 @@ class Watch:
         self.threads = read_threads(threads_path)
         self.pulled = set()
         self.written = 0
-        self.seen_signals = 0
         self.last_signal = time.monotonic()
 
     def handle(self, msg):
         """Signal handler for conversationCreated and conversationUpdated."""
-        self.seen_signals += 1
         self.last_signal = time.monotonic()
         self.consume(msg)
 
