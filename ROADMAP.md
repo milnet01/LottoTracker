@@ -1235,6 +1235,170 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: chore.
   Source: user-request-2026-08-20.
 
+- 📋 [LOTTO-0051] **Two of sign 4's four promised period kinds are not really on offer.**
+  Found by RUNNING the page against real data on 2026-09-01, not by reading.
+  README s4 promises four kinds: a given year, year to date, a given month,
+  month to date. The dropdown offers 5 years and 46 months, and two of the
+  four are missing in substance.
+
+  - "Month to date" is not offered AT ALL on a day before the current
+    month's first draw has been scored. Measured on 2026-09-01: the newest
+    month in the list is August 2026. That is the deliberate "a period
+    nothing can score is not offered" rule working correctly, but the
+    promised choice is simply absent and nothing on the page says why.
+  - "Year to date" is offered only as `2026`, immediately above `2025`. The
+    label reads as a complete year. A user comparing the two is comparing
+    eight months against twelve, and nothing says so - which matters more
+    here than usual, because the primary user is partially sighted and
+    scans labels.
+
+  The fix is a labelling and an empty-state decision, not arithmetic: the
+  figures themselves reconcile (INV-57 to INV-60 all hold). Options worth
+  weighing: label the current period "2026 so far" / "September 2026 so
+  far", and decide whether a current month with nothing scored yet should
+  appear with a reason rather than not appear.
+  **Layman:** The page cannot show you this month so far, and last year sits next to a part-year labelled as if it were whole
+  Kind: fix.
+  Source: verify-delivery-2026-09-01 sign 4.
+
+- 📋 [LOTTO-0052] **The README's unexplained-difference figure is stale, and the figure itself is measured wrongly.**
+  Two separate things, found by running check.py on 2026-09-01.
+
+  The README (line 44) says the unexplained difference fell to R338.40.
+  The run today reports R336.90, over 4 unexplained references plus 1
+  no_ticket. Small, but it is the headline number for sign 5 - the one
+  sign the project openly reports as OPEN - so it is the figure a reader
+  checks progress against.
+
+  More importantly the figure is measured in a way LOTTO-0042's deferred
+  MEDIUM says is wrong: check.py:462 folds `computed_cents: None` -
+  meaning nothing could be scored - into the printed computed total via
+  `or 0`, and check.py:473 then labels the whole remainder "unexplained".
+  LOTTO-0029 s2 says most of that difference is in fact explained. So
+  closing LOTTO-0042 will change the number sign 5 is judged by, and the
+  README should be updated from the corrected figure rather than from
+  this one. Do them in that order.
+  **Layman:** The number quoted for what we cannot explain is out of date, and the way it is calculated overstates it
+  Kind: doc-fix.
+  Source: verify-delivery-2026-09-01 sign 5.
+
+- 📋 [LOTTO-0053] **Document parse_page's second failure mode in LOTTO-0001 s6.**
+  LOTTO-0001 s6 says of a markup change: "backfill.py::parse_page() returns
+  an empty dict, which surfaces as a game with 0 draws", and cites the
+  slug rename as the case that already happened. That is still true and is
+  now incomplete.
+
+  LOTTO-0050 added ball-shape validation, so there is a second, more
+  dangerous mode s6 does not describe: a row whose ball ROLES no longer
+  parse (one appended CSS class demoting the PowerBall into the main
+  numbers) is now SKIPPED with a printed "SKIPPED <slug> <date>: N main
+  ball(s)..." line, where previously it was accepted as a well-formed
+  record and scored every archive-era PowerBall line one match high.
+
+  The spec should carry that mode and the new SHAPE table, so a future
+  reader knows the skip line exists and what it means. Not fixed in the
+  LOTTO-0050 pass because adding a failure mode is authoring rather than a
+  mechanical correction, and this project gates authoring edits to a spec.
+  **Layman:** The spec lists one way the results scraper can go wrong; there are now two
+  Kind: doc.
+  Source: review-code-2026-09-01 lane results-sources; verify-delivery follow-up.
+
+- 📋 [LOTTO-0054] **Two contract conflicts the review lanes surfaced and could not resolve.**
+  Both need a decision rather than an edit, so neither was fixed. Both
+  want `review-contract`, not a code change.
+
+  1. LOTTO-0036 s6 says that when the period record is empty "The section
+     renders its caption and no table". page.py:299 returns "" and renders
+     NEITHER. Returning nothing is arguably the safer reading of the
+     cardinal rule - a caption over no table still invites "so I won
+     nothing" - so the code may be right and the spec wrong. Nobody can
+     tell from the documents.
+
+  2. CLAUDE.md states the cardinal rule as "An empty page is correct only
+     when it carries a notice naming why", which reads as a SUFFICIENT
+     condition. LOTTO-0002 s6 adds prohibitions CLAUDE.md does not carry:
+     no ticket table, no zero total, no empty wins list. That gap is what
+     let LOTTO-0050's CRITICAL ship - a page that had the notice and
+     rendered R0.00 underneath it satisfied CLAUDE.md's phrasing exactly.
+     Whichever wording survives, the two must say the same thing.
+  **Layman:** Two places where two of our own documents disagree and someone has to choose
+  Kind: investigate.
+  Source: review-code-2026-09-01 lanes page-renderer and build-and-periods.
+
+- 📋 [LOTTO-0055] **The nine verifier scripts have never been audited, and they are half the tree.**
+  `tools/verify_*.py` is 4,491 lines across nine scripts - 51% of the
+  repository - and it IS this project's entire test suite; there is no test
+  runner behind it. It was deliberately excluded from the 2026-09-01
+  review-code sweep, because test-suite quality is `review-tests`' question
+  rather than review-code's, and that skill has never been run here.
+
+  So nothing has ever asked of these scripts: does each verify what it
+  claims, does it run at all, and does running it hurt. That matters more
+  than usual because the project's own convention is that the exit code is
+  the signal and the printed counts are dated snapshots - a verifier that
+  exits 0 having asserted nothing would be invisible, and it is the exact
+  shape of the failure the whole project is built to avoid.
+
+  `tools/verify_page.py` alone is 2,068 lines and would need splitting
+  across lanes. Run `review-tests`; it also runs the suite once for a
+  baseline, which review-code does not.
+  **Layman:** The tests that check everything else have never themselves been checked
+  Kind: test.
+  Source: review-code-2026-09-01 coverage gap.
+
+- 📋 [LOTTO-0056] **Documents the project is expected to have and does not.**
+  Checked on 2026-09-01. Each is absent; each is a separate decision, so
+  this bullet is a list rather than one job.
+
+  - **`docs/design.md`** - `~/.claude/workflow.md` s 4 makes a project's
+    design document the output of its design gate, and s 8's table names
+    that path. This project has eleven specs and no design document, so
+    there is nowhere that says what the whole thing is FOR at a level above
+    one feature. The README's "How you would know it works" is the closest
+    thing and is doing that job informally. Authored directly and gated
+    with `review-contract --genre adr`, per CLAUDE.md 14a.
+  - **`LICENSE`** - the repository is public and has none, so by default
+    nobody may legally reuse it. A deliberate choice is fine; the absence
+    of one is not.
+  - **`docs/decisions/`** - no ADR directory. Several load-bearing choices
+    currently live only as prose inside CLAUDE.md's "Load-bearing
+    decisions" section: money in whole cents, the reference as the unit,
+    the three-valued `computed_cents`, draw-period rather than
+    purchase-period attribution. Those are ADRs in everything but filing.
+  - **`.claude/code-pairs.json`** - the pair list `close-findings` walks
+    every sweep. Absent, so that step is skipped. This project HAS such
+    pairs and knows it: `watch_sms.py::INCLUDE` with LOTTO-0001 s4.1's adb
+    WHERE clause, `TIER_PRICES` with LOTTO-0009 s4.2's table, `DRAW_DAYS`
+    with the real draw calendar. Writing them down makes the next sweep
+    check them for free.
+  - **an audit config** - `check-code` found none at any of its three
+    paths, so every run uses defaults. LOTTO-0007 (u) is the related
+    question of which lint contracts this project actually wants.
+  **Layman:** A few standard files are missing, including a licence on a public repository
+  Kind: doc.
+  Source: session-audit-2026-09-01 missing-documents sweep.
+
+- 📋 [LOTTO-0057] **A nested archive_cache/archive_cache/ exists and nothing in the code can produce it.**
+  Still present on 2026-09-01: `archive_cache/archive_cache/` holding 14
+  `payout-lotto-5-max-*.html` files whose names also appear one level up.
+
+  The results-sources review lane tried to account for it and could not.
+  No module calls `os.chdir` (0 hits repo-wide), and running any documented
+  command from inside `archive_cache/` does not explain it: `payouts()` is
+  reached only for archive-source draws, and with no `archive_results.json`
+  and no dump in that directory `tickets.load()` would raise before any
+  draw was scored. That leaves an ad-hoc `python3 -c`, an older revision of
+  the path construction, or a hand copy.
+
+  What can be said without diagnosing it: nothing in the code can DETECT
+  it, and if the working directory ever were that folder those files would
+  be read as authoritative cache and never expire. That is the concrete
+  argument for LOTTO-0041's path-anchoring fix. Decide whether to delete
+  the directory, and anchor the paths either way.
+  **Layman:** There is a duplicate cache folder inside the cache folder, and we do not know what made it
+  Kind: investigate.
+  Source: review-code-2026-09-01 lane results-sources open question.
+
 ## Hardening
 
 - ✅ [LOTTO-0025] **A pre-push gate, and the CI that mirrors it.**
@@ -2349,6 +2513,27 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   which asserts the header-name set is exactly its row's. The contract was
   not changed deliberately, so the test was doing its job; closing the socket
   is what stops the desync and the header is not needed for it.
+
+  Three DOCUMENT fixes landed in the same pass, all mechanical corrections of
+  statements the code had already overtaken, all on CLAUDE.md rule 14's No
+  branch and recorded in the commit body as that rule requires. `CLAUDE.md`
+  line 63 said five verifiers need the private data where `local-CI.sh` names
+  six. `LOTTO-0009` s6 said neither renamed game string was in `GAME_MAP` and
+  that no such message was in the dump, both untrue since LOTTO-0031 shipped
+  on 2026-08-08. And `LOTTO-0003` INV-37 still named *Refresh results now*,
+  the menu item the same document's s4.7 records `tray.sync()` as DISABLING -
+  the direction that gets fixed backwards, since reconciling code to invariant
+  would have reintroduced LOTTO-0007 (k). `ci.yml`'s own header count went
+  with them, in the code half.
+
+  Two document defects were deliberately NOT fixed and are filed instead:
+  LOTTO-0053 (LOTTO-0001 s6 needs parse_page's second failure mode, which is
+  authoring rather than correction) and LOTTO-0054 (two contract conflicts
+  that need a decision). Two records that this pass made false - CHANGELOG
+  line 187 and the ROADMAP bullet at line 1260, both saying `paths-ignore`
+  mirrors the local docs-only skip - were left as written, because they are
+  dated records of what was true when made; the new CHANGELOG entry says so
+  instead.
   **Layman:** A ten-lane independent review found three serious faults and fifteen more; all are fixed
   Kind: review-fix.
   Source: review-code-2026-09-01.
