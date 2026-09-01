@@ -61,17 +61,52 @@ for a in "$@"; do
     esac
 done
 
-# --- documentation-only pushes skip the gate -------------------------------
+# --- documentation-only pushes run the privacy check and skip the rest -----
 # The unit is the commits that are about to be pushed, not the working tree.
-# No upstream (a fresh branch) means we cannot tell, so we run.
+# $GATE_RANGES is set by .githooks/pre-push from git's own stdin protocol and
+# names exactly the refs being pushed; without it (a hand run) we fall back to
+# the current branch's upstream, which answers a DIFFERENT question and is why
+# the hook passes the ranges in. No upstream and no ranges means we cannot
+# tell, so we run everything.
+#
+# A documentation-only push is NOT unchecked. verify_privacy.py's subject is
+# prose - CLAUDE.md says never paste real message content into code, DOCS or
+# commit messages, and records two leaks that got past weaker checks, one per
+# review loop. Skipping it on exactly the push class it was written for left
+# INV-4 unenforced, and ci.yml's paths-ignore closed the same hole on the
+# runner, so a docs-only push ran no privacy check anywhere. It needs only the
+# dump and git ls-files, and is the cheapest of the nine.
 if [ "$CI_ONLY" -eq 0 ] && [ "$FORCE" -eq 0 ]; then
-    if upstream=$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null); then
+    changed=""
+    if [ -n "${GATE_RANGES:-}" ]; then
+        for range in $GATE_RANGES; do
+            changed="$changed"$'\n'"$(git diff --name-only "$range" 2>/dev/null)"
+        done
+        changed=$(printf '%s\n' "$changed" | grep -v '^$' | sort -u)
+    elif upstream=$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null); then
         changed=$(git diff --name-only "$upstream"..HEAD 2>/dev/null)
-        if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qv '\.md$'; then
-            echo "local-CI: documentation only ($(printf '%s\n' "$changed" | wc -l) file(s), all .md) - gate skipped."
-            echo "          Run with --force to gate anyway."
-            exit 0
+    fi
+    if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qv '\.md$'; then
+        echo "local-CI: documentation only ($(printf '%s\n' "$changed" | wc -l) file(s), all .md)."
+        echo "          Running the privacy check anyway - prose is its subject."
+        out=$(python3 tools/verify_privacy.py 2>&1); rc=$?
+        printf '  %-32s %s\n' "verify_privacy.py" \
+            "$([ "$rc" -eq 0 ] && echo PASS || echo "FAIL (rc=$rc)")"
+        if [ "$rc" -ne 0 ]; then
+            printf '%s\n' "$out" | tail -20 | sed 's/^/       | /'
+            echo "local-CI: FAIL"
+            exit 1
         fi
+        if ! printf '%s' "$out" | grep -q 'content+pattern'; then
+            printf '  %-32s FAIL\n' "privacy ran at full strength"
+            printf '       | %s\n' "verify_privacy.py degraded to pattern-only - lotto_sms_raw.txt is missing, so the content comparison never ran."
+            echo "local-CI: FAIL"
+            exit 1
+        fi
+        printf '  %-32s PASS\n' "privacy ran at full strength"
+        echo "local-CI: documentation only - rest of the gate skipped."
+        echo "          Run with --force to gate anyway."
+        exit 0
     fi
 fi
 

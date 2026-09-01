@@ -2053,3 +2053,302 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** The automated check on GitHub now runs with the least power it needs, and against exactly the code that was reviewed
   Kind: security.
   Source: check-code-tree-2026-08-31.
+
+- 📋 [LOTTO-0040] **Deferred review findings in the SMS parser.**
+  From the 2026-09-01 review-code sweep. The lane's HIGH (the uncaught
+  ValueError family) was fixed; these are its MEDIUM and LOW tail.
+
+  - MEDIUM tickets.py:170 - the board-line regex `(?:-?\d+\s*)+` can
+    backtrack catastrophically because `\s*` matches empty. One crafted SMS
+    hangs every later run, permanently, because the record stays in the dump.
+    Fix: `^([A-Z]): (-?\d+(?:\s+-?\d+)*)\s*$`.
+  - MEDIUM tickets.py:263 - the `^Row: N address=` boundary guard is applied
+    by watch_sms.py only; the adb bulk path sanitises nothing and rows() does
+    not defend, so a crafted body can fabricate a payout record.
+  - LOW tickets.py:271,291 - file handles left to refcount collection, and
+    the dump is read twice per run.
+  - LOW tickets.py:166 - the comment names indentation as what excludes
+    Multiplay lines; the code strips first, so it is the single-letter label.
+  - INFO tickets.py:158 - the old format is read DD/MM/YYYY, correct for ZA,
+    but every fixture uses 01/01/2020, which cannot distinguish it from MM/DD.
+  **Layman:** Smaller robustness fixes in the code that reads ticket messages
+  Kind: review-fix.
+  Source: review-code-2026-09-01 lane sms-parsing.
+
+- 📋 [LOTTO-0041] **Deferred review findings in the two results sources.**
+  From the 2026-09-01 review-code sweep. The lane's three HIGHs (retry arms,
+  atomic writes, parse_page shape validation) were fixed; these remain.
+
+  - MEDIUM history.py:64 - an empty or non-numeric winNumList raises and
+    aborts every consumer; the pool filter does not exclude a not-yet-drawn
+    record.
+  - MEDIUM backfill.py:52 - the current year's listing page is cached
+    permanently on first fetch and can never be refreshed.
+  - MEDIUM backfill.py:27 and history.py:25 - CACHE and ARCHIVE are
+    cwd-relative. supervise.py works around this per-caller with cwd=HERE and
+    verify_privacy.py resolves from __file__, so the project holds both
+    patterns. Anchor them to __file__.
+  - MEDIUM backfill.py:57 - one HTTPError aborts the whole backfill; with
+    FIRST_YEAR now 2022, one 404 discards five successful pools.
+  - LOW backfill.py:149 - "Rollover" passes startswith("R") and float() then
+    raises. LOW results.py:68 - a non-dict payload raises AttributeError.
+    LOW results.py:84 - divisions()'s defaults silently mean the base pool.
+    LOW - no encoding= on any open() while the wire is decoded as UTF-8.
+  **Layman:** Smaller robustness fixes in the code that fetches draw results
+  Kind: review-fix.
+  Source: review-code-2026-09-01 lane results-sources.
+
+- 📋 [LOTTO-0042] **Deferred review findings in scoring and reconciliation.**
+  From the 2026-09-01 review-code sweep. This lane produced no CRITICAL and
+  no HIGH, but two of its MEDIUMs are the cardinal rule one layer below the
+  page and are the most valuable items in this batch.
+
+  - MEDIUM check.py:462,473 - `sum(r["computed_cents"] or 0 ...)` folds None
+    (nothing scorable) into the printed total, then labels the remainder
+    "unexplained" when LOTTO-0029 s2 says most of it is correct. Sum only the
+    non-None records, print the excluded count, and rename the gap line.
+  - MEDIUM check.py:155 - payouts() returns {} for an unparsable page, so
+    retired_report() prints nothing and the run reads as clean. That is
+    INV-31's own named break mode producing silence; both sibling call sites
+    raise on the identical condition.
+  - MEDIUM check.py:545 - `except OSError` whose stated reason cannot occur
+    (load() already raised); what it actually does is delete INV-47's loud
+    NO PAYOUT DATA notice on any I/O error.
+  - MEDIUM check.py:39 - a second, undocumented pool selector on plusFlag,
+    where history.py selects on winPoolName. Nothing asserts they agree.
+  - LOW check.py:168 one-directional ambiguity guard; check.py:238 covered()
+    recomputed per board; check.py:556 feed labels printed raw (CWE-150).
+  **Layman:** The terminal report can fold "nothing could be checked" into a money total
+  Kind: review-fix.
+  Source: review-code-2026-09-01 lane scoring-and-pricing.
+
+- 📋 [LOTTO-0043] **Deferred review findings in the model builder and period totals.**
+  From the 2026-09-01 review-code sweep. No CRITICAL or HIGH in this lane.
+
+  - MEDIUM serve.py:232 - `inc[plus_flag]` raises KeyError for a Daily Lotto
+    Plus purchase dated on or after HANDOVER, because plus_flag 1 is absent
+    from that era's TIER_PRICES row. The whole build dies and State.fail()
+    renders `{"what": "1"}`, blaming the operator's API for a table gap. The
+    ticket class that crashes is the one INV-7 exists to REPORT.
+  - MEDIUM serve.py:207,210 - the dump guard is absolute and the loader is
+    relative, so started from any other directory the page renders
+    "first build failed" instead of "the dump is missing" - two distinct
+    named states of the cardinal rule, collapsed into one.
+  - MEDIUM serve.py:172,277 - LOTTO-0002 s4.1 requires a ref collision on "?"
+    to be reported rather than rendered; nothing detects one.
+  - LOW serve.py:211,214 two clock reads across a 30-63s build; serve.py:466
+    `except Exception` is not total so `building` can stick true forever;
+    serve.py:338 read_settings() runs outside _settings_lock; serve.py:246
+    history.covered() is walked three times per entry.
+  **Layman:** A missing price-table row can crash the whole page build
+  Kind: review-fix.
+  Source: review-code-2026-09-01 lane build-and-periods.
+
+- 📋 [LOTTO-0044] **Deferred review findings in the page renderer.**
+  From the 2026-09-01 review-code sweep. The lane's CRITICAL (three empty
+  states rendering R0.00), both HIGHs on the poll, the pool-filter zombie and
+  the switch labels were all fixed; these remain.
+
+  - MEDIUM page.py:528 - json.dumps escapes for a JSON parser, not for an
+    HTML script context: `<` and `/` stay bare. Calibrated to LOW on current
+    reachability (the only writers of LOTTO_TOKEN are secrets.token_urlsafe
+    and supervise.py) but it is one new writer away from live.
+  - MEDIUM page.py:357,505 - #settings-msg and #progress are script-updated
+    status regions with no aria-live, so nothing they say is announced.
+  - LOW page.py:148 - a win with no expiry sorts to the FRONT as soonest.
+  - LOW page.py:159 - any negative expires_in_days renders as "today", and
+    the branch discards the actual date s4.5 requires each win to name.
+  - LOW page.py:49 - the one interpolation not passing through _e().
+  - LOW page.py:368 - 12.75px ball glyphs, the page's most-scanned content.
+  - LOW page.py:26 - en-US money grouping for a ZA audience (R1 234,50).
+  **Layman:** Smaller display and accessibility fixes on the local page
+  Kind: review-fix.
+  Source: review-code-2026-09-01 lane page-renderer.
+
+- 📋 [LOTTO-0045] **Deferred review findings on the HTTP surface.**
+  From the 2026-09-01 review-code sweep. The lane's CRITICAL (request
+  smuggling past the Host allowlist) and both HIGHs (the inert timeout, the
+  501 path) were fixed; these remain.
+
+  - MEDIUM serve.py:523 - secrets.compare_digest raises TypeError instead of
+    returning False when the client sends a non-ASCII token header
+    (http.client decodes headers as iso-8859-1, and Fetch permits bytes
+    0x80-0xFF). The client gets NO response and a traceback reaches the very
+    stderr surface log_message was silenced to keep clean. Fails closed, so
+    nothing is written - which is why it is not higher.
+  - LOW serve.py:608 - do_GET has no exception guard where do_POST does, so a
+    renderer failure yields a reset connection rather than the degraded page.
+  - LOW serve.py:90,107 - settings.json and the .desktop file are written
+    non-atomically. A truncated .desktop reads as "autostart on" and
+    autostarts nothing, because presence IS the state.
+
+  Open question for the contract, not a code fix: s4.1 says "No response
+  carries any header outside its row", and INV-14's case asserts the header
+  name set is exactly that row's. That is why the smuggling fix closes the
+  socket WITHOUT sending `Connection: close` - adding it reddened INV-14. A
+  well-behaved client therefore sees a reset rather than a clean close.
+  Whether s4.1 is meant to reach framing headers needs deciding.
+  **Layman:** Smaller robustness fixes on the local web server
+  Kind: review-fix.
+  Source: review-code-2026-09-01 lane http-security.
+
+- 📋 [LOTTO-0046] **Deferred review findings in the supervisor.**
+  From the 2026-09-01 review-code sweep. The lane's HIGH (the state file
+  truncated in place) was fixed, and the 0700/0600 permissions went with it.
+
+  - MEDIUM supervise.py:436 - the token is minted BEFORE the Popen, so a
+    spawn failure leaves token set and child None. post()'s guard then passes
+    and issues a real request instead of the prescribed RuntimeError, and
+    refresh()'s dead-child branch is False so it polls the full 300-second
+    deadline holding the tray's one-job flag, about a build never started.
+  - MEDIUM supervise.py:470 - is_ready() cannot succeed for a Supervisor that
+    owns no child, a shape s4.1 and s4.6 case 3 sanction and refresh() guards
+    for by hand. The two methods in one class disagree.
+  - LOW supervise.py:265,287 - the prune is a lexical compare on an
+    unvalidated field, and it compares against the FILTERED re-read, so an
+    unreadable record is neither kept nor removed and the file never shrinks.
+  - LOW supervise.py:636 died_early races stop; supervise.py:513 post()
+    authenticates to whatever holds the port; supervise.py:179 %a/%b go
+    through LC_TIME and Qt calls setlocale.
+  **Layman:** Smaller robustness fixes in the code that runs the server and watcher
+  Kind: review-fix.
+  Source: review-code-2026-09-01 lane supervisor-lifecycle.
+
+- 📋 [LOTTO-0047] **Deferred review findings in the SMS watcher.**
+  From the 2026-09-01 review-code sweep. The lane's CRITICAL (SystemExit
+  escaping both guards) and HIGH (--once hanging forever) were fixed.
+
+  - MEDIUM watch_sms.py:270 - nothing validates date_ms, so ONE record with a
+    future date makes high_water() return a value no thread can exceed and
+    the catch-up bound is disabled permanently. The printed line then reads
+    "catch-up: N threads, 0 asked, 0 written", which s4.5 calls the NORMAL
+    case - health and total failure are the same output.
+  - MEDIUM watch_sms.py:167 - write_threads() uses a fixed .tmp path outside
+    append_new()'s flock, so INV-38's critical section covers the dump and
+    not the thread state. Two watchers truncate each other's partial JSON and
+    read_threads() swallows the ValueError; s4.5 says that loss does not heal.
+  - MEDIUM watch_sms.py:545 - tick() guards only dbus.DBusException in a
+    callback the code documents as fatal-if-it-raises. An OSError makes GLib
+    drop the source: no reconnect, no catch-up, while the process looks alive.
+  - MEDIUM watch_sms.py:140 - the stated rationale is false. tickets.rows()
+    matches `body=(.*)` with re.S, so a torn append is ACCEPTED as a complete
+    record with a mutilated body, not dropped.
+  - LOW - sms_threads.json.tmp matches no .gitignore rule, and CLAUDE.md
+    tells you to `git add -A` before the privacy check, which compares
+    CONTENT and would not catch ~543 staged phone-derived thread ids.
+  **Layman:** Smaller robustness fixes in the cable-free message collector
+  Kind: review-fix.
+  Source: review-code-2026-09-01 lane sms-watcher.
+
+- 📋 [LOTTO-0048] **Deferred review findings in the tray, calendar and inspector.**
+  From the 2026-09-01 review-code sweep. Both HIGHs (the sys.exit in a
+  library function, the orphan window at startup) were fixed, as were the
+  notification icons.
+
+  - MEDIUM find_lotto_sms.py:73 - an SMS body and sender are attacker-
+    controlled and printed raw, so a UCS-2 message carrying U+001B reaches
+    the terminal emulator (CWE-150). watch_sms.py:21 says "Nothing here
+    prints a message body"; this is the one path that does. No tool in the
+    check-code set looks for this class.
+  - MEDIUM tray.py:109 - the done receiver is a bare lambda with no context
+    QObject, emitted from a QThreadPool worker, and every handler touches GUI
+    state. Qt's own rule is that such a functor runs in the EMITTING thread.
+    Settle it first with the one-line assertion the lane proposed.
+  - MEDIUM expiry.py:80 - an empty DRAW_DAYS[game] makes the loop never
+    terminate, on the GUI thread. The function raises loudly on its two other
+    preconditions and hangs on this one.
+  - MEDIUM find_lotto_sms.py:59 - ids[0] is the first REMEMBERED device with
+    no paired/reachable filter, while watch_sms.py claims "the first paired
+    device". A stale entry binds the production watcher to the wrong phone.
+  - MEDIUM find_lotto_sms.py:80,96 - fixed sleeps where the project's own
+    measured answer (and watch_sms.py) is a stop-growing poll; on a slow link
+    it prints a confident negative from an incomplete read.
+  - LOW - no timezone pinned anywhere against a South African draw calendar;
+    tray icons hardcode colours (~2.8:1 on a dark panel) though the two
+    glyphs do differ in SHAPE, so colour-blindness is already handled.
+  **Layman:** Smaller fixes in the tray icon and the message-finding tool
+  Kind: review-fix.
+  Source: review-code-2026-09-01 lane tray-calendar-tools.
+
+- 📋 [LOTTO-0049] **Deferred review findings in the pre-push gate.**
+  From the 2026-09-01 review-code sweep. Both HIGHs were fixed: a
+  documentation-only push now runs verify_privacy.py before skipping the
+  rest, ci.yml's paths-ignore is gone, and .githooks/pre-push now reads git's
+  stdin protocol and passes the real ref ranges as $GATE_RANGES.
+
+  - MEDIUM - nothing asserts core.hooksPath is wired, though CLAUDE.md calls
+    it once per clone because git does not track hooks. A clone that skips
+    that one command has an entirely inert push gate with no signal at all.
+    local-CI.sh's existing fail() helper is the right shape, one line.
+  - MEDIUM ci.yml:46 - the runner proves 3.13 only while the project claims
+    3.8+, and ruff.toml sets no target-version. Measured 2026-09-01: no
+    match/case, no PEP 585 generics and no PEP 604 unions in production code,
+    so the claim is currently TRUE and simply unenforced.
+  - MEDIUM ci.yml - no timeout-minutes on the job; verify_page.py spawns
+    subprocesses and does localhost HTTP, so a hang takes the 360-minute
+    default.
+  - LOW local-CI.sh:119 - PRIVACY_OUT depends on textual adjacency to the run
+    above it; insert any check between them and the full-strength assertion
+    silently grades the wrong command.
+  - LOW ci.yml:58 unpinned pip install (check-dependencies' question);
+    local-CI.sh empty-array under set -u on bash 3.2; tail -20 publishes
+    verifier output, which is how a dump-dependent verifier moved into the CI
+    lane would print personal data into a public Actions log.
+  **Layman:** Smaller fixes to the checks that run before a push
+  Kind: review-fix.
+  Source: review-code-2026-09-01 lane shell-gate.
+
+- ✅ [LOTTO-0050] **Close the three critical and fifteen high findings from the cold review sweep.**
+  A ten-lane `review-code` sweep over 4,322 lines of production code, one
+  subsystem per lane, each briefed against its own contracts. It produced
+  about 130 findings; the CRITICAL and HIGH ones are closed here and the
+  MEDIUM/LOW tail is filed as LOTTO-0040 to LOTTO-0049, one item per
+  subsystem. All ten lanes re-read CLAUDE.md from disk and all ten found the
+  injected copy identical, so the stale-context risk did not materialise.
+
+  Three CRITICAL. `serve.py` answered every early exit - 421, 404, 405, 403,
+  413 - without reading the request body, under HTTP/1.1 keep-alive: the
+  unread bytes were then parsed as the NEXT request on the same socket, so a
+  rebound origin could POST a body spelling out a request with an allowlisted
+  Host and have the page, token and all, served as the next response. That
+  defeats the Host allowlist, which is the whole of LOTTO-0014. The socket
+  now closes whenever a response did not consume the body; reproduced end to
+  end before and after. `page.py` branched only on `building`, so all three
+  empty-page states rendered R0.00, an empty wins list and an empty entries
+  table - the cardinal failure, on the path LOTTO-0002 s6 records as the
+  common one. And a `sys.exit` inside `find_lotto_sms.conversations_iface()`
+  raised SystemExit past both of the watcher's `except Exception` guards, on
+  the ordinary login path those guards were written for.
+
+  Fifteen HIGH, across every subsystem: an uncaught ValueError family in
+  `tickets.py` where one malformed record took out all 558 tickets; retry
+  arms in `results.py` that missed the very failure their docstring names;
+  three non-atomic writes in `backfill.py`; `parse_page()` validating no ball
+  count or role, where one CSS class demotes the PowerBall; an inert
+  `server.timeout`; methods outside GET/POST escaping the whole check ladder;
+  a poll that never read its status and re-armed forever; a reload test that
+  could never fire on a first failed build; a `data-pool` attribute with no
+  consumer; `expiry_warned.json` truncated in place; `--once` hanging forever
+  behind an unreachable guard; the tray connecting `aboutToQuit` after
+  spawning its children; a documentation-only push running no privacy check
+  anywhere; and a pre-push hook that discarded git's own ref protocol.
+
+  Two MEDIUMs were calibrated UP to HIGH against this project's actual user,
+  who is partially sighted: both settings switches had an empty accessible
+  name, and every tray notification carried the success icon including the
+  failures.
+
+  The sweep found one defect in this batch's own fixes: the new empty-state
+  page called `_settings_section()` on a view that carries no settings key
+  when there is no model, so both switches would have rendered unchecked
+  whatever was stored - a page misreporting state, on the page whose whole
+  job is not doing that. Fixed in the same pass.
+
+  One fix was reverted on purpose. Announcing the connection close with a
+  `Connection: close` header is better HTTP, and it reddened INV-14's case,
+  which asserts the header-name set is exactly its row's. The contract was
+  not changed deliberately, so the test was doing its job; closing the socket
+  is what stops the desync and the header is not needed for it.
+  **Layman:** A ten-lane independent review found three serious faults and fifteen more; all are fixed
+  Kind: review-fix.
+  Source: review-code-2026-09-01.

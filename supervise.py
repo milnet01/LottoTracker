@@ -202,10 +202,31 @@ def _read_warned(path):
 
 
 def _write_warned(path, records):
-    """The state file's one writer (LOTTO-0034 §4.5)."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as fh:
+    """The state file's one writer (LOTTO-0034 §4.5).
+
+    Temp file then rename, and 0600. open(path, "w") empties the file BEFORE
+    json.dump runs, so a failure between the two destroyed every record rather
+    than one - which inverts the crash direction §4.5 chose on purpose. That
+    section accepts a crash costing a MISSED notice; losing the history costs
+    the opposite, re-warning every live ticket and breaching §3.2's "say it
+    once", which is a user decision rather than an implementation detail. It
+    also gives §6's full-disk case a bound: the tray dies, but the record of
+    what has already been said survives.
+
+    Owner-only, because the records carry VAS references and CLAUDE.md's
+    privacy rule treats a reference as identifying on its own; XDG asks for
+    0700 on a directory this code creates.
+    """
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w") as fh:
         json.dump({"warned": records}, fh)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
 
 
 def _qualifies(draws_left, ref, warned):

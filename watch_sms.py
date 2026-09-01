@@ -437,13 +437,15 @@ def run(once=False, path=DUMP, threads_path=THREADS):
         conv = connect()
     except ImportError:
         raise
-    except Exception as err:  # noqa: BLE001 - transient by definition
+    except (Exception, SystemExit) as err:  # noqa: BLE001 - transient
         conv = None
         print(f"KDE Connect is not answering yet ({err.__class__.__name__}) - "
               "waiting for it.", flush=True)
 
     state = {"phase": "discovering" if conv else "waiting", "count": -1,
-             "still": 0, "retry_at": 0.0, "conv": conv}
+             "still": 0, "retry_at": 0.0, "conv": conv,
+             # None means "not currently waiting"; tick() starts the clock.
+             "waiting_since": None}
 
     bus = dbus.SessionBus()
     for signal in ("conversationCreated", "conversationUpdated"):
@@ -502,12 +504,27 @@ def run(once=False, path=DUMP, threads_path=THREADS):
             # One state, not two: "the daemon went away" and "the daemon came
             # back" both mean "try to connect again", and NameOwnerChanged is
             # only what makes the next attempt immediate.
+            # The waiting clock is started HERE rather than at each of the
+            # three places that set the phase, so a fourth one cannot forget.
+            if state["waiting_since"] is None:
+                state["waiting_since"] = time.monotonic()
+            # --once is a CATCH-UP, so waiting forever is not one of its
+            # outcomes. Without this ceiling the RuntimeError at the end of
+            # run() is unreachable - every path through this branch returns
+            # True before the loop.quit() that would let the run end - so
+            # `--once` against an absent daemon hung silently and
+            # indefinitely, which is neither of the two answers §4.8 allows
+            # it. Same cap as the catch-up's own.
+            if (once and time.monotonic() - state["waiting_since"]
+                    > CATCHUP_CAP):
+                loop.quit()
+                return False
             if time.monotonic() < state["retry_at"]:
                 return True
             try:
                 state["conv"] = connect()
                 begin_catchup()
-            except Exception:  # noqa: BLE001 - any failure means "not yet"
+            except (Exception, SystemExit):  # noqa: BLE001 - means "not yet"
                 # Reaching for it is also what BRINGS IT BACK: the bus name is
                 # D-Bus activatable, so the attempt starts the daemon. Measured
                 # 2026-08-15 - NOTHING else did. A watcher that only listened
@@ -519,6 +536,7 @@ def run(once=False, path=DUMP, threads_path=THREADS):
                 # rather than the answer.
                 state["retry_at"] = time.monotonic() + RETRY_EVERY
                 return True
+            state["waiting_since"] = None
             print("KDE Connect is back - catching up on what it missed.",
                   flush=True)
         if state["phase"] == "discovering":

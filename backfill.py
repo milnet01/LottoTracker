@@ -45,6 +45,44 @@ MONTHS = {
     )
 }
 
+# (main ball count, whether a special ball is expected), per site slug family.
+# parse_page() checks every row against this. Ball ROLES come from the CSS
+# class, and that is a free third-party site's markup: one appended class turns
+# `... pb ball dark powerball` into something endswith() no longer matches, the
+# PowerBall is filed as a sixth main number, `special` becomes None, and the
+# record is WELL-FORMED. It then flows through history.py untouched and scores
+# every archive-era PowerBall line one match high while never matching the PB -
+# exactly the failure INV-1 exists to prevent, arriving from the side INV-3's
+# overlap check cannot reach, in the era where 69 of 86 wins live. A wrong
+# record is worse than no record, so a mismatch is skipped and said out loud.
+SHAPE = {
+    "lotto": (6, True),
+    "lotto-plus-1": (6, True),
+    "lotto-plus-2": (6, True),
+    "powerball": (5, True),
+    "powerball-plus": (5, True),
+    "daily-lotto": (5, False),
+}
+
+
+def _write_atomic(path, text):
+    """Write via a temp file in the same directory, then rename.
+
+    open(path, "w") truncates BEFORE the write, and every reader here treats
+    any file at the cache path as authoritative for all time - there is no
+    length, provenance or freshness check anywhere. So an interrupted write
+    leaves a short page that is permanently indistinguishable from a good one:
+    a truncated LISTING page yields fewer draws, which history.covered() then
+    scores an entry over (INV-6 breached with no count going wrong), and a
+    truncated PAYOUT page yields a partial table, which sends amount() down
+    its plain-tier fallback and prices a win from the wrong division rather
+    than raising under INV-22. The pid keeps two concurrent runs apart.
+    """
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    os.replace(tmp, path)
+
 
 def fetch(slug, year):
     os.makedirs(CACHE, exist_ok=True)
@@ -56,7 +94,7 @@ def fetch(slug, year):
     )
     with urllib.request.urlopen(req, timeout=30) as r:
         html = r.read().decode("utf-8", "replace")
-    open(path, "w").write(html)
+    _write_atomic(path, html)
     time.sleep(1)  # be polite to a free source
     return html
 
@@ -81,8 +119,21 @@ def parse_page(html, slug=None):
                 special = int(val)
             else:
                 main.append(int(val))
-        if main:
-            out[date] = {"main": main, "special": special}
+        if not main:
+            continue
+        # SHAPE is keyed on the PAGE slug, which is why parse_page takes one.
+        # The argument was accepted and never used, so nothing checked that a
+        # row looked like the game it was filed under.
+        want = SHAPE.get(slug)
+        if want is not None:
+            n_main, want_special = want
+            if len(main) != n_main or (special is not None) != want_special:
+                print(f"  SKIPPED {slug} {date}: {len(main)} main ball(s), "
+                      f"special={special!r} - expected {n_main} and "
+                      f"{'a' if want_special else 'no'} special. The site's"
+                      " ball markup has changed; do not trust this page.")
+                continue
+        out[date] = {"main": main, "special": special}
     return out
 
 
@@ -136,7 +187,7 @@ def payouts(game, plus_flag, date):
         with urllib.request.urlopen(req, timeout=30) as r:
             html = r.read().decode("utf-8", "replace")
         os.makedirs(CACHE, exist_ok=True)
-        open(path, "w").write(html)
+        _write_atomic(path, html)
         time.sleep(1)
 
     out = {}
@@ -154,5 +205,10 @@ def payouts(game, plus_flag, date):
 if __name__ == "__main__":
     print("Backfilling archive results...")
     data = build()
-    json.dump(data, open("archive_results.json", "w"), indent=1, sort_keys=True)
+    # Atomic for _write_atomic()'s reason, with more force: this truncates the
+    # ONLY copy, and a failure inside json.dump leaves unparseable JSON that
+    # makes history.py raise on every subsequent run.
+    _write_atomic(
+        "archive_results.json", json.dumps(data, indent=1, sort_keys=True)
+    )
     print(f"\nwrote archive_results.json ({sum(len(v) for v in data.values())} draws)")

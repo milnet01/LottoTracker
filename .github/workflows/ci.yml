@@ -3,22 +3,29 @@ name: CI
 # The runner executes ./local-CI.sh --ci, and nothing else. The list of checks
 # lives in that one script so a runner and a developer machine cannot drift
 # apart: there is no second copy here to forget to update. What --ci does NOT
-# cover, and why, is documented at the top of local-CI.sh - in short, four of
-# the seven verifiers need the real SMS dump and the scraped archive, neither
-# of which may reach a public runner, and verify_privacy.py silently drops to its weaker
-# pattern-only mode without the dump. A green tick here is therefore weaker
-# than a green ./local-CI.sh, by construction rather than by accident.
+# cover, and why, is documented at the top of local-CI.sh - in short, six of
+# the nine verifiers need the real SMS dump and the scraped archive, neither
+# of which may reach a public runner, and verify_privacy.py silently drops to
+# its weaker pattern-only mode without the dump. A green tick here is
+# therefore weaker than a green ./local-CI.sh, by construction rather than by
+# accident. (This said "four of the seven" until 2026-09-01; local-CI.sh's own
+# header had already been corrected to six of nine and this copy was not moved
+# with it - the same stale-count failure that header records.)
 
 on:
   push:
     branches: [master]
-    # Mirrors local-CI.sh's documentation-only skip, so the two agree about
-    # what does not need gating.
-    paths-ignore: ['**.md']
   pull_request:
     branches: [master]
-    paths-ignore: ['**.md']
   workflow_dispatch:
+
+# No paths-ignore. It used to mirror local-CI.sh's documentation-only skip,
+# and between them a docs-only push ran NO privacy check anywhere - on the one
+# push class whose subject is prose, in a repository intended to be public
+# that holds real SMS content. local-CI.sh now runs verify_privacy.py before
+# it skips; here the whole CI lane simply runs, which is five checks and about
+# forty seconds. Linux minutes are unlimited on a public repository, so the
+# saving was never worth what it cost.
 
 # The gate reads the repository and nothing else: it pushes no commit, opens no
 # issue and uploads no artifact. Stating that here means a later job cannot

@@ -7,7 +7,32 @@
 #     git config core.hooksPath .githooks
 #
 # local-CI.sh decides for itself whether the push needs gating: a
-# documentation-only push (every changed file .md) skips. To push past a red
-# gate deliberately, `git push --no-verify`.
+# documentation-only push (every changed file .md) runs the privacy check and
+# skips the rest. To push past a red gate deliberately, `git push --no-verify`.
+#
+# git hands us one line per ref actually being pushed, on stdin:
+#
+#     <local-ref> <local-sha> <remote-ref> <remote-sha>
+#
+# We turn those into diff ranges and pass them on. Without this the gate fell
+# back to the CURRENT BRANCH's configured upstream, which is a different
+# question with a different answer: `git push origin featureX` from a docs
+# branch skipped the gate and pushed featureX's Python ungated, and a push to
+# a second remote gated against the wrong range entirely - which is exactly
+# when "run the gate before anything leaves this machine" matters most.
 
+ZERO=0000000000000000000000000000000000000000
+ranges=""
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ -z "$local_sha" ] && continue
+    # A deletion pushes nothing to gate.
+    [ "$local_sha" = "$ZERO" ] && continue
+    if [ "$remote_sha" = "$ZERO" ]; then
+        ranges="$ranges $local_sha"          # new ref: everything it carries
+    else
+        ranges="$ranges $remote_sha..$local_sha"
+    fi
+done
+
+export GATE_RANGES="${ranges# }"
 exec ./local-CI.sh

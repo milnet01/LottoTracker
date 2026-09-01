@@ -485,6 +485,13 @@ def make_server(build_model_fn, token, port):
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
+        # On the HANDLER, not on the server. BaseServer.timeout is read only
+        # by handle_request(), and serve_forever() ignores it outright - so
+        # the `server.timeout = 30` that used to carry this comment protected
+        # nothing, and the hang it names (a client declaring 4000 bytes and
+        # sending one) was live. StreamRequestHandler.setup() applies this one
+        # to the socket, which is what LOTTO-0014 §4.1 asks for.
+        timeout = 30
         # The default is "BaseHTTP/0.6 Python/3.13.14" - a version fingerprint
         # of both the server and the interpreter, which a security boundary
         # should not volunteer.
@@ -499,6 +506,32 @@ def make_server(build_model_fn, token, port):
         # -- helpers ---------------------------------------------------------
 
         def _send(self, code, body=b"", ctype=None):
+            # Close the connection whenever this response did NOT consume the
+            # request body. Under HTTP/1.1 keep-alive the unread bytes are
+            # parsed as the NEXT request line and headers on the same socket,
+            # so a rebound origin could POST a body spelling out a request
+            # with a Host we allowlist, draw a 421 on the outer request, and
+            # have the smuggled one served in full - token and ticket rows -
+            # as the next response on a connection it can read. That defeats
+            # the Host allowlist, which is the whole of §2. Every early exit
+            # answers without reading (421, 404, 405, 403, 413, 400) and so
+            # does the accepted POST /refresh, which has no body to consume.
+            declared = self.headers.get("Content-Length")
+            if declared not in (None, "", "0") and not self._body_read:
+                self.close_connection = True
+            if code >= 400:
+                self.close_connection = True
+            # NOT a `Connection: close` header, deliberately. Announcing the
+            # close would be better HTTP - a client reusing the socket sees a
+            # reset rather than an ordinary end - but §4.1 says "No response
+            # carries any header outside its row", and INV-14's case asserts
+            # the header-name set is EXACTLY the set for that response shape,
+            # which is what catches a reflected header. Adding one reddened
+            # that case, and re-fixturing a security assertion to fit a
+            # cosmetic improvement is the wrong trade. Closing the socket is
+            # what stops the desync; the announcement is not needed for it.
+            # Whether §4.1's rule is meant to reach framing headers is a
+            # question for the contract, not something to decide here.
             self.send_response(code)
             if ctype:
                 self.send_header("Content-Type", ctype)
@@ -523,6 +556,7 @@ def make_server(build_model_fn, token, port):
             return secrets.compare_digest(got, token)
 
         def _read_body(self):
+            self._body_read = True
             raw = self.headers.get("Content-Length")
             try:
                 n = int(raw)
@@ -544,12 +578,21 @@ def make_server(build_model_fn, token, port):
                     return None, 400
             return obj, 200
 
+        # Set per request, before any handler runs, so _send() can tell a
+        # response that consumed the body from one that did not.
+        _body_read = False
+
         def _path(self):
             return self.path.split("?", 1)[0]
 
         def _route(self, method):
             """Fixed order; the first failure answers and no later check runs.
             Host first, or a rebound origin learns which paths exist."""
+            # Reset per REQUEST, not per connection: handle() loops
+            # handle_one_request() on one instance, so a class attribute left
+            # True by an earlier POST would tell _send() a later request's
+            # body had been consumed when it had not.
+            self._body_read = False
             if not self._host_ok():
                 self._send(421)
                 return None
@@ -558,6 +601,7 @@ def make_server(build_model_fn, token, port):
                 self._send(404)
                 return None
             if ALLOW[path] != method:
+                self.close_connection = True
                 self.send_response(405)
                 self.send_header("Allow", ALLOW[path])  # fixed table, not the request
                 self.send_header("Content-Length", "0")
@@ -605,9 +649,43 @@ def make_server(build_model_fn, token, port):
             )
             if model is None and not error and not building:
                 view["no_build"] = True
+            # `view = dict(model or {})` carries no settings when there is no
+            # model, which is every empty-page state except no_dump (which
+            # builds its own). Without this both switches render UNCHECKED
+            # whatever is actually stored - a page reporting a state that is
+            # not the state, on the one page whose entire job is not doing
+            # that. Read only when absent; a built model already carries it.
+            if "settings" not in view:
+                view["settings"] = read_settings()
             self._send(
                 200, page.render(view, token).encode(), "text/html; charset=utf-8"
             )
+
+        # Every other method routes through the same ladder. Without these,
+        # BaseHTTPRequestHandler answers 501 from handle_one_request() before
+        # a line of this class runs: no Host check, and send_error() emits
+        # none of SECURITY_HEADERS - breaking INV-12's "every response,
+        # including that 421" and INV-21's no-store clause. HEAD is
+        # CORS-safelisted, so a hostile page reached that path with a plain
+        # fetch(). _route() gives each of these a 421, a 404, or a 405 with
+        # the Allow header from the fixed table, which is what §4.1 prescribes.
+        # Residue, stated rather than hidden: a method outside this list still
+        # reaches the stdlib 501. fetch() cannot send CONNECT, TRACE or TRACK,
+        # so nothing a page can do gets there.
+        def do_HEAD(self):
+            self._route("HEAD")
+
+        def do_PUT(self):
+            self._route("PUT")
+
+        def do_DELETE(self):
+            self._route("DELETE")
+
+        def do_OPTIONS(self):
+            self._route("OPTIONS")
+
+        def do_PATCH(self):
+            self._route("PATCH")
 
         def do_POST(self):
             path = self._route("POST")
@@ -631,7 +709,8 @@ def make_server(build_model_fn, token, port):
             self._send(200, json.dumps(now).encode(), "application/json")
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    server.timeout = 30  # a client declaring 4000 bytes and sending 1 is a hang
+    # The read timeout lives on Handler (see its `timeout`), because
+    # serve_forever() ignores BaseServer.timeout.
     return server, state
 
 

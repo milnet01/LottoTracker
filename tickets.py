@@ -152,15 +152,31 @@ def parse(body, bought=None):
     if name not in GAME_MAP:
         return None
     game, plus_flag, pool_id = GAME_MAP[name]
-    cost = float(head["cost"].replace(",", ""))
 
-    if m := re.search(r"Date (\d{2})/(\d{2})/(\d{4})", body):  # old format
-        start = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
-        ndraws = int(head["ndraws"] or 1)
-    elif m := re.search(r"Date (\d{2}) (\w{3}) (\d{4}) \(for (\d+) draws?\)", body):
-        start = datetime(int(m.group(3)), MONTHS.index(m.group(2)) + 1, int(m.group(1)))
-        ndraws = int(m.group(4))
-    else:
+    # The regexes settle the SHAPE, never the values: `(\w{3})` admits
+    # "Xyz", `(\d{2})/(\d{2})` admits 32/13, and `[\d,.]+` admits "1.2.3".
+    # Each of those raises ValueError out of parse(), and §4.1 promises the
+    # opposite - "if they are not, tickets.py::parse() returns None and they
+    # are inert". Nothing upstream catches it, so one malformed record took
+    # out the whole ledger: every ticket, on the page and in the terminal.
+    # The admission filter deliberately does not guarantee only lottery
+    # messages arrive, so an ordinary VAS message or a bank wording change is
+    # enough to trigger it. Same shape parse_payout() already uses.
+    try:
+        cost = float(head["cost"].replace(",", ""))
+
+        if m := re.search(r"Date (\d{2})/(\d{2})/(\d{4})", body):  # old format
+            start = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+            ndraws = int(head["ndraws"] or 1)
+        elif m := re.search(
+                r"Date (\d{2}) (\w{3}) (\d{4}) \(for (\d+) draws?\)", body):
+            start = datetime(
+                int(m.group(3)), MONTHS.index(m.group(2)) + 1, int(m.group(1))
+            )
+            ndraws = int(m.group(4))
+        else:
+            return None
+    except ValueError:
         return None
 
     # Board lines "A: 08 14 27 33 41 -07". Indented Multiplay combinations are
@@ -274,7 +290,14 @@ def load(path="lotto_sms_raw.txt"):
         # local datetime, and reading this as UTC would put a ticket bought
         # between 00:00 and 02:00 SAST on handover day in the wrong era -
         # the one case this field exists to get right.
-        bought = datetime.fromtimestamp(date_ms / 1000)
+        # `date=(\d+)` is unbounded, so a skewed phone clock or a shifted
+        # KDE Connect struct can carry a value fromtimestamp() cannot
+        # represent. Skipping the record keeps the other 557 tickets; letting
+        # it raise loses all of them.
+        try:
+            bought = datetime.fromtimestamp(date_ms / 1000)
+        except (ValueError, OverflowError, OSError):
+            continue
         if t := parse(body, bought):
             out.append(t)
     return out
@@ -289,6 +312,10 @@ def load_payouts(path="lotto_sms_raw.txt"):
     """
     out = []
     for _address, date_ms, body in rows(open(path, errors="replace").read()):
-        if p := parse_payout(body, datetime.fromtimestamp(date_ms / 1000)):
+        try:  # load()'s reason, same unbounded date field
+            paid = datetime.fromtimestamp(date_ms / 1000)
+        except (ValueError, OverflowError, OSError):
+            continue
+        if p := parse_payout(body, paid):
             out.append(p)
     return out

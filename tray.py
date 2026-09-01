@@ -222,8 +222,18 @@ class LottoTray(QSystemTrayIcon):
         for body in supervise.expiry_notices(today):
             self.note(body)
 
-    def note(self, body):
-        self.showMessage("Lotto Tracker", body, self.running_icon, 5000)
+    def note(self, body, bad=False):
+        """A desktop notification. `bad=True` for anything that FAILED.
+
+        Every notice used to carry the green tick, including "Refresh
+        failed", "The server is not answering" and the watcher-stopped
+        notice - a failure wearing the success glyph. The icon is what a
+        screen reader and a high-contrast theme key off, and this is the
+        tray's only unprompted surface.
+        """
+        icon = (QSystemTrayIcon.MessageIcon.Critical if bad
+                else QSystemTrayIcon.MessageIcon.Information)
+        self.showMessage("Lotto Tracker", body, icon, 5000)
 
     def _begin(self, action, doing):
         self.busy = True
@@ -243,9 +253,12 @@ class LottoTray(QSystemTrayIcon):
         def finished(ok, msg):
             self._end(self.act_open, "Open page")
             if not ok:
-                self.note(f"The server is not answering: {msg}")
+                self.note(f"The server is not answering: {msg}", bad=True)
             elif not webbrowser.open(self.sup.url):
-                self.note(f"Could not open a browser. The page is at {self.sup.url}")
+                self.note(
+                    f"Could not open a browser. The page is at {self.sup.url}",
+                    bad=True,
+                )
 
         def go():
             if not self.sup.is_ready():
@@ -269,11 +282,10 @@ class LottoTray(QSystemTrayIcon):
             # a DONE refresh now says what it found. The .get()-not-[] guard
             # that used to be explained here moved into that function with the
             # lookup itself.
-            self.note(
-                supervise.refresh_message(msg, self.sup.found)
-                if ok
-                else f"Refresh failed: {msg}"
-            )
+            if ok:
+                self.note(supervise.refresh_message(msg, self.sup.found))
+            else:
+                self.note(f"Refresh failed: {msg}", bad=True)
 
         run_async(self.sup.refresh, finished)
 
@@ -290,7 +302,10 @@ class LottoTray(QSystemTrayIcon):
 
         def finished(ok, msg):
             self._end(self.act_toggle, "Stop server")
-            self.note("Server started." if ok else f"Could not start it: {msg}")
+            if ok:
+                self.note("Server started.")
+            else:
+                self.note(f"Could not start it: {msg}", bad=True)
 
         def go():
             self.sup.start()
@@ -345,6 +360,21 @@ def main():
     # dump, and the page would go on rendering an increasingly old set of
     # tickets with nothing anywhere saying collection had stopped.
     watch.start()
+
+    # Connected HERE, immediately after the children exist, and not further
+    # down. A session logout never clicks Quit, and that is the commonest way
+    # an orphan would be created - but it is not the only one. tray.sync()
+    # below reaches supervise.expiry_notices(), whose write path §4.5 states
+    # is unguarded, and expiry.DISPLAY_NAME[t.game] is an unguarded subscript
+    # §4.7 records as checked by nothing. An unwritable $XDG_CONFIG_HOME, a
+    # read-only home or a game missing from that table therefore raises
+    # BEFORE app.exec(), and with these connected later the server child
+    # spawned two lines up was orphaned holding the port - INV-20, by a route
+    # neither spec's failure-mode list predicts. Connecting first costs
+    # nothing and closes the whole window.
+    app.aboutToQuit.connect(sup.stop)
+    app.aboutToQuit.connect(watch.stop)
+
     tray.sync()
 
     # died_early() waits up to three seconds for the child to fall over on its
@@ -353,14 +383,11 @@ def main():
     def watcher_checked(ok, msg):
         if not ok or msg == "died":
             tray.note("New tickets will NOT arrive on their own — the SMS "
-                      "watcher stopped. Import over the cable meanwhile.")
+                      "watcher stopped. Import over the cable meanwhile.",
+                      bad=True)
 
     run_async(lambda: "died" if watch.died_early() else "", watcher_checked)
 
-    # A session logout never clicks Quit, and that is the commonest way an
-    # orphan would be created.
-    app.aboutToQuit.connect(sup.stop)
-    app.aboutToQuit.connect(watch.stop)
 
     # open_on_start is read here because tray.py is the file that acts on it.
     # A missing, unreadable or malformed settings.json falls back to the default

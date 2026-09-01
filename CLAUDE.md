@@ -60,7 +60,7 @@ does not track hooks and `core.hooksPath` is local config:
 git config core.hooksPath .githooks   # .githooks/pre-push then runs the gate
 ```
 
-The two lanes are **not** equal and must not be made so. Five verifiers need
+The two lanes are **not** equal and must not be made so. Six verifiers need
 `lotto_sms_raw.txt` and the scraped archive, neither of which may reach a public
 runner, and `verify_privacy.py` drops to a weaker pattern-only mode without the
 dump — while still exiting 0. So a green tick on GitHub is weaker than a green

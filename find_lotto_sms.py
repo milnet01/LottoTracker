@@ -55,7 +55,18 @@ def conversations_iface():
         if "<node name=" in line
     ]
     if not ids:
-        sys.exit("No KDE Connect device found — is the phone paired and awake?")
+        # RuntimeError, NOT sys.exit. This function is not script-local:
+        # watch_sms.py::connect() imports it as its one device-discovery
+        # implementation, and the watcher's whole retry design rests on a
+        # failure here being catchable. sys.exit raises SystemExit, which
+        # derives from BaseException, so `except Exception` does not see it -
+        # the no-device case is exactly LOTTO-0003 §4.8's normal login case,
+        # and it was killing the watcher outright past both of its guards
+        # (INV-36 and INV-39, breached in one line). main() below turns this
+        # into the same message for a human at a terminal.
+        raise RuntimeError(
+            "No KDE Connect device found — is the phone paired and awake?"
+        )
     obj = bus.get_object(
         "org.kde.kdeconnect", f"/modules/kdeconnect/devices/{ids[0]}"
     )
@@ -103,4 +114,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # The sys.exit that used to live in conversations_iface() belongs here,
+    # where the caller really is a shell.
+    try:
+        main()
+    except RuntimeError as err:
+        sys.exit(str(err))

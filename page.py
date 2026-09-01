@@ -249,10 +249,20 @@ def _entries_section(model):
         )
     games = sorted({e["game"] for e in model.get("entries", [])})
     opts = "".join(f'<option value="{_e(g)}">{_e(g)}</option>' for g in games)
+    # §4.5 item 3 promises the table is filterable by game AND pool. Every row
+    # has carried data-pool since it was written, with nothing reading it -
+    # the attribute looked wired and had no consumer at all. Same client-side
+    # shape as the game filter, so INV-21 is untouched: no query parameter, no
+    # fragment, no history entry, only visibility on rows already present.
+    pools = sorted({f"{e['game']}/{e['plus_flag']}"
+                    for e in model.get("entries", [])})
+    popts = "".join(f'<option value="{_e(p)}">{_e(p)}</option>' for p in pools)
     return (
         "<section><h2>Every entry</h2>"
         '<label>Filter by game <select id="gamefilter">'
-        f'<option value="">all</option>{opts}</select></label>'
+        f'<option value="">all</option>{opts}</select></label> '
+        '<label>Filter by pool <select id="poolfilter">'
+        f'<option value="">all</option>{popts}</select></label>'
         "<table id=\"entries\"><thead><tr><th>Ticket</th><th>Pool</th>"
         "<th>Cost</th><th>Draws checked</th><th>Won</th><th>Why not</th>"
         "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></section>"
@@ -344,10 +354,19 @@ def _settings_section(model):
 
     def sw(key, label):
         on = " checked" if st.get(key) else ""
+        # The text is tied to the input with aria-labelledby rather than left
+        # loose after the </label>. The <label> wraps only the input and the
+        # slider, so without this both switches have an EMPTY accessible name
+        # and a screen reader announces "switch, not checked" with no way to
+        # tell which one it is. §4.7 justifies the real-checkbox markup on the
+        # state a screen reader announces; the state was announced and the
+        # name was not.
         return (
             f'<div class="row"><label class="switch">'
-            f'<input type="checkbox" role="switch" id="{key}"{on}>'
-            f'<span class="slider"></span></label> {_e(label)}</div>'
+            f'<input type="checkbox" role="switch" id="{key}"{on} '
+            f'aria-labelledby="{key}-lbl">'
+            f'<span class="slider"></span></label> '
+            f'<span id="{key}-lbl">{_e(label)}</span></div>'
         )
 
     return (
@@ -432,12 +451,18 @@ if(rb)rb.addEventListener("click",function(){
 // query parameter, a fragment or a history entry: all three put ticket data
 // where the browser syncs it (INV-21).
 var gf=document.getElementById("gamefilter");
-if(gf)gf.addEventListener("change",function(){
- var want=gf.value,rows=document.querySelectorAll("#entries tbody tr");
+var plf=document.getElementById("poolfilter");
+function applyEntryFilter(){
+ var wg=gf?gf.value:"",wp=plf?plf.value:"";
+ var rows=document.querySelectorAll("#entries tbody tr");
  for(var i=0;i<rows.length;i++){
-  rows[i].style.display=(!want||rows[i].getAttribute("data-game")===want)?"":"none";
+  var okg=!wg||rows[i].getAttribute("data-game")===wg;
+  var okp=!wp||rows[i].getAttribute("data-pool")===wp;
+  rows[i].style.display=(okg&&okp)?"":"none";
  }
-});
+}
+if(gf)gf.addEventListener("change",applyEntryFilter);
+if(plf)plf.addEventListener("change",applyEntryFilter);
 // Same rule for the period selector: rows are already in the document and
 // only their visibility changes (INV-21).
 var pf=document.getElementById("periodfilter");
@@ -452,16 +477,41 @@ if(pf)pf.addEventListener("change",function(){
 // terminate on FAILURE: a failed refresh leaves `built` unchanged, so a poll
 // watching only `built` would wait for a change that never comes.
 var BUILT=%s;
+// Write a sentence where the reader will actually see it. #progress exists on
+// the opening-build page and #settings-msg on a built one; neither exists on
+// both, and msg() targeted only the second.
+function say(t){
+ var p=document.getElementById("progress");
+ if(p){p.textContent=t;return}
+ msg(t);
+}
 function poll(){
  var x=new XMLHttpRequest();x.open("GET","/status",true);
  x.onreadystatechange=function(){
   if(x.readyState!==4)return;
+  // The STATUS, before the body. status 0 is "the request did not complete"
+  // - the server is gone. Without this the empty responseText fell through
+  // the catch into s={}, every branch below missed, and the tail re-armed
+  // the poll forever under a notice still reading "Checking your tickets..."
+  // - a build asserted to be in flight that had already stopped. Saying the
+  // connection was lost is the whole point (LOTTO-0002 s6), and nothing
+  // mechanical checks this because it is browser-side.
+  if(x.status===0||x.status>=500){say("The tracker is no longer running - "+
+    "the connection was lost. Nothing below is being updated.");return}
   var s={};try{s=JSON.parse(x.responseText)}catch(e){}
   if(s.building){var p=document.getElementById("progress");
                  if(p)p.textContent=s.requests+(s.requests===1?" lookup":" lookups")+" so far.";
                  setTimeout(poll,2000);return}
   if(s.built&&s.built!==BUILT){location.reload();return}
-  if(s.stale){var b=document.getElementById("refresh");
+  if(s.stale){
+              // A FIRST build that failed leaves `built` null, so the reload
+              // test above never fires and #settings-msg does not exist on
+              // this page - msg() silently dropped the sentence and the tab
+              // sat on "Checking your tickets..." permanently. Reload once so
+              // the server can serve s6's results-unavailable state instead.
+              // location.reload() changes no URL, so INV-21 is untouched.
+              if(!BUILT){location.reload();return}
+              var b=document.getElementById("refresh");
               if(b){b.disabled=false;b.textContent="Refresh results"}
               // A browser open since the bind never re-renders, so a failed
               // OPENING build would leave the counter frozen under a notice
@@ -504,6 +554,27 @@ def render(model, token):
             "result yet. "
             f'<span id="progress">{n} {"lookup" if n == 1 else "lookups"} '
             "so far.</span></div>"
+        )
+    elif model.get("no_dump") or model.get("no_build") or (
+            model.get("error") and not built):
+        # The three states in which NOTHING was checked and there is no
+        # earlier model to fall back on. §6 forbids each of the three things
+        # the full body would render here by name - a ticket table, a zero
+        # total, and an empty wins list - because all three read as "you have
+        # won nothing", which is this project's cardinal failure arriving
+        # through the network layer. The notice alone is not a discharge:
+        # _spend_section reaches R0.00 three times off an absent record and
+        # _wins_section says "No unexpired winning lines" while pointing at a
+        # banner that is not there. §6 also records this as the COMMON path -
+        # four of seven measured build attempts failed.
+        #
+        # `and not built` on the error arm is load-bearing: a refresh that
+        # fails AFTER a good build must keep showing the previous figures and
+        # say they are stale, which is INV-18 and is a different state.
+        body = (
+            f"<h1>{TITLE}</h1>"
+            + _notice(model)
+            + _settings_section(model)
         )
     else:
         body = (

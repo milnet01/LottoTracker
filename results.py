@@ -7,8 +7,10 @@ which Sizekhaya rebuilt as a single-page app after taking over the licence on
 They need no login and no API key. Money values are in cents.
 """
 
+import http.client
 import json
 import socket
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -58,10 +60,22 @@ def _post(path, body):
             # retried three times is 3 s of nothing. Caught BEFORE URLError,
             # which it subclasses, or the arm below would swallow it.
             raise
-        except (urllib.error.URLError, socket.timeout, TimeoutError):
+        except (urllib.error.URLError, ssl.SSLError, http.client.HTTPException,
+                ConnectionError, json.JSONDecodeError,
+                socket.timeout, TimeoutError):
             # socket.timeout explicitly: it is only an ALIAS of TimeoutError
             # from Python 3.10, and this project pins 3.8+. Without it the
             # retry silently skips the commonest slow-network case.
+            #
+            # The rest were added 2026-09-01 because the retry did not cover
+            # the failure the docstring above names. urllib wraps a HANDSHAKE
+            # error into URLError; nothing wraps one raised while the BODY is
+            # read - and json.load(r) sits inside this try. So SSLEOFError,
+            # IncompleteRead, a bare ConnectionResetError and a truncated
+            # JSON body all escaped on attempt 1 and aborted the run, while
+            # UNEXPECTED_EOF_WHILE_READING - the very error this loop was
+            # built for, at four of seven measured build attempts - is an EOF,
+            # at least as likely mid-transfer as mid-handshake.
             if attempt == ATTEMPTS - 1:
                 raise          # the ORIGINAL error, unwrapped
             time.sleep(BACKOFF * 2**attempt)

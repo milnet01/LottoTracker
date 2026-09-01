@@ -284,6 +284,52 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- **A documentation-only push ran no privacy check anywhere** (LOTTO-0050)
+  The gate skips itself when every changed file is documentation, and the
+  GitHub workflow ignored `.md` pushes to match. Between them, the one
+  kind of push whose subject IS prose ran no privacy check at all — in a
+  repository intended to be public that holds real message content, where
+  the rule is never to paste that content into code, docs or commit
+  messages, and where two leaks have already got past weaker checks.
+
+  A documentation-only push now runs the privacy check, at full strength,
+  before skipping the rest. The workflow's `paths-ignore` is gone, so the
+  runner simply runs its lane — forty seconds, and Linux minutes are free
+  on a public repository. (This supersedes the two earlier entries saying
+  `paths-ignore` mirrors the local skip; they describe what was true when
+  they were written.)
+
+  Separately, the git hook that runs the gate threw away the information
+  git hands it about what is actually being pushed, and the gate fell back
+  to asking about the current branch's upstream instead — a different
+  question with a different answer. Pushing one branch while standing on
+  another could skip the gate entirely. The hook now passes the real
+  ranges through.
+
+- **A hostile web page could have read your tickets through the local server** (LOTTO-0050)
+  The page runs on your own machine and refuses any request that does not
+  come from your own machine — that check is the entire defence. It could
+  be walked past.
+
+  Every refusal answered without reading the rest of the request. Under
+  the keep-alive rules the server speaks, whatever was left unread got
+  read as the START OF THE NEXT REQUEST on the same connection. So a
+  malicious page in your browser could send a refused request whose
+  leftover text spelled out a second request claiming to come from your
+  machine — and the server would answer that one in full: the whole page,
+  your tickets, and the token that authorises changes.
+
+  The server now hangs up whenever it answers without reading the
+  request. Reproduced end to end first, then confirmed closed.
+
+  Two related holes went with it. A request using any method other than
+  GET or POST skipped the origin check completely and got a reply from
+  Python's own error handler carrying none of the security headers — and
+  HEAD is something any web page can send. And the read timeout meant to
+  stop a client tying up the server forever was set on the wrong object
+  and did nothing at all; the comment beside it described the exact attack
+  it was not preventing.
+
 - **The CI workflow runs against reviewed code, with the least token it needs** (LOTTO-0039)
   Three hardening fixes to `.github/workflows/ci.yml`, from a whole-tree
   `check-code` sweep.
@@ -394,6 +440,99 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importing the derivation it is testing.
 
 ### Fixed
+
+- **Notifications and switches were unusable with a screen reader** (LOTTO-0050)
+  The two settings switches had no readable name at all. The visible text
+  sat outside the label, so a screen reader announced "switch, not
+  checked" twice with no way to tell which was which — on the page's only
+  interactive controls.
+
+  And every tray notification carried the green success tick, including
+  "Refresh failed", "The server is not answering", "Could not open a
+  browser", "Could not start it" and the notice saying new tickets have
+  stopped arriving. Failures now carry the critical icon, which is what a
+  screen reader and a high-contrast theme actually read.
+
+- **The tray could leave the server running after it failed to start up** (LOTTO-0050)
+  The tray spawned the server and the message watcher, then did several
+  things that can fail — writing to your config directory, looking up a
+  game name — and only AFTER those connected the handler that shuts the
+  children down. Anything failing in that window left the server running
+  with nobody owning it, holding the port. The handlers are now connected
+  the moment the children exist.
+
+  The cable-free message watcher had two faults of its own. When KDE
+  Connect was not ready — the normal case at login, before the phone has
+  re-paired — the failure raised a kind of error that slipped past both of
+  the guards written specifically to catch it, killing the watcher
+  outright and blaming the phone. And `--once`, which is documented as a
+  catch-up that runs and exits, could never reach either of its two
+  endings: it waited silently and indefinitely instead. Both fixed.
+
+- **The page could sit on "Checking your tickets…" forever after the server stopped** (LOTTO-0050)
+  The page asks the server how the build is going every two seconds. It
+  read the ANSWER but never checked whether the request had succeeded, so
+  when the server was no longer running the empty reply fell through every
+  case and it simply asked again, forever, under a notice saying a check
+  was in progress. It now says the connection was lost and stops.
+
+  A first build that failed had a second version of the same problem: the
+  sentence explaining the failure was written into an element that does
+  not exist on that page, so it vanished, and the reload that would have
+  fixed things could never trigger. The tab sat there claiming to be
+  working indefinitely.
+
+  Also: the entries table has always carried a pool marker on every row
+  with nothing reading it, while the design promised filtering by game AND
+  pool. The pool filter now exists.
+
+- **One malformed message could stop every ticket being read** (LOTTO-0050)
+  The message parser checked the SHAPE of a date or an amount but never
+  the values, so a date like 32/13/2020, a month spelled "Xyz" or an
+  amount like "1.2.3" raised an error that nothing caught. One such
+  message took out all 558 tickets — on the page, in the terminal, and in
+  every check. The contract says a message the parser cannot read is
+  skipped and everything else carries on, and now it is.
+
+  The archive scraper had the matching problem from the other direction:
+  it read whatever ball markup the site gave it without checking the
+  result looked like the game it was filed under. One extra word in that
+  free third-party site's HTML would have filed the PowerBall as an
+  ordinary number, and every PowerBall ticket from before June 2026 would
+  have been scored one match too high while never matching the PowerBall
+  — silently, in the years where most of the wins are. Rows that do not
+  have the right number of balls are now skipped and said out loud.
+
+  The scraper also wrote its cached pages and the archive file in place,
+  so an interrupted write left a half-file that every later run trusted
+  forever — and a half-written prize table would have priced a win from
+  the wrong division. All three writes now go to a temporary file and are
+  renamed into place. The same fix went to the file that remembers which
+  re-buy warnings you have already been shown, where an interrupted write
+  destroyed the whole history rather than one line.
+
+- **An empty page could read as "you won nothing" — the one thing this project exists to prevent** (LOTTO-0050)
+  The page branched on one condition only: is a build in flight. So all
+  three of the states where NOTHING was checked — the messages file
+  missing, the first build failing, or builds switched off — fell through
+  to the full page and rendered R0.00 three times, "No unexpired winning
+  lines", and an entries table with headings and no rows. A notice sat
+  above all that saying why, which is not a discharge: the figures below
+  it still said zero. The wins section even pointed at "the banner above",
+  which in those states is not there.
+
+  This is the failure the whole project was built after hitting, and it
+  was on the common path rather than an exotic one — four of seven
+  measured build attempts against the operator's site fail. Those three
+  states now render the notice and the settings switches and nothing else.
+
+  A refresh that fails AFTER a good build is deliberately untouched: it
+  still shows the previous figures and says they are stale, which is a
+  different and correct state.
+
+  While fixing it, the settings switches on those pages turned out to
+  render unchecked whatever was actually stored, because the view carries
+  no settings when there is no model. Also fixed.
 
 - **Most of the gap against the bank's own record is now explained** (LOTTO-0006)
   With the wider archive, reconciliation moves from `unscored` 142 to 3 and

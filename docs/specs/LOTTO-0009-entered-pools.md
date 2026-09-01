@@ -513,9 +513,15 @@ a handle.
 - **A board price changes again.** INV-7 fires: unresolved is non-zero and
   `tools/verify_pools.py` exits 1. The fix is a row in §4.2's table, not code.
 - **A renamed game appears.** Sizekhaya renamed Lotto Plus 2 to `LOTTO 5 Max`
-  and PowerBall Plus to `PowerBall XTRA`. Neither string is in `GAME_MAP`, so
-  `parse()` returns `None` and the ticket is dropped — caught by LOTTO-0001
-  INV-6, which asserts the parsed count. No such message is in the dump yet.
+  and PowerBall Plus to `PowerBall XTRA`. **This happened on 2026-08-08 and is
+  closed** (LOTTO-0031): the first such message arrived, parsed to `None` and
+  was silently never scored, which is what LOTTO-0001 INV-6's parsed count
+  caught. Both strings are now in `GAME_MAP` (`"lotto 5 max"` and
+  `"powerball xtra"`, `tickets.py`). This paragraph read *"Neither string is in
+  `GAME_MAP` … No such message is in the dump yet"* until 2026-09-01, three
+  weeks after the fix shipped — so the document a future implementer reads
+  before touching `GAME_MAP` told them the opposite of what the code does, and
+  the failure it described is the one already fixed.
 - **The rules reading is wrong.** If a PLUS purchase did not in fact enter the
   base draws, this fix would report wins that cannot be claimed — the opposite
   and worse failure direction. Three independent things agree it is right: the

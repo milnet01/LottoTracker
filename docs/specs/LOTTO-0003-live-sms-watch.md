@@ -378,9 +378,13 @@ they live in the state dict for that reason.
   server; and a watcher that cannot start is reported in words that name what
   is lost, never silently.
 - **INV-37** — A dump that grew is announced, and re-scored **when the server
-  is running**; when it is not, the notice names *Refresh results now* instead
-  of claiming a refresh that is not happening. A dump that shrank is not
-  announced. The page must never gain a ticket the user is not told about, nor
+  is running**; when it is not, the notice names *Start server* instead of
+  claiming a refresh that is not happening. A dump that shrank is not
+  announced. (This invariant named *Refresh results now* until 2026-09-01 —
+  the item §4.7 records `tray.sync()` as DISABLING while the server is
+  stopped, which is LOTTO-0007 (k), fixed on 2026-08-15 in the code and left
+  standing here. Reconciling the code to the old wording would have
+  reintroduced it.) The page must never gain a ticket the user is not told about, nor
   be told about one it did not gain. **Every branch of the notice names an
   action that state leaves available** — see §4.7.
 - **INV-38** — The read and the append are one critical section. Two watchers
