@@ -19,5 +19,19 @@
 # code and closing them is a real change, so if a family is wanted, add it here
 # and fix what it reports in the same commit.
 
+# The floor the project claims, told to the linter so it is enforced rather
+# than asserted. CLAUDE.md and README.md both say "Python 3.8+", and the CI
+# runner proves 3.13 only - so nothing stopped a 3.10 construct landing and
+# making the claim quietly false. With this set, ruff reports
+# "Cannot use `match` statement on Python 3.8" as a syntax error (verified
+# 2026-09-02 against ruff 0.16.4, which reports nothing for the same file
+# under py313).
+#
+# It bounds SYNTAX, not library use: `str.removeprefix` is 3.9 and no rule
+# selected here would catch it. Measured 2026-09-02 - every module in this
+# project compiles under CPython 3.8.20 and 3.9.25, so the claim is true
+# today and this is what keeps it true.
+target-version = "py38"
+
 [lint]
 select = ["E4", "E7", "E9", "F"]

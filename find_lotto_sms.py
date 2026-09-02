@@ -16,6 +16,16 @@ from datetime import datetime
 
 import dbus
 
+from tickets import terminal_safe
+
+# A cold KDE Connect daemon fills its conversation list over minutes. Both
+# waits below poll until the list STOPS GROWING rather than sleeping on a fixed
+# guess, which is watch_sms.py's own measured answer to the same problem: on a
+# slow link a fixed sleep prints a confident negative from an incomplete read.
+QUIET_POLLS = 6      # consecutive unchanged reads that count as settled
+POLL_EVERY = 1.0     # seconds between reads
+SETTLE_CAP = 90.0    # seconds before giving up and using what there is
+
 KEYWORDS = (
     "lotto",
     "powerball",
@@ -43,17 +53,42 @@ KEYWORDS = (
 BODY, ADDRS, DATE, THREAD = 1, 2, 3, 6
 
 
-def conversations_iface():
-    bus = dbus.SessionBus()
-    daemon = bus.get_object("org.kde.kdeconnect", "/modules/kdeconnect/devices")
+def device_ids(bus):
+    """Paired AND reachable device ids, newest KDE Connect API first.
+
+    Asked of the daemon rather than read off the devices node. Introspecting
+    that node lists every REMEMBERED device - paired or not, present or not -
+    so taking the first of them could bind the watcher, which imports this
+    module as its one device-discovery path, to a phone last seen months ago,
+    while watch_sms.py's own docstring says "the first paired device".
+
+    The introspection fallback is kept for a daemon too old to answer, and it
+    says so on stderr rather than quietly being the weaker thing again.
+    """
+    try:
+        daemon = dbus.Interface(
+            bus.get_object("org.kde.kdeconnect", "/modules/kdeconnect"),
+            "org.kde.kdeconnect.daemon",
+        )
+        return [str(i) for i in daemon.devices(True, True)]
+    except dbus.DBusException as err:
+        print(f"kdeconnect daemon.devices() unavailable ({err.get_dbus_name()});"
+              " falling back to listing every remembered device, paired or"
+              " not.", file=sys.stderr)
+    node = bus.get_object("org.kde.kdeconnect", "/modules/kdeconnect/devices")
     devices = dbus.Interface(
-        daemon, "org.freedesktop.DBus.Introspectable"
+        node, "org.freedesktop.DBus.Introspectable"
     ).Introspect()
-    ids = [
+    return [
         line.split('"')[1]
         for line in devices.splitlines()
         if "<node name=" in line
     ]
+
+
+def conversations_iface():
+    bus = dbus.SessionBus()
+    ids = device_ids(bus)
     if not ids:
         # RuntimeError, NOT sys.exit. This function is not script-local:
         # watch_sms.py::connect() imports it as its one device-discovery
@@ -78,19 +113,37 @@ def matches(msg):
     return any(k in haystack for k in KEYWORDS)
 
 
+def settled_conversations(conv):
+    """activeConversations() once the list has stopped growing."""
+    count, still, started = -1, 0, time.monotonic()
+    while time.monotonic() - started < SETTLE_CAP:
+        got = conv.activeConversations()
+        still = still + 1 if len(got) == count else 0
+        count = len(got)
+        if still >= QUIET_POLLS:
+            return got
+        time.sleep(POLL_EVERY)
+    print(f"the conversation list was still growing after {SETTLE_CAP:.0f}s;"
+          " showing what has arrived so far.", file=sys.stderr)
+    return conv.activeConversations()
+
+
 def show(msg):
+    # Both the body and the sender are attacker-controlled and go straight to a
+    # terminal, so both go through terminal_safe(): a UCS-2 message carrying an
+    # escape drives the emulator rather than being read (CWE-150).
+    # watch_sms.py's header says "Nothing here prints a message body"; this is
+    # the one path in the project that does, on purpose.
     when = datetime.fromtimestamp(int(msg[DATE]) / 1000).strftime("%Y-%m-%d %H:%M")
-    sender = ", ".join(str(a[0]) for a in msg[ADDRS])
+    sender = terminal_safe(", ".join(str(a[0]) for a in msg[ADDRS]))
     print(f"\n[{when}] from {sender}  (thread {int(msg[THREAD])})")
-    print(f"  {msg[BODY]}")
+    print(f"  {terminal_safe(msg[BODY])}")
 
 
 def main():
     conv = conversations_iface()
     conv.requestAllConversationThreads()
-    time.sleep(6)
-
-    threads = conv.activeConversations()
+    threads = settled_conversations(conv)
     print(f"{len(threads)} threads on the phone.")
 
     hits = [m for m in threads if matches(m)]
@@ -98,16 +151,15 @@ def main():
         print("\nNo lottery-looking threads in the newest message of each thread.")
         print("Senders seen (newest message only, bodies not shown):")
         for m in threads:
-            print("  " + ", ".join(str(a[0]) for a in m[ADDRS]))
+            print("  " + terminal_safe(", ".join(str(a[0]) for a in m[ADDRS])))
         return
 
     print(f"{len(hits)} lottery-looking thread(s). Pulling their history:")
     for m in hits:
         conv.requestConversation(int(m[THREAD]), 0, 200)
-    time.sleep(8)
 
     seen = set()
-    for m in conv.activeConversations():
+    for m in settled_conversations(conv):
         if matches(m) and (key := (int(m[THREAD]), int(m[DATE]))) not in seen:
             seen.add(key)
             show(m)

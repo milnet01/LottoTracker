@@ -110,7 +110,8 @@ def append_new(messages, path=DUMP):
     with open(lock_path(path), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
-            raw = open(path, errors="replace").read()
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                raw = fh.read()
         except FileNotFoundError:
             raw = ""
         import tickets  # here, not at module scope: a missing dump must not
@@ -139,10 +140,14 @@ def append_new(messages, path=DUMP):
 
         if out:
             # One append, opened and closed around it. serve.py may read the
-            # dump at any moment (its rebuild is on a timer the user can also
-            # click), and a partial record is a record tickets.rows() drops
-            # silently.
-            with open(path, "a") as fh:
+            # dump at any moment - its rebuild is on a timer the user can also
+            # click. A torn record is NOT dropped by the reader, which is what
+            # this comment used to claim: rows() matches `body=(.*)` under
+            # re.S, so a truncated tail parses as a COMPLETE record with a
+            # mutilated body, and that record is then scored like any other.
+            # Keeping the write to a single call is what makes it unlikely;
+            # nothing downstream would notice if it happened.
+            with open(path, "a", encoding="utf-8") as fh:
                 fh.write("".join(out))
     return len(out)
 
@@ -165,8 +170,18 @@ def read_threads(path=THREADS):
 
 
 def write_threads(ids, path=THREADS):
-    tmp = path + ".tmp"
-    with open(tmp, "w") as fh:
+    """Replace the remembered thread set. Temp file then rename.
+
+    The temp path carries the pid, as every other atomic write in this project
+    does. A FIXED one is shared by two watchers - a case INV-38 calls reachable
+    rather than theoretical - and they truncate each other's partial JSON.
+    read_threads() then swallows the ValueError and returns an empty set, and
+    s4.5 says that loss does NOT heal: a ticket under a newer non-matching
+    message is neither asked for nor visible in the snapshot until its thread
+    matches again.
+    """
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(sorted(int(i) for i in ids), fh)
     os.replace(tmp, path)
 
@@ -268,14 +283,30 @@ def pull_targets(snapshot, known, high_water):
 
 
 def high_water(path=DUMP):
-    """The newest message date the dump holds, or 0 for an empty one."""
+    """The newest message date the dump holds, or 0 for an empty one.
+
+    Bounded by NOW, and that bound is the whole of it. `date=(\\d+)` is
+    unbounded, so ONE record written from a skewed phone clock or a shifted
+    KDE Connect struct returns a value no real message can exceed - and
+    pull_targets() then asks for nothing, for ever. What that prints is
+    "catch-up: N threads, 0 asked, 0 written", which s4.5 calls the NORMAL
+    case: total failure and perfect health read identically.
+    """
     import tickets
 
     try:
-        raw = open(path, errors="replace").read()
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            raw = fh.read()
     except FileNotFoundError:
         return 0
-    return max((date_ms for _a, date_ms, _b in tickets.rows(raw)), default=0)
+    now_ms = int(time.time() * 1000)
+    dates = [d for _a, d, _b in tickets.rows(raw)]
+    usable = [d for d in dates if 0 <= d <= now_ms]
+    if len(usable) != len(dates):
+        print(f"{len(dates) - len(usable)} dump record(s) are dated outside "
+              f"[0, now] and are ignored when working out how far the "
+              f"catch-up has already reached.", file=sys.stderr, flush=True)
+    return max(usable, default=0)
 
 
 class Watch:
@@ -566,6 +597,17 @@ def run(once=False, path=DUMP, threads_path=THREADS):
                 # GLib REMOVES a timeout source whose callback raised - an
                 # escaping exception would stop the watcher permanently, which
                 # is a worse version of the defect this handler exists to fix.
+                state["phase"] = "waiting"
+            except Exception as exc:  # noqa: BLE001
+                # And that argument has nothing to do with D-Bus. snapshot(),
+                # pull_history() and the append underneath them all touch the
+                # disk, so an OSError removed this source just as surely - no
+                # reconnect, no catch-up, and a process that still looks alive.
+                # Only the exception's TYPE is printed: this module's header
+                # rule is that nothing here prints a message body, and an
+                # exception raised while handling one can quote it.
+                print(f"catch-up failed: {type(exc).__name__} - retrying",
+                      file=sys.stderr, flush=True)
                 state["phase"] = "waiting"
             return True
         if once and watch.idle_for() >= QUIET:

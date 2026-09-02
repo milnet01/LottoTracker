@@ -2572,7 +2572,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: review-fix.
   Source: review-code-2026-09-01 lane supervisor-lifecycle.
 
-- 📋 [LOTTO-0047] **Deferred review findings in the SMS watcher.**
+- ✅ [LOTTO-0047] **Deferred review findings in the SMS watcher.**
   From the 2026-09-01 review-code sweep. The lane's CRITICAL (SystemExit
   escaping both guards) and HIGH (--once hanging forever) were fixed.
 
@@ -2594,11 +2594,37 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   - LOW - sms_threads.json.tmp matches no .gitignore rule, and CLAUDE.md
     tells you to `git add -A` before the privacy check, which compares
     CONTENT and would not catch ~543 staged phone-derived thread ids.
+  Resolved 2026-09-02, local-CI.sh green on both lanes. All findings fixed.
+
+  high_water() is bounded by now. `date=(\d+)` is unbounded, so ONE record from
+  a skewed clock returned a value no real message could exceed and pull_targets()
+  asked for nothing thereafter - printing "catch-up: N threads, 0 asked, 0
+  written", which s4.5 calls the NORMAL case. Records outside [0, now] are now
+  counted and named on stderr.
+
+  write_threads() puts the pid in its temp path, as every other atomic write
+  here does. A fixed one is shared by two watchers - INV-38 calls that reachable
+  rather than theoretical - and they truncated each other's partial JSON, which
+  read_threads() swallows into an empty set; s4.5 says that loss does not heal.
+  .gitignore now covers the temp sibling too, which matched no rule while
+  CLAUDE.md tells you to `git add -A` before a privacy check that compares
+  against the dump's CONTENT and would not recognise thread ids as personal
+  data.
+
+  tick()'s discovery arm catches more than dbus.DBusException. Its own comment
+  argues that an escaping exception removes the GLib source permanently, and
+  that argument is not about D-Bus: snapshot(), pull_history() and the append
+  all touch the disk, so an OSError killed the watcher while the process went on
+  looking alive.
+
+  The append comment is corrected. It claimed a torn record is dropped by the
+  reader; rows() matches `body=(.*)` under re.S, so a truncated tail parses as a
+  COMPLETE record with a mutilated body and is scored like any other.
   **Layman:** Smaller robustness fixes in the cable-free message collector
   Kind: review-fix.
   Source: review-code-2026-09-01 lane sms-watcher.
 
-- 📋 [LOTTO-0048] **Deferred review findings in the tray, calendar and inspector.**
+- ✅ [LOTTO-0048] **Deferred review findings in the tray, calendar and inspector.**
   From the 2026-09-01 review-code sweep. Both HIGHs (the sys.exit in a
   library function, the orphan window at startup) were fixed, as were the
   notification icons.
@@ -2624,11 +2650,42 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   - LOW - no timezone pinned anywhere against a South African draw calendar;
     tray icons hardcode colours (~2.8:1 on a dark panel) though the two
     glyphs do differ in SHAPE, so colour-blindness is already handled.
+  Resolved 2026-09-02, local-CI.sh green on both lanes.
+
+  expiry.draw_dates() raises on an empty DRAW_DAYS entry. The loop advances a
+  day at a time until it has ndraws of them, so an empty entry never terminated
+  - on the GUI thread, in the tray's timer slot. Its two other preconditions
+  already raised.
+
+  find_lotto_sms.py: bodies and senders go through tickets.terminal_safe(), the
+  helper LOTTO-0042 added, so this - the one path in the project that prints a
+  message body on purpose - cannot be driven by an escape sequence in one. The
+  device comes from the daemon's own paired-and-reachable query rather than
+  ids[0] off the devices node, which lists every REMEMBERED device: verified
+  against the live daemon, same device id both ways. Both fixed sleeps are
+  replaced by the stop-growing poll watch_sms.py already uses.
+
+  The running tray icon's fill went from #2d7a2d to #3a9440: about 3.9:1 against
+  a black panel before, about 5.5:1 after, with the white glyph still above 3:1
+  against the fill. The stopped icon needed no change - #8a8a8a was already near
+  6:1 - and the two glyphs already differ in SHAPE, which is the half that
+  matters for colour blindness.
+
+  DISMISSED, and measured rather than argued: the tray's done-signal handler.
+  The finding said a bare lambda with no context QObject runs in the emitting
+  thread, so every handler would touch GUI state from a QThreadPool worker.
+  Measured 2026-09-02 with a real QCoreApplication, QRunnable and thread pool:
+  it runs on the MAIN thread, and passing Qt.QueuedConnection explicitly changes
+  nothing. _JobSignals is constructed on the GUI thread, so it has GUI-thread
+  affinity and AutoConnection queues the emit. The code is unchanged and the
+  measurement is recorded at the call site, including the condition it rests on.
+
+  Deferred: the timezone question, as LOTTO-0066. It is a design decision.
   **Layman:** Smaller fixes in the tray icon and the message-finding tool
   Kind: review-fix.
   Source: review-code-2026-09-01 lane tray-calendar-tools.
 
-- 📋 [LOTTO-0049] **Deferred review findings in the pre-push gate.**
+- ✅ [LOTTO-0049] **Deferred review findings in the pre-push gate.**
   From the 2026-09-01 review-code sweep. Both HIGHs were fixed: a
   documentation-only push now runs verify_privacy.py before skipping the
   rest, ci.yml's paths-ignore is gone, and .githooks/pre-push now reads git's
@@ -2652,6 +2709,39 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
     local-CI.sh empty-array under set -u on bash 3.2; tail -20 publishes
     verifier output, which is how a dump-dependent verifier moved into the CI
     lane would print personal data into a public Actions log.
+  Resolved 2026-09-02, local-CI.sh green on both lanes.
+
+  The local lane asserts core.hooksPath. git does not track hooks, so that is
+  local config set once per clone, and nothing checked it - a clone that skipped
+  the one command had an entirely inert push gate with no signal at all. It uses
+  the existing fail() helper, and reads PASS on this machine.
+
+  ci.yml carries timeout-minutes: 20, against the 360-minute default; the shape
+  that hangs is verify_page.py, which spawns subprocesses and talks HTTP to
+  localhost. ruff is pinned to 0.16.4 on the runner and PySide6 is not: ruff
+  decides a verdict and ruff.toml's header records what an unpinned one cost (0
+  errors here, 71 there, same tree), while PySide6 only has to import.
+
+  verify_privacy.py's failure output is WITHHELD on the CI lane. It reports what
+  it matched, and what it matches is real SMS content, so printing it into a
+  public Actions log publishes the leak it has just caught.
+
+  PRIVACY_OUT's capture no longer depends on textual adjacency alone. run()
+  records the label it ran, and a mismatch fails the gate by name - the
+  adjacency is still what makes it right, and this is what says so when it stops
+  being true.
+
+  The version floor: ruff.toml sets target-version = "py38", which makes newer
+  syntax an error on both machines - verified against ruff 0.16.4, which reports
+  "Cannot use `match` statement on Python 3.8" for a file it passes under py313.
+  And the claim itself was MEASURED rather than reasoned about: every module
+  compiles under CPython 3.8.20 and 3.9.25, 22 files, no failures. Library use
+  at that floor is still unproven and is LOTTO-0065.
+
+  DISMISSED: the empty-array expansion under set -u on bash 3.2. `${#FAILED[@]}`
+  is the length operator and is legal on an empty array; the only `${FAILED[*]}`
+  expansion sits after an early return that fires when the array is empty. Not
+  reproducible as stated, and this project is Linux-only.
   **Layman:** Smaller fixes to the checks that run before a push
   Kind: review-fix.
   Source: review-code-2026-09-01 lane shell-gate.
@@ -2900,3 +2990,52 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** A spec was corrected to match what the page now does, and the usual review of that spec has not been run
   Kind: doc-fix.
   Source: in-session-2026-09-02, user decision on LOTTO-0054.
+
+- 📋 [LOTTO-0065] **The Python 3.8 floor is proven for syntax and not for library use.**
+  Split out of LOTTO-0049, which asked why the runner proves 3.13 while the
+  project claims 3.8+.
+
+  What is now settled. Every module compiles under CPython 3.8.20 and 3.9.25 -
+  measured 2026-09-02 with `uv run --python`, 22 files, no failures - so the
+  claim is true today. `ruff.toml` sets `target-version = "py38"`, which makes
+  newer syntax a lint error on both machines: verified against ruff 0.16.4,
+  which reports "Cannot use `match` statement on Python 3.8" for a file it
+  passes silently under py313.
+
+  What is NOT settled is library use. `str.removeprefix` is 3.9, `dict |` merge
+  is 3.9, `zoneinfo` is 3.9; none is a syntax error and none of the rules this
+  project selects would catch one. A compile is not an import and neither is a
+  run.
+
+  No CI matrix closes it: 3.8 is past end of life and setup-python no longer
+  offers it on ubuntu-latest. Two routes are open. Run the CI lane's verifiers
+  under a `uv`-fetched 3.8 locally, which is what proved the syntax half and
+  would prove this half too but adds `uv` to the gate's dependencies. Or decide
+  the floor is now 3.9 and change the claim in CLAUDE.md and README.md - which
+  is a contract edit and owes rule 14's gate.
+  **Layman:** We know the code parses on the oldest Python we claim to support, but not that every function it calls exists there
+  Kind: test.
+  Source: review-code-2026-09-01 lane shell-gate, narrowed by measurement 2026-09-02.
+
+- 📋 [LOTTO-0066] **No timezone is pinned anywhere against a South African draw calendar.**
+  Deferred out of LOTTO-0048 because it is a design question, not an edit.
+
+  Every date in this project is a naive local one. `tickets.load()` reads the
+  SMS timestamp with `datetime.fromtimestamp()`, and its comment argues local
+  time is correct there - reading it as UTC would put a ticket bought between
+  00:00 and 02:00 SAST on handover day in the wrong era. `expiry.draws_left()`
+  takes `today` from the caller. `check.py` compares against `datetime.now()`.
+
+  So the whole calendar is correct exactly while the machine is set to SAST, and
+  nothing states that or checks it. On a machine set elsewhere - travelling, a
+  server, a container with TZ unset - a draw falling today reads as yesterday or
+  tomorrow, and LOTTO-0034's boundary rules (start inclusive, a draw falling
+  today has not yet happened) shift with it.
+
+  The decision: pin SAST explicitly with `zoneinfo` (3.9+, so LOTTO-0065 has to
+  settle first), or state the assumption and check it once at startup. The
+  second is cheaper and matches how this project handles a hardcoded table
+  elsewhere - DRAW_DAYS is checked against observed history rather than assumed.
+  **Layman:** On a machine set to the wrong timezone, a draw date could be read as the day before or after
+  Kind: investigate.
+  Source: review-code-2026-09-01 lane tray-calendar-tools, deferred out of LOTTO-0048.

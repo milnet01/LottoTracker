@@ -75,6 +75,15 @@ def draw_dates(game, start, ndraws):
     if ndraws < 1:
         raise ValueError(f"a ticket runs for at least one draw, not {ndraws!r}")
     days = DRAW_DAYS[game]
+    if not days:
+        # The third precondition, and it used to be the one that HUNG. The loop
+        # below advances a day at a time until it has collected ndraws of them,
+        # so a game with no draw days never terminates - and this runs in the
+        # tray's timer slot, on the GUI thread. The other two preconditions
+        # raise; this one now does too.
+        raise ValueError(
+            f"{game!r} has no draw days, so its draw calendar cannot be walked"
+        )
     day = _as_date(start)
     dates = []
     while len(dates) < ndraws:

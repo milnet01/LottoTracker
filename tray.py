@@ -106,6 +106,14 @@ _jobs = set()  # QThreadPool owns the C++ side; this keeps the Python wrapper al
 def run_async(fn, on_done):
     job = _Job(fn)
     _jobs.add(job)
+    # No connection type is passed, and that is checked rather than assumed.
+    # _JobSignals is constructed HERE, on the GUI thread, so it has GUI-thread
+    # affinity and AutoConnection queues the emit that _Job.run() makes from a
+    # QThreadPool worker. Measured 2026-09-02 with a QCoreApplication and a
+    # real QRunnable: the handler runs on the main thread, and passing
+    # Qt.QueuedConnection explicitly changes nothing. What this DOES rest on is
+    # _Job being built on the GUI thread - build one from a worker and the
+    # affinity flips silently, with every handler below touching GUI state.
     job.signals.done.connect(lambda ok, msg: (_jobs.discard(job), on_done(ok, msg)))
     QThreadPool.globalInstance().start(job)
 

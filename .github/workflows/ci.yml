@@ -36,6 +36,11 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # The job's own ceiling. Without one a hang takes the 360-minute default,
+    # and verify_page.py is exactly the shape that hangs: it spawns
+    # subprocesses and talks HTTP to localhost. The whole lane is about forty
+    # seconds, so twenty minutes is a runaway, not a slow day.
+    timeout-minutes: 20
     steps:
       # Pinned to a commit, not to @v7: a tag is mutable and can be repointed
       # at other code after this line was reviewed. The trailing comment is
@@ -48,6 +53,15 @@ jobs:
           persist-credentials: false
 
       # actions/setup-python v7.0.0, pinned for checkout's reason.
+      #
+      # 3.13 is the runtime this proves, and the project claims 3.8+. Those
+      # are not the same statement and no matrix closes the gap: 3.8 is past
+      # end of life and setup-python no longer offers it here. The floor is
+      # held two other ways instead - ruff.toml sets target-version = "py38",
+      # so newer SYNTAX is a lint error on both machines, and the claim was
+      # measured directly on 2026-09-02 by compiling every module under
+      # CPython 3.8.20 and 3.9.25 (22 files, no failures). What remains
+      # unproven is 3.8 LIBRARY use, which is LOTTO-0065.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
@@ -62,7 +76,14 @@ jobs:
             libegl1 libxkbcommon0 libdbus-1-3 libgl1
 
       - name: Python tooling
-        run: pip install --disable-pip-version-check ruff PySide6
+        # ruff is PINNED and PySide6 is not, and the split is deliberate. Ruff
+        # decides a verdict, and ruff.toml's own header records what an
+        # unpinned one cost: 0.15.11 here against 0.16.1 there reported 0
+        # errors and 71 for the same tree. PySide6 only has to import for
+        # verify_page.py's one subprocess case, so its version decides nothing
+        # and pinning it would just age. Bumping the pin is
+        # `check-dependencies`' question, with its own diff.
+        run: pip install --disable-pip-version-check 'ruff==0.16.4' PySide6
 
       - name: The CI lane
         env:

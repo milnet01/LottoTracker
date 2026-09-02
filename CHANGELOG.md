@@ -8,6 +8,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The push gate now checks that it is actually installed** (LOTTO-0049)
+  git does not track hooks, so core.hooksPath is set once per clone and nothing asserted it — a clone that skipped that one command had an entirely inert gate with no signal at all. The CI job also carries a timeout, ruff is pinned on the runner because its version decides the verdict, and the privacy check's output is withheld on the public lane, where printing it would publish the leak it just caught.
+
 - **The cable import now carries the record-boundary guard the wireless path has** (LOTTO-0061)
   tools/import_adb.py sits in the README's adb pipe and neutralises a line inside a message body that claims to be a record boundary, deciding by the record index adb numbers from 0. The live dump passes through byte-identical; a crafted stream loses its forged record and the tool exits non-zero.
 
@@ -257,6 +260,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The Python 3.8 floor is enforced by the linter instead of only claimed** (LOTTO-0049)
+  ruff.toml sets target-version = "py38", so syntax newer than the stated floor is an error on both machines. Measured 2026-09-02: every module compiles under CPython 3.8.20 and 3.9.25. Library use at that floor is still unproven and is tracked separately.
+
 - **The period section says why it is empty instead of vanishing** (LOTTO-0054)
   It now renders its heading and a sentence saying no period has a scored draw yet, and that this is not a total of zero. It previously rendered nothing at all, which reads as a fault; the spec asked for a bare heading, which invites "so I won nothing". Settled by the user on 2026-09-02.
 
@@ -470,6 +476,18 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importing the derivation it is testing.
 
 ### Fixed
+
+- **The message inspector no longer prints message text raw, or guesses which phone** (LOTTO-0048)
+  Bodies and senders go through the same terminal-safe filter the scoring report uses, so an escape sequence in a message cannot drive the terminal. The device is chosen by asking KDE Connect for paired and reachable devices, rather than taking the first remembered one — which could be a phone last seen months ago. Its two fixed sleeps are replaced by the stop-growing poll the watcher already uses, so a slow link no longer produces a confident negative from a partial read.
+
+- **A game with no draw days hung the tray instead of raising** (LOTTO-0048)
+  The draw calendar walks a day at a time until it has collected enough draws, so an empty entry never terminated — on the GUI thread. It now raises, as the function's two other preconditions already did.
+
+- **Two watchers can no longer destroy each other's remembered thread list** (LOTTO-0047)
+  The thread state was written through a fixed temp path, so two watchers truncated each other's partial JSON and the reader swallowed it and returned an empty set — a loss that does not heal. The temp path now carries the pid, as every other atomic write in this project does. Its catch-up handler also survives a disk error rather than being silently removed by GLib, and the file is ignored by git along with its temp sibling.
+
+- **One future-dated message could silence the catch-up for good** (LOTTO-0047)
+  The high-water mark is the newest date the dump holds, and the date field is unbounded — so a single record from a skewed clock returned a value no real message can exceed, and the watcher asked for nothing thereafter. What that printed was the same line a healthy run prints. The mark is now bounded by now, and records outside it are named.
 
 - **A failed server spawn no longer leaves a token behind with no server** (LOTTO-0046)
   The token was minted before the process started, so a failed spawn passed the "is the server running" guard and sent the token to whatever held the port. Readiness and refresh now agree about a supervisor that owns no child; a warned-ticket record with an unparsable date is dropped rather than silencing that ticket's re-buy notice for good; and the notice's day and month names no longer follow the desktop's language.

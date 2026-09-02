@@ -112,6 +112,7 @@ fi
 
 FAILED=()
 LAST_OUT=""
+LAST_LABEL=""
 
 run() {  # run <label> <command...>
     local label="$1"; shift
@@ -119,11 +120,20 @@ run() {  # run <label> <command...>
     local out rc
     out=$("$@" 2>&1); rc=$?
     LAST_OUT="$out"
+    LAST_LABEL="$label"
     if [ "$rc" -eq 0 ]; then
         echo "PASS"
     else
         echo "FAIL (rc=$rc)"
-        printf '%s\n' "$out" | tail -20 | sed 's/^/       | /'
+        if [ "$CI_ONLY" -eq 1 ] && [ "$label" = "verify_privacy.py" ]; then
+            # NEVER on a public runner. This check reports WHAT it matched,
+            # and what it matches is real SMS content - so printing its output
+            # into a public Actions log publishes the leak it has just caught.
+            printf '       | output withheld on the CI lane: it quotes what it matched.\n'
+            printf '       | Run ./local-CI.sh locally to read it.\n'
+        else
+            printf '%s\n' "$out" | tail -20 | sed 's/^/       | /'
+        fi
         FAILED+=("$label")
     fi
     return 0
@@ -153,10 +163,31 @@ run "verify_page.py"    python3 tools/verify_page.py
 run "verify_watch.py"   python3 tools/verify_watch.py
 run "verify_privacy.py" python3 tools/verify_privacy.py
 PRIVACY_OUT="$LAST_OUT"
+# LAST_OUT belongs to whichever run() ran last, so this capture depended on
+# textual adjacency alone: insert a check between the two lines and the
+# full-strength assertion below silently grades the wrong command. The
+# adjacency is still what makes it right - this is what SAYS SO when it stops
+# being true.
+if [ "$LAST_LABEL" != "verify_privacy.py" ]; then
+    fail "privacy output captured" \
+         "PRIVACY_OUT holds the output of '$LAST_LABEL', not verify_privacy.py - a check was inserted between the run and the capture."
+fi
 
 # --- the local-only lane ---------------------------------------------------
 if [ "$CI_ONLY" -eq 0 ]; then
     echo "local-CI: local-only lane (needs the SMS dump and the scraped archive)"
+
+    # The gate is only a gate if it is ON the push, and git does not track
+    # hooks - core.hooksPath is local config, set once per clone. Nothing
+    # asserted it, so a clone that skipped that one command had an entirely
+    # inert push gate with no signal at all: every push went straight out, and
+    # a green verdict here said nothing about it.
+    if [ "$(git config --get core.hooksPath 2>/dev/null)" = ".githooks" ]; then
+        printf '  %-32s PASS\n' "push hook wired"
+    else
+        fail "push hook wired" \
+             "core.hooksPath is not .githooks, so .githooks/pre-push never runs and this gate is not on the push. Fix, once per clone: git config core.hooksPath .githooks"
+    fi
 
     # The privacy check above is only worth its exit code in content+pattern
     # mode. Locally the dump is present, so "pattern only" is a broken gate
