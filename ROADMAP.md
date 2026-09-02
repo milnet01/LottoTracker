@@ -1530,13 +1530,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   narrower: a page that parses into a *wrong* table;
   (b) `backfill.py::parse_page()` raises `KeyError` on an abbreviated month
   in a href rather than skipping the row;
-  (c) INV-5's grep sees only a double-quoted `"MATCH <digit>` literal — it
+  (c) ✅ **closed by LOTTO-0026 (INV-26); marker recorded 2026-09-02.** INV-5's grep sees only a double-quoted `"MATCH <digit>` literal — it
   cannot see the label grammar in `api_label()`/`site_label()`, so a
   feed-side rename of `MATCH n` would drop every win silently.
   **Superseded 2026-08-03 by LOTTO-0026, which owns the runtime half** —
   this bullet describes a blind spot in a *check*, and the same grammar has
-  a matching hole in the *code* that is the more serious of the two. Close
-  them together; do not fix the grep alone and read (c) as done;
+  a matching hole in the *code* that is the more serious of the two. They were closed together: LOTTO-0026 shipped the runtime guard, and the grep half was resolved by DECIDING NOT to widen it. LOTTO-0001 §11's INV-5 row records why — `api_label()` builds three of its four forms with f-strings, so a pattern broad enough to see them fires on correct code — and names INV-26 as what catches a rename "in place of a wider glob". Nothing further is owed here;
   (d) Multiplay expansion is Lotto-only; a >6-number PowerBall or Daily
   board would silently collapse to one line (no such ticket exists today);
   (e) §8's "~30 lookups a month" is not recomputed from §10's request model.
@@ -2534,3 +2533,61 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** A ten-lane independent review found three serious faults and fifteen more; all are fixed
   Kind: review-fix.
   Source: review-code-2026-09-01.
+
+- 📋 [LOTTO-0058] **Nothing tests the 365-day claim boundary, and nothing tracked that.**
+  `docs/specs/LOTTO-0001-lottery-ticket-tracker.md` §11 carries the row
+  `§4.4 expiry / CLAIM_DAYS | **nothing** - no test covers the 365-day
+  boundary, and nothing tracks the gap`. The second clause was true when
+  written and is what this item fixes: the gap now has an owner.
+
+  Two things to settle before writing anything, in this order.
+
+  FIRST, whether LOTTO-0011 already absorbs it. That item retires the "still
+  claimable" framing on the grounds that the bank pays most small wins back
+  automatically, and LOTTO-0029 records it as owning `CLAIM_DAYS` semantics.
+  If the deadline stops being surfaced at all, the boundary may not need a
+  test so much as a decision - and that decision is LOTTO-0011's, not this
+  item's. Do not write the test before that is settled, or it locks a
+  contract that is being retired.
+
+  SECOND, if the boundary survives, the test is the ordinary one: a win whose
+  draw date is exactly `CLAIM_DAYS` old, and one a day either side. Same
+  shape as INV-61's `today` boundary in `tools/verify_expiry.py`, and for the
+  same reason - a one-sided assertion goes green against a defect arriving
+  from the other direction.
+
+  Whichever way it goes, §11's row is updated in the same change so it stops
+  saying nothing tracks the gap.
+  **Layman:** The app works out when a prize can no longer be claimed, and no test checks that date is right
+  Kind: test.
+  Source: session-audit-2026-09-02 backlog tally.
+  Lanes: check.py, tools.
+
+- 📋 [LOTTO-0059] **The 2026-09-01 review-code sweep left no record file, so its own claims are unverifiable.**
+  `docs/reviews/` holds a record for the cold-eyes loop and for the CLAUDE.md
+  review, and every spec carries its own loop log. The `review-code` sweep of
+  2026-09-01 - the single largest source of open findings here, spread across
+  LOTTO-0040 to LOTTO-0049 - has none. Its findings exist only as ROADMAP
+  bullets.
+
+  Why that matters rather than being untidy: each of those ten bodies opens
+  by stating that its lane's CRITICAL and HIGH findings were already closed
+  by LOTTO-0050. With no record file, that claim is checkable only against
+  LOTTO-0050's own body and against git - both of which are the same session
+  speaking. There is no independent statement of what each lane found, how
+  many were verified, and how many were dismissed. A dismissed finding in
+  particular leaves no trace at all.
+
+  The deliverable is a record of what that sweep found, per lane, written
+  from whatever evidence survives - the ten bullets, LOTTO-0050's body, the
+  commit, and `.ants_review_falsepos.jsonl`. Where the evidence does not
+  support a number, say so rather than reconstructing one: a back-filled
+  record that reads as contemporaneous is worse than the gap it fills.
+
+  Then decide whether a record file is owed by every sweep from now on, and
+  write that down wherever the answer belongs - the gap recurs otherwise, and
+  this item only closes the one instance.
+  **Layman:** The biggest code review this project has run left no report - only to-do items - so nobody can check what it actually found
+  Kind: doc.
+  Source: session-audit-2026-09-02 backlog tally.
+  Lanes: docs.
