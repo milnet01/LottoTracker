@@ -1399,6 +1399,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: investigate.
   Source: review-code-2026-09-01 lane results-sources open question.
 
+- 📋 [LOTTO-0060] **Nothing on disk says what v1.0.0 contains, so no session can work toward it.**
+  Searched every tracked `.md` and `.py` on 2026-09-02 for a version scope,\nmilestone or release grouping: NO match anywhere, and the project carries no\nversion string at all. LOTTO-0015 is described as \"still why no release is\ncut\", which is a clue and not a definition.\n\nSo an instruction to \"work on what gets us to v1.0.0\" cannot be executed. A\nsession either stops and asks, or guesses - and a guessed release scope is\nthe kind of decision that is expensive to reverse once items have been\nworked in its order.\n\nWHAT THIS ITEM NEEDS FROM THE USER, not from a session: which of the open\nitems are v1.0.0 and which are later. A reasonable starting proposal, for\nthe user to accept or redraw rather than for a session to adopt: LOTTO-0015\n(packaging) is the obvious gate, since an unpackaged tool has no release to\ncut; the five signs of success in `README.md` are the project's own\ndefinition of working, so any sign still open is a candidate; and the\nreview-fix backlog is quality rather than scope, so it does not obviously\nbelong to any one version.\n\nOnce settled, record it where a session will find it without asking - a\nversion field on the items themselves, or a section per release - and give\nthe project a version string so `cut-release` has something to bump.\n\nSTANDING WORK ORDER, set by the user 2026-09-02 and recorded here because\nit governed no document before. In order:\n  1. outstanding fixes from any and all reviews, backlogged items included -\n     that is LOTTO-0007's open letters and LOTTO-0040..0049;\n  2. open roadmap items that get us to v1.0.0 - BLOCKED by this item;\n  3. open roadmap items toward the version after that - blocked for the same\n     reason.\nPriority 1 is startable today and is where a session should go while 2 and 3\nare undefined. This order is the user's current call, not a permanent rule;\ncheck with them before treating it as settled far in the future.
+  **Layman:** We have never written down which jobs have to be finished before we can call this version 1.0
+  Kind: release.
+  Source: user-decision-2026-09-02.
+
 ## Hardening
 
 - ✅ [LOTTO-0025] **A pre-push gate, and the CI that mirrors it.**
