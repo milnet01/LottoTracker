@@ -20,9 +20,8 @@ payout lookup needs, which is why archive-era wins cannot price themselves.
 import json
 import os
 
+from backfill import ARCHIVE
 from results import draws as api_draws
-
-ARCHIVE = "archive_results.json"
 
 # winPoolName as the API reports it, per (game, plusFlag)
 POOL_NAMES = {
@@ -47,7 +46,8 @@ def all_draws(game, plus_flag):
     by_date = {}
 
     if os.path.exists(ARCHIVE):
-        archive = json.load(open(ARCHIVE)).get(f"{game}:{plus_flag}", {})
+        with open(ARCHIVE, encoding="utf-8") as fh:
+            archive = json.load(fh).get(f"{game}:{plus_flag}", {})
         for date, row in archive.items():
             by_date[date] = {
                 "date": date,
@@ -61,9 +61,24 @@ def all_draws(game, plus_flag):
     for r in api_draws(game, 400):
         if r["winPoolName"].upper() != want.upper():
             continue
-        nums = [int(n) for n in r["winNumList"]]
+        # A draw the feed lists before it happens carries no numbers, and a
+        # malformed one carries numbers that will not parse. Neither is a draw,
+        # and int() raising here takes out every consumer of this module at
+        # once - check.py, the page's build and six verifiers.
+        try:
+            nums = [int(n) for n in r.get("winNumList") or []]
+        except (TypeError, ValueError):
+            print(f"  SKIPPED {want} {str(r.get('drawTime'))[:10]}: winNumList "
+                  f"{r.get('winNumList')!r} is not a list of numbers")
+            continue
+        if not nums:
+            continue  # listed, not yet drawn
         special = nums[-1] if game in ("lotto", "powerball") else None
         main = nums[:-1] if special is not None else nums
+        if not main:
+            # One number for a game that has a special leaves no mains.
+            # backfill.parse_page() drops the same shape for the same reason.
+            continue
         date = r["drawTime"][:10]
         by_date[date] = {  # official wins on overlap
             "date": date,

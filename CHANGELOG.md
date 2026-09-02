@@ -251,6 +251,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **backfill refuses to write an incomplete archive** (LOTTO-0041)
+  One HTTP failure aborted the run on the spot. Failures are now collected across every pool and reported together, and the archive is not written at all: a missing year is a hole that history.covered() would score an entry straight across. The current year's listing page is also no longer cached, since it is still growing.
+
 - **One pool selector for the project, not two** (LOTTO-0042)
   check.py picked its division table by plusFlag where history.py picks the same feed rows by winPoolName, and nothing asserted the two agreed. The second selector is gone. Measured identical on all six live pools before removal.
 
@@ -458,6 +461,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importing the derivation it is testing.
 
 ### Fixed
+
+- **The archive and its cache resolve from the code, not the working directory** (LOTTO-0041)
+  backfill.CACHE and the archive path are anchored to __file__, and history.py imports the archive path from backfill rather than keeping its own copy. Verified by loading draws with the working directory outside the repository.
+
+- **A draw the feed lists before it happens no longer aborts the whole app** (LOTTO-0041)
+  An absent, empty or unparsable winNumList raised out of int() inside history.all_draws(), taking check.py, the page's build and six verifiers with it. Such a record is not a draw, and is skipped; a malformed one is named.
 
 - **The dump is closed rather than left to the garbage collector** (LOTTO-0040)
   load() and load_payouts() now read it through a context manager.

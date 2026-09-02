@@ -20,11 +20,20 @@ import json
 import os
 import re
 import time
+import urllib.error
 import urllib.request
 
 BASE = "https://za.national-lottery.com"
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36"
-CACHE = "archive_cache"
+
+# Anchored to this file, never to the working directory: supervise.py was
+# already working around the cwd-relative form per caller with cwd=HERE, and
+# verify_privacy.py resolves from __file__, so the project held both patterns.
+# history.py imports ARCHIVE from here rather than keeping a second copy - the
+# scraper owns where it writes, and one path cannot drift from itself.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+CACHE = os.path.join(_HERE, "archive_cache")
+ARCHIVE = os.path.join(_HERE, "archive_results.json")
 
 # site slug -> (internal game key, plusFlag)
 SLUGS = {
@@ -87,8 +96,13 @@ def _write_atomic(path, text):
 def fetch(slug, year):
     os.makedirs(CACHE, exist_ok=True)
     path = f"{CACHE}/{slug}-{year}.html"
-    if os.path.exists(path):
-        return open(path, errors="replace").read()
+    # A past year's listing is closed, so a cached copy is good for ever. The
+    # CURRENT year's is still growing, and every reader here treats a cached
+    # page as authoritative for all time - so caching it freezes the archive at
+    # whatever day it was first fetched, with nothing saying so.
+    if os.path.exists(path) and year < datetime.date.today().year:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
     req = urllib.request.Request(
         f"{BASE}/{slug}/results/{year}-archive", headers={"User-Agent": UA}
     )
@@ -150,13 +164,29 @@ FIRST_YEAR = 2022
 def build(years=None):
     if years is None:
         years = range(FIRST_YEAR, datetime.date.today().year + 1)
-    archive = {}
+    archive, failed = {}, []
     for slug, (game, plus) in SLUGS.items():
         rows = {}
         for y in years:
-            rows.update(parse_page(fetch(slug, y), slug))
+            try:
+                rows.update(parse_page(fetch(slug, y), slug))
+            except urllib.error.HTTPError as e:
+                # Collected rather than raised on the spot, so one 404 does not
+                # hide the state of the other five pools. NOT skipped either: a
+                # missing middle year is a hole in the draw list, and covered()
+                # takes the first N draws on or after a start date - so it
+                # would score an entry straight across the gap, against real
+                # draws that are the wrong ones (INV-6). Hence the refusal
+                # below rather than a partial write.
+                failed.append(f"{slug} {y}: HTTP {e.code}")
         archive[f"{game}:{plus}"] = rows
         print(f"  {slug:15} {len(rows):4} draws")
+    if failed:
+        raise RuntimeError(
+            "archive incomplete, refusing to write: " + "; ".join(failed)
+            + ". A missing year is a hole covered() would score straight "
+            "across; the pages that did fetch are cached, so a re-run is cheap."
+        )
     return archive
 
 
@@ -180,7 +210,8 @@ def payouts(game, plus_flag, date):
     month = [k for k, v in MONTHS.items() if v == int(m)][0]
     path = f"{CACHE}/payout-{slug}-{date}.html"
     if os.path.exists(path):
-        html = open(path, errors="replace").read()
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            html = fh.read()
     else:
         url = f"{BASE}/{slug}/results/{int(d):02d}-{month}-{y}"
         req = urllib.request.Request(url, headers={"User-Agent": UA})
@@ -198,7 +229,13 @@ def payouts(game, plus_flag, date):
         ]
         cells = [c for c in cells if c]
         if len(cells) >= 3 and cells[0].isdigit() and cells[2].startswith("R"):
-            out[cells[1]] = float(cells[2][1:].replace(",", ""))
+            try:
+                out[cells[1]] = float(cells[2][1:].replace(",", ""))
+            except ValueError:
+                # "Rollover" passes startswith("R") too. A row whose amount
+                # will not parse is not a division row, and letting float()
+                # raise here aborts check.py entirely.
+                continue
     return out
 
 
@@ -208,7 +245,5 @@ if __name__ == "__main__":
     # Atomic for _write_atomic()'s reason, with more force: this truncates the
     # ONLY copy, and a failure inside json.dump leaves unparseable JSON that
     # makes history.py raise on every subsequent run.
-    _write_atomic(
-        "archive_results.json", json.dumps(data, indent=1, sort_keys=True)
-    )
+    _write_atomic(ARCHIVE, json.dumps(data, indent=1, sort_keys=True))
     print(f"\nwrote archive_results.json ({sum(len(v) for v in data.values())} draws)")

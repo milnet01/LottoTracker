@@ -457,10 +457,11 @@ class Supervisor:
         self.token = secrets.token_urlsafe(32)
         self.child = subprocess.Popen(
             [sys.executable, os.path.join(HERE, "serve.py")],
-            # Not optional. The server's data paths are relative to the working
-            # directory - history.ARCHIVE, backfill.CACHE, tickets.load()'s
-            # default - and an autostart session's cwd is not the repository, so
-            # without this the child finds no data and renders an empty page.
+            # Not optional. tickets.load()'s default dump path is relative to
+            # the working directory, and an autostart session's cwd is not the
+            # repository, so without this the child finds no messages and
+            # renders an empty page. history.ARCHIVE and backfill.CACHE were on
+            # the same list until LOTTO-0041 anchored them to __file__.
             cwd=HERE,
             env={
                 **os.environ,

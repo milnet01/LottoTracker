@@ -2270,7 +2270,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: review-fix.
   Source: review-code-2026-09-01 lane sms-parsing.
 
-- 📋 [LOTTO-0041] **Deferred review findings in the two results sources.**
+- ✅ [LOTTO-0041] **Deferred review findings in the two results sources.**
   From the 2026-09-01 review-code sweep. The lane's three HIGHs (retry arms,
   atomic writes, parse_page shape validation) were fixed; these remain.
 
@@ -2289,6 +2289,37 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
     raises. LOW results.py:68 - a non-dict payload raises AttributeError.
     LOW results.py:84 - divisions()'s defaults silently mean the base pool.
     LOW - no encoding= on any open() while the wire is decoded as UTF-8.
+  Resolved 2026-09-02, local-CI.sh green on both lanes. All eight findings fixed.
+
+  all_draws() skips a record whose winNumList is absent, empty or unparsable
+  rather than raising out of int() and taking every consumer with it - a draw
+  the feed lists before it happens carries no numbers. A malformed one is said
+  out loud, the way backfill.parse_page() already does; a record with no main
+  numbers is dropped for the same reason.
+
+  CACHE and ARCHIVE are anchored to __file__, and history.py imports ARCHIVE
+  from backfill.py rather than keeping a second copy - the scraper owns where it
+  writes. Proved from /tmp: 486 lotto draws load with the working directory
+  elsewhere. backfill's __main__ writes through the same constant instead of a
+  literal.
+
+  fetch() no longer caches the CURRENT year's listing page. A past year is
+  closed, so a cached copy is good for ever; the current one is still growing,
+  and caching it froze the archive at whatever day it was first fetched.
+
+  build() collects HTTP failures instead of aborting on the first, and then
+  REFUSES to write. Skipping a year would leave a hole covered() scores an entry
+  straight across, which is worse than no archive at all.
+
+  Smaller: a payout row whose amount will not parse ("Rollover" passes
+  startswith("R")) is skipped rather than raising; _post() rejects a non-dict
+  payload with a clear error instead of AttributeError from .get(); divisions()
+  takes all four arguments, its defaults having silently named the base pool;
+  and every file this lane reads is opened as UTF-8, which is how the wire is
+  decoded and how the cache is written.
+
+  Collateral, fixed in the same pass: supervise.py's comment on cwd=HERE listed
+  three cwd-relative paths, two of which are now anchored.
   **Layman:** Smaller robustness fixes in the code that fetches draw results
   Kind: review-fix.
   Source: review-code-2026-09-01 lane results-sources.

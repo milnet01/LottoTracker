@@ -79,6 +79,12 @@ def _post(path, body):
             if attempt == ATTEMPTS - 1:
                 raise          # the ORIGINAL error, unwrapped
             time.sleep(BACKOFF * 2**attempt)
+    if not isinstance(payload, dict):
+        # .get() on a list raises AttributeError, which is outside both the
+        # retry arms above and every caller's expectations.
+        raise RuntimeError(
+            f"{path}: expected a JSON object, got {type(payload).__name__}"
+        )
     if payload.get("code") != 0:
         raise RuntimeError(f"{path}: {payload.get('msg', payload)}")
     return payload["data"]
@@ -95,8 +101,12 @@ def draws(game, count=10):
 _divisions_cache = {}
 
 
-def divisions(game, issue, win_pool_id=100, plus_flag=0):
+def divisions(game, issue, win_pool_id, plus_flag):
     """Prize breakdown for one draw: which division paid what, to how many.
+
+    Every argument is required. The defaults were 100 and 0, which name the
+    BASE pool - so a caller that forgot them priced a PLUS win off the base
+    table and got a plausible wrong number rather than an error.
 
     Memoised: scoring asks for the same draw once per winning line, and a
     ticket running 10 draws across 7 Multiplay lines would otherwise issue
