@@ -251,6 +251,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **One pool selector for the project, not two** (LOTTO-0042)
+  check.py picked its division table by plusFlag where history.py picks the same feed rows by winPoolName, and nothing asserted the two agreed. The second selector is gone. Measured identical on all six live pools before removal.
+
+- **The bank-vs-app comparison runs only over references that could be scored** (LOTTO-0042)
+  A reference nothing could score was priced at R0.00 and its whole payout charged to the "unexplained difference". Both totals are now drawn over the scored references, the rest are counted beside them, and the line is renamed to say what it measures.
+
 - **The re-buy warning's calendar check asserts direction, not distance** (LOTTO-0034)
   INV-51 required the projected final draw to be within one day of the real
   one. The wider archive falsified that with a fact about the world rather than
@@ -452,6 +458,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importing the derivation it is testing.
 
 ### Fixed
+
+- **Three silent failure modes in scoring and reconciliation** (LOTTO-0042)
+  An unreadable archive payout page made the retired-division report print nothing and read as clean; it now raises, as its two sibling call sites already did. The NO PAYOUT DATA notice can no longer be swallowed by an exception guard whose stated cause cannot occur. The archive-page division key is read as ambiguous in both directions, so a draw spelling a tier the other way round is no longer reported as retired.
 
 - **Notifications and switches were unusable with a screen reader** (LOTTO-0050)
   The two settings switches had no readable name at all. The visible text

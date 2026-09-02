@@ -1261,7 +1261,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: fix.
   Source: verify-delivery-2026-09-01 sign 4.
 
-- 📋 [LOTTO-0052] **The README's unexplained-difference figure is stale, and the figure itself is measured wrongly.**
+- ✅ [LOTTO-0052] **The README's unexplained-difference figure is stale, and the figure itself is measured wrongly.**
   Two separate things, found by running check.py on 2026-09-01.
 
   The README (line 44) says the unexplained difference fell to R338.40.
@@ -1278,6 +1278,13 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   closing LOTTO-0042 will change the number sign 5 is judged by, and the
   README should be updated from the corrected figure rather than from
   this one. Do them in that order.
+  Resolved 2026-09-02 with LOTTO-0042, in the order this item asked for. The
+  measure was corrected first; the README then dropped the figure rather than
+  re-taking it, because it is re-measured on every run and goes stale the same
+  way (documentation.md 2.3). It now points at `python3 check.py`. The dated
+  LOTTO-0006 records in CHANGELOG.md, ROADMAP.md and the LOTTO-0029 spec are
+  left as written; the spec carries a new dated note saying the two figures are
+  not comparable.
   **Layman:** The number quoted for what we cannot explain is out of date, and the way it is calculated overstates it
   Kind: doc-fix.
   Source: verify-delivery-2026-09-01 sign 5.
@@ -2264,7 +2271,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: review-fix.
   Source: review-code-2026-09-01 lane results-sources.
 
-- 📋 [LOTTO-0042] **Deferred review findings in scoring and reconciliation.**
+- ✅ [LOTTO-0042] **Deferred review findings in scoring and reconciliation.**
   From the 2026-09-01 review-code sweep. This lane produced no CRITICAL and
   no HIGH, but two of its MEDIUMs are the cardinal rule one layer below the
   page and are the most valuable items in this batch.
@@ -2284,6 +2291,18 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
     where history.py selects on winPoolName. Nothing asserts they agree.
   - LOW check.py:168 one-directional ambiguity guard; check.py:238 covered()
     recomputed per board; check.py:556 feed labels printed raw (CWE-150).
+  Resolved 2026-09-02. All seven findings fixed and local-CI.sh green on both
+  lanes. reconcile_report() draws both totals over the SCORED references and
+  counts the unscorable ones beside them, and the gap line now says what it
+  measures; retired_divisions() raises on an unreadable archive payout page
+  instead of reporting a clean run; __main__'s `except OSError` is gone, so
+  INV-47's notice cannot be swallowed; the second pool selector is gone, with
+  history.py's winPoolName the project's only one (measured identical on all six
+  live pools before removal); the archive-key ambiguity is read both ways round;
+  covered() is hoisted out of the board loop; and feed and SMS text printed to
+  the terminal goes through tickets.terminal_safe(). Collateral, fixed in the
+  same pass: verify_pools.py's draws double carried no winPoolName, so it was
+  not a feed row.
   **Layman:** The terminal report can fold "nothing could be checked" into a money total
   Kind: review-fix.
   Source: review-code-2026-09-01 lane scoring-and-pricing.

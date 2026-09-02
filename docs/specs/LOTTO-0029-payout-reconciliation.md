@@ -97,6 +97,14 @@ did **not** move is the residue LOTTO-0033 and LOTTO-0037 own: `low` is still
 15, `unexplained` still 4, and `high` rose from 2 to 4. Consequence 3's argument
 is unchanged — it is why the categories are separate — but its 142 is history.
 
+**Update 2026-09-02 — LOTTO-0042 corrected the MEASURE, so the figure above is
+not comparable with the current one.** That gap was taken with
+`computed_cents: None` folded in as zero, which prices a reference nothing
+could score at R0.00 and charges its whole payout to the difference — INV-43's
+three-valued rule broken on the money line. Both totals are now drawn over the
+scored references only, with the unscorable ones counted beside them.
+`python3 check.py` prints the current figure.
+
 Consequence 3 is why this cannot be built as a scoring correction. An
 unexplained payout is a fact about the domain — the traced case reaches no
 paying division in any of its three pools against numbers now verified twice,

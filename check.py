@@ -11,9 +11,9 @@ Both are cached, so a re-run is cheap.
 from datetime import datetime, timedelta
 
 from backfill import payouts
-from history import all_draws, covered, scorable
+from history import POOL_NAMES, all_draws, covered, scorable
 from results import divisions, draws
-from tickets import load, load_payouts
+from tickets import load, load_payouts, terminal_safe
 
 CLAIM_DAYS = 365  # SA prizes expire a year after the draw
 
@@ -36,7 +36,11 @@ def paying_combinations(game, plus_flag=0, pool_id=100):
     """
     key = (game, plus_flag, pool_id)
     if key not in _struct:
-        rows = [x for x in draws(game, 50) if x["plusFlag"] == plus_flag]
+        # ONE pool selector for the project. history.py picks the same rows out
+        # of the same feed by winPoolName; a second encoding here on plusFlag
+        # was two answers nothing asserted agree.
+        want = POOL_NAMES[(game, plus_flag)].upper()
+        rows = [x for x in draws(game, 50) if x["winPoolName"].upper() == want]
         if not rows:
             # Returning {} here would score every line in the pool as a loss
             # with no diagnostic - the "no data reads as no win" failure this
@@ -139,9 +143,10 @@ def retired_divisions(game, plus_flag=0, pool_id=100):
     shapes state "eight prize divisions" in prose and carry exactly eight
     rows, so it is one division inconsistently labelled rather than two
     (measured 2026-08-12 across 26 cached Lotto pages - amount() already leans
-    on the same equivalence from the other direction). A plain key whose
-    bonus-qualified sibling is absent is therefore read as whichever tier the
-    current set does carry, and only a key that no reading can place is
+    on the same equivalence from the other direction). A key whose sibling
+    shape is absent from the page is therefore read as whichever tier the
+    current set does carry - in BOTH directions, since either spelling can be
+    the one a given draw used - and only a key that no reading can place is
     reported. Read the other way it would flag every match-2-without-bonus
     line in the archive era as a possible win, which is this project's
     cardinal failure inverted - a loss reading as a win.
@@ -153,6 +158,16 @@ def retired_divisions(game, plus_flag=0, pool_id=100):
             _retired[key] = []
             return _retired[key]
         table = payouts(game, plus_flag, old[-1]["date"])
+        if not table:
+            # INV-31's own named break mode. An empty table misses every
+            # site_label lookup below, so the gap comes back empty and the run
+            # reads clean - the silence this report exists to prevent. amount()
+            # raises on the identical condition.
+            raise RuntimeError(
+                f"{game}/{plus_flag} pool {pool_id}: the archive payout page "
+                f"for {old[-1]['date']} carries no division rows, so no "
+                f"retired division can be detected"
+            )
         pays = paying_combinations(game, plus_flag, pool_id)
         specials = (False, True) if game in ("lotto", "powerball") else (False,)
         gap = set()
@@ -163,12 +178,12 @@ def retired_divisions(game, plus_flag=0, pool_id=100):
                 label = api_label(game, hits, special)
                 if label in pays:
                     continue
-                # The ambiguous plain key: with no bonus-qualified sibling on
-                # the page, it names the tier the current set does carry.
+                # The ambiguous key, both directions. Read one-directionally,
+                # a page spelling the tier "2 + Bonus" where the current set
+                # says "MATCH 2" is reported as retired when nothing retired.
                 if (
-                    not special
-                    and site_label(game, hits, True) not in table
-                    and api_label(game, hits, True) in pays
+                    site_label(game, hits, not special) not in table
+                    and api_label(game, hits, not special) in pays
                 ):
                     continue
                 gap.add(label)
@@ -235,8 +250,11 @@ def check(tickets=None, today=None):
             if not scorable(t, plus_flag):
                 continue  # reported per entry; never scored, never a loss
             pays = paying_combinations(t.game, plus_flag, pool_id)
+            # Per entry, not per board: covered() walks the pool's whole draw
+            # list and returns the same answer for every board on the ticket.
+            drawn_over = covered(t, plus_flag)
             for board in t.boards:
-                for d in covered(t, plus_flag):
+                for d in drawn_over:
                     hits, special = match(t, board, d)
                     label = api_label(t.game, hits, special)
                     if label not in pays:
@@ -458,23 +476,43 @@ def reconcile_report(records):
     counts = {k: 0 for k in CATEGORY_NOTE}
     for r in records:
         counts[r["category"]] += 1
+
+    # `computed_cents` is three-valued, and None means NOTHING COULD BE SCORED.
+    # Folding it in as 0 prices those references at nothing and charges the
+    # whole of their payout to the gap - the cardinal rule broken on the money
+    # line, "not checkable" read as "checked, won nothing". The comparison is
+    # therefore drawn over the SCORED references on both sides, and the rest
+    # are named rather than absorbed.
     paid_total = sum(r["paid_cents"] or 0 for r in records)
-    computed_total = sum(r["computed_cents"] or 0 for r in records)
+    scored = [r for r in records if r["computed_cents"] is not None]
+    unscorable = len(records) - len(scored)
+    paid_scored = sum(r["paid_cents"] or 0 for r in scored)
+    computed_total = sum(r["computed_cents"] for r in scored)
 
     lines = [
         f"THE BANK PAID R{paid_total / 100:,.2f} over "
-        f"{sum(1 for r in records if r['paid_cents'])} references; "
-        f"this app computes R{computed_total / 100:,.2f}.",
+        f"{sum(1 for r in records if r['paid_cents'])} references.",
+        f"  Of those, {len(scored)} could be scored: the bank paid "
+        f"R{paid_scored / 100:,.2f} and this app computes "
+        f"R{computed_total / 100:,.2f}.",
         "  Both figures are shown wherever they differ. Neither replaces the other.",
     ]
+    if unscorable:
+        lines.append(
+            f"  {unscorable} reference{'s' if unscorable > 1 else ''} "
+            f"{'are' if unscorable > 1 else 'is'} OUTSIDE that comparison: "
+            f"nothing could be scored, which is not a zero"
+        )
     for key in ("unpaid", "low", "high", "unexplained", "no_ticket", "unscored", "agree"):
         if counts[key]:
             lines.append(f"  {counts[key]:4} {key:12} {CATEGORY_NOTE[key]}")
-    gap = paid_total - computed_total
+    gap = paid_scored - computed_total
     if gap:
-        lines.append(f"  unexplained difference: R{gap / 100:,.2f}")
+        lines.append(f"  difference over the scored references: R{gap / 100:,.2f}")
     counts["paid_cents"] = paid_total
     counts["computed_cents"] = computed_total
+    counts["scored"] = len(scored)
+    counts["unscorable"] = unscorable
     return lines, counts
 
 
@@ -542,20 +580,23 @@ if __name__ == "__main__":
 
     # The bank's own record, against ours (LOTTO-0029). `wins`, not `live`:
     # the payouts are lifetime, so a prize paid in 2025 is still money paid.
-    try:
-        paid_lines, _ = reconcile_report(reconcile(all_tickets, wins, load_payouts()))
-    except OSError:
-        # No dump is already reported above; do not turn it into a traceback.
-        paid_lines = []
+    # No guard here on purpose. load() above reads the same dump and raises if
+    # it is missing, so the only OSError this could catch is a real I/O
+    # failure - and swallowing it replaces INV-47's loud NO PAYOUT DATA notice
+    # with silence, which is the one outcome that invariant forbids.
+    paid_lines, _ = reconcile_report(reconcile(all_tickets, wins, load_payouts()))
     if paid_lines:
         print("\n".join(paid_lines))
         print()
 
     print(f"{len(wins)} winning lines total; {len(live)} still claimable\n")
     for w in live:
+        # ref comes from an SMS and division from the feed; both are outside
+        # this project's control and go straight to a terminal (CWE-150).
         print(
-            f"  {w['date']}  {w['ref']}  {w['game']}/{w['plus_flag']}  "
-            f"line {w['line']:3}  {w['division']:6} (match {w['matched']})  "
+            f"  {w['date']}  {terminal_safe(w['ref'])}  "
+            f"{w['game']}/{w['plus_flag']}  line {w['line']:3}  "
+            f"{terminal_safe(w['division']):6} (match {w['matched']})  "
             f"R{w['amount']:>9,.2f}  expires {w['expires']}"
         )
     print(f"\nSTILL CLAIMABLE: R{sum(w['amount'] for w in live):,.2f}")

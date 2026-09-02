@@ -352,7 +352,13 @@ def main(argv=()):
     ]
     try:
         for name, game, labels, want_raise in reach_probes:
-            check.draws = lambda *a, **k: [{"plusFlag": 0, "wagerIssue": 1}]
+            # The double has to carry every field paying_combinations reads.
+            # It selects the pool by winPoolName - the one selector history.py
+            # also uses - so a row without that key is not a feed row.
+            check.draws = lambda *a, _g=game, **k: [
+                {"winPoolName": check.POOL_NAMES[(_g, 0)],
+                 "plusFlag": 0, "wagerIssue": 1}
+            ]
             check.divisions = lambda *a, **k: [
                 {"matches": lbl, "winLevelName": lbl} for lbl in labels
             ]

@@ -282,6 +282,19 @@ def rows(raw):
     return out
 
 
+def terminal_safe(s):
+    """Third-party text, safe to print to a terminal (CWE-150).
+
+    SMS bodies and feed labels are outside this project's control and reach
+    stdout verbatim, where a C0 escape or a bidi override drives the terminal
+    emulator instead of being read. Tab and newline survive because they are
+    layout; everything unprintable becomes U+FFFD.
+    """
+    return "".join(
+        c if c in "\t\n" or c.isprintable() else "�" for c in str(s)
+    )
+
+
 def load(path="lotto_sms_raw.txt"):
     out = []
     for _address, date_ms, body in rows(open(path, errors="replace").read()):
