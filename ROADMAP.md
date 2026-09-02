@@ -2227,7 +2227,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: security.
   Source: check-code-tree-2026-08-31.
 
-- 📋 [LOTTO-0040] **Deferred review findings in the SMS parser.**
+- ✅ [LOTTO-0040] **Deferred review findings in the SMS parser.**
   From the 2026-09-01 review-code sweep. The lane's HIGH (the uncaught
   ValueError family) was fixed; these are its MEDIUM and LOW tail.
 
@@ -2244,6 +2244,28 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
     Multiplay lines; the code strips first, so it is the single-letter label.
   - INFO tickets.py:158 - the old format is read DD/MM/YYYY, correct for ZA,
     but every fixture uses 01/01/2020, which cannot distinguish it from MM/DD.
+  Resolved 2026-09-02, local-CI.sh green on both lanes.
+
+  Fixed: the board-line regex no longer nests a quantifier over an optional
+  separator, so a crafted SMS cannot hang every later run (measured 1.2s at 24
+  digits before, and the strict form rejects no board line in the dump); load()
+  and load_payouts() close the dump through a context manager; and the comment
+  at the board loop named indentation as what excludes a Multiplay combination
+  when the line is stripped first - it is the absent "X: " label.
+
+  Documented, because no code fix exists: the `Row: N address=` boundary is not
+  escaped, so rows() cannot tell a forged record from a real one after the fact.
+  The guard has to sit on the writing side, watch_sms.py has one and the adb
+  import has no project code to put one in. Said so in rows() and at both copies
+  of the adb command. The fix needs a decision and is filed as LOTTO-0061.
+
+  Dismissed: the dump being read twice per run. It is about a megabyte, read
+  once per process, and a cache would need invalidating whenever watch_sms.py
+  appends - state bought for nothing.
+
+  Carried to the test audit: the old date format is read DD/MM/YYYY, correct for
+  ZA, but the only fixture is 01/01/2020, which cannot tell DD/MM from MM/DD. It
+  needs a test written, not an edit here.
   **Layman:** Smaller robustness fixes in the code that reads ticket messages
   Kind: review-fix.
   Source: review-code-2026-09-01 lane sms-parsing.
@@ -2616,3 +2638,25 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: doc.
   Source: session-audit-2026-09-02 backlog tally.
   Lanes: docs.
+
+- 📋 [LOTTO-0061] **The adb bulk import writes to the dump with no record-boundary guard.**
+  Split out of LOTTO-0040 because it needs a decision, not an edit.
+
+  The dump's record boundary is `^Row: N address=` and the format has no
+  escaping, so a body carrying that shape on a line of its own forges a second
+  record - a fabricated payout, say. `watch_sms.py::format_row` neutralises the
+  shape as it writes; the adb command in README.md pipes the phone's output
+  straight to the file with nothing in between.
+
+  `tickets.py::rows()` cannot close this. After the fact a forged boundary is
+  byte-identical to a real one, so the guard has to sit on the writing side, and
+  the adb path has no project code in it to put one in. LOTTO-0040 documented
+  the asymmetry at both command sites and in rows(); this item is the fix.
+
+  The decision: build a small import filter the README pipes through (it would
+  be `format_row` re-used, so one guard rather than two), or accept the exposure
+  on the grounds that the bulk import is a one-off already performed. Measured
+  2026-09-02: no body in the dump carries the shape.
+  **Layman:** Importing messages over the USB cable trusts the phone's output completely, unlike the wireless path
+  Kind: security.
+  Source: review-code-2026-09-01 lane sms-parsing, deferred out of LOTTO-0040.

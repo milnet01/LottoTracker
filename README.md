@@ -136,6 +136,12 @@ adb shell "content query --uri content://sms \
             AND body NOT LIKE '%Enter tokens%'\"" > lotto_sms_raw.txt
 ```
 
+This writes the phone's output straight to the dump with nothing in between,
+so a message whose body contains a line beginning `Row: N address=` becomes a
+second, forged record. `watch_sms.py` neutralises that shape as it writes and
+this path does not; `tickets.py::rows()` cannot tell the two apart afterwards.
+No message in the dump has ever carried one (measured 2026-09-02).
+
 **KDE Connect — best for picking up new tickets.** Install the KDE Connect app
 on the phone, pair it with the PC over the same Wi-Fi, then grant it **SMS
 permission** (Settings → Apps → KDE Connect → Permissions → SMS). Pairing and

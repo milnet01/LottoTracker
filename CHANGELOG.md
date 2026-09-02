@@ -459,6 +459,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The dump is closed rather than left to the garbage collector** (LOTTO-0040)
+  load() and load_payouts() now read it through a context manager.
+
+- **A crafted ticket SMS could hang every later run, permanently** (LOTTO-0040)
+  The board-line pattern nested a quantifier over a separator that matches empty, so a long run of digits was partitioned every way there is before failing. The record stays in the dump, so one such message poisons every run after it. Measured 1.2 s at 24 digits; the strict form rejects no board line in the dump.
+
 - **Three silent failure modes in scoring and reconciliation** (LOTTO-0042)
   An unreadable archive payout page made the retired-division report print nothing and read as clean; it now raises, as its two sibling call sites already did. The NO PAYOUT DATA notice can no longer be swallowed by an exception guard whose stated cause cannot occur. The archive-page division key is read as ambiguous in both directions, so a draw spelling a tier the other way round is no longer reported as retired.
 

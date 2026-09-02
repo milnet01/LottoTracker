@@ -179,11 +179,19 @@ def parse(body, bought=None):
     except ValueError:
         return None
 
-    # Board lines "A: 08 14 27 33 41 -07". Indented Multiplay combinations are
-    # derived from the board, so skip them and re-derive below instead.
+    # Board lines "A: 08 14 27 33 41 -07". A Multiplay ticket also lists its
+    # derived 6-number combinations on their own lines; what excludes those is
+    # the absent "X: " label, NOT their indentation - the line is stripped
+    # first. They are re-derived from the board below instead.
+    #
+    # Each number is separated from the next rather than `(?:-?\d+\s*)+`, whose
+    # `\s*` matches empty: that form partitions a digit run every way there is
+    # before failing, so one crafted SMS hangs every later run for good - the
+    # record stays in the dump. Measured 2026-09-02: 1.2s at 24 digits, and the
+    # strict form rejects no board line in the dump.
     boards = []
     for line in body.split("\n"):
-        if bm := re.match(r"^([A-Z]): ((?:-?\d+\s*)+)$", line.strip()):
+        if bm := re.match(r"^([A-Z]): (-?\d+(?:\s+-?\d+)*)\s*$", line.strip()):
             label, nums = bm.group(1), bm.group(2).split()
             if game == "powerball":
                 # New format marks the PowerBall with "-"; old format doesn't,
@@ -274,6 +282,13 @@ def rows(raw):
     A record runs from its `Row: N address=` header to the line before the next
     one, so a body may span lines - 561 of the 951 records held on 2026-08-13
     do. Rows that do not match the shape are dropped, as they always were.
+
+    A body carrying its OWN `Row: N address=` line therefore forges a record,
+    and this reader cannot tell one from a real boundary: the format has no
+    escaping, so the guard has to sit on the writing side.
+    `watch_sms.py::format_row` neutralises the shape on write, so the
+    cable-free half is covered; the adb bulk import documented in README.md is
+    not. Measured 2026-09-02: no body in the dump carries one.
     """
     out = []
     for row in re.split(r"^Row: \d+ address=", raw, flags=re.M)[1:]:
@@ -297,7 +312,9 @@ def terminal_safe(s):
 
 def load(path="lotto_sms_raw.txt"):
     out = []
-    for _address, date_ms, body in rows(open(path, errors="replace").read()):
+    with open(path, errors="replace") as fh:
+        raw = fh.read()
+    for _address, date_ms, body in rows(raw):
         # Android's SMS timestamp, in milliseconds since the epoch. Local
         # time on both sides of the era comparison: HANDOVER is a naive
         # local datetime, and reading this as UTC would put a ticket bought
@@ -324,7 +341,9 @@ def load_payouts(path="lotto_sms_raw.txt"):
     drifts later, and this file now has two message kinds to keep in step.
     """
     out = []
-    for _address, date_ms, body in rows(open(path, errors="replace").read()):
+    with open(path, errors="replace") as fh:
+        raw = fh.read()
+    for _address, date_ms, body in rows(raw):
         try:  # load()'s reason, same unbounded date field
             paid = datetime.fromtimestamp(date_ms / 1000)
         except (ValueError, OverflowError, OSError):

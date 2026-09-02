@@ -94,6 +94,13 @@ adb shell "content query --uri content://sms \
             AND body NOT LIKE '%Enter tokens%'\""
 ```
 
+**This path writes the phone's output to the dump unfiltered, and the record
+boundary is not escaped.** A body containing a line that begins
+`Row: N address=` forges a second record, which `tickets.py::rows()` cannot
+distinguish from a real boundary. `watch_sms.py::format_row` neutralises the
+shape on write; this command has no equivalent step. No message in the dump
+carries one (measured 2026-09-02).
+
 **The `VAS00` clause is the one that is not obvious, and it was missing until
 2026-08-12 (LOTTO-0030).** Filtering on game names alone silently excludes
 the payout SMS, whose wording — "The winnings of R*amount* for ticket ref:
