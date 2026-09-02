@@ -133,14 +133,17 @@ adb shell "content query --uri content://sms \
   --where \"(body LIKE '%lotto%' OR body LIKE '%powerball%' \
              OR body LIKE '%VAS00%') \
             AND body NOT LIKE '%kWh%' \
-            AND body NOT LIKE '%Enter tokens%'\"" > lotto_sms_raw.txt
+            AND body NOT LIKE '%Enter tokens%'\"" \
+  | python3 tools/import_adb.py > lotto_sms_raw.txt
 ```
 
-This writes the phone's output straight to the dump with nothing in between,
-so a message whose body contains a line beginning `Row: N address=` becomes a
-second, forged record. `watch_sms.py` neutralises that shape as it writes and
-this path does not; `tickets.py::rows()` cannot tell the two apart afterwards.
-No message in the dump has ever carried one (measured 2026-09-02).
+**The pipe is not optional.** A record begins with a line reading
+`Row: N address=`, and nothing escapes it — so a message whose own body
+contains that line would split into a second, forged record, and
+`tickets.py::rows()` cannot tell it from a real one afterwards.
+`tools/import_adb.py` neutralises the shape on the way in, which is what
+`watch_sms.py` already does on the wireless path. It prints what it found and
+exits non-zero if it neutralised anything.
 
 **KDE Connect — best for picking up new tickets.** Install the KDE Connect app
 on the phone, pair it with the PC over the same Wi-Fi, then grant it **SMS

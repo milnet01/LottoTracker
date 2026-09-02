@@ -1328,6 +1328,15 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
      let LOTTO-0050's CRITICAL ship - a page that had the notice and
      rendered R0.00 underneath it satisfied CLAUDE.md's phrasing exactly.
      Whichever wording survives, the two must say the same thing.
+  Progress 2026-09-02. Half 1 is CLOSED by a user decision: the periods section
+  renders its heading plus a sentence saying no period has a scored draw yet and
+  that this is not a total of zero. Neither document was right - the spec asked
+  for a bare caption, the code rendered nothing, and both invite the reading the
+  cardinal rule forbids. page.py and LOTTO-0036 s6 now say the same thing, and
+  the gate that edit owes is LOTTO-0064.
+
+  Half 2 is split out as LOTTO-0062, because it needs a `review-contract` run on
+  CLAUDE.md and this session did not run one.
   **Layman:** Two places where two of our own documents disagree and someone has to choose
   Kind: investigate.
   Source: review-code-2026-09-01 lanes page-renderer and build-and-periods.
@@ -1381,6 +1390,15 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   - **an audit config** - `check-code` found none at any of its three
     paths, so every run uses defaults. LOTTO-0007 (u) is the related
     question of which lint contracts this project actually wants.
+  Progress 2026-09-02. LICENSE is DONE: the user chose MIT and the file is in
+  the repository, so the public repo is now legally reusable rather than
+  reserved by default.
+
+  .claude/code-pairs.json is confirmed absent - `close-findings` looked for it
+  this session and skipped that step, exactly as this bullet predicts.
+
+  Still open: docs/design.md, docs/decisions/, the pair list itself, and an
+  audit config.
   **Layman:** A few standard files are missing, including a licence on a public repository
   Kind: doc.
   Source: session-audit-2026-09-01 missing-documents sweep.
@@ -2360,7 +2378,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: review-fix.
   Source: review-code-2026-09-01 lane scoring-and-pricing.
 
-- 📋 [LOTTO-0043] **Deferred review findings in the model builder and period totals.**
+- ✅ [LOTTO-0043] **Deferred review findings in the model builder and period totals.**
   From the 2026-09-01 review-code sweep. No CRITICAL or HIGH in this lane.
 
   - MEDIUM serve.py:232 - `inc[plus_flag]` raises KeyError for a Daily Lotto
@@ -2378,11 +2396,36 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
     `except Exception` is not total so `building` can stick true forever;
     serve.py:338 read_settings() runs outside _settings_lock; serve.py:246
     history.covered() is walked three times per entry.
+  Resolved 2026-09-02, local-CI.sh green on both lanes. All findings fixed.
+
+  The KeyError is gone: an UNRESOLVED ticket has exactly one pool - the fallback
+  to its printed name - and no increment to look up, so its entry is priced at
+  the ticket's own cost. ('daily', 'sizekhaya') carries no plus_flag 1 row, so a
+  post-handover Daily Lotto Plus killed the whole build and rendered
+  State.fail()'s `{"what": "1"}`, blaming the operator's API for a gap in a
+  hardcoded table. Measured before the fix: 0 entries currently take that path.
+
+  serve.DUMP is one answer for where the dump is, used by the guard and by
+  tickets.load() alike - started from another directory the page reported "the
+  first build failed" for a dump that was merely missing.
+
+  build_model() refuses to render a ref collision: two tickets with no Ref: share
+  the "?" sentinel and every join keyed on ref would merge them. LOTTO-0002 s4.1
+  said report it rather than render it, and nothing did.
+
+  Smaller: work()'s guard is BaseException, so a SystemExit can no longer leave
+  `building` set for the life of the process; settings are read under the write
+  lock through _settings_snapshot(); covered() is called once per entry.
+
+  Dismissed - two clock reads across a build. build_model() reads the clock ONCE
+  (`today`); the other read is State.finish()'s timestamp, which is a different
+  quantity and has to be taken when the build ends. Not reproducible in current
+  source.
   **Layman:** A missing price-table row can crash the whole page build
   Kind: review-fix.
   Source: review-code-2026-09-01 lane build-and-periods.
 
-- 📋 [LOTTO-0044] **Deferred review findings in the page renderer.**
+- ✅ [LOTTO-0044] **Deferred review findings in the page renderer.**
   From the 2026-09-01 review-code sweep. The lane's CRITICAL (three empty
   states rendering R0.00), both HIGHs on the poll, the pool-filter zombie and
   the switch labels were all fixed; these remain.
@@ -2399,11 +2442,35 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   - LOW page.py:49 - the one interpolation not passing through _e().
   - LOW page.py:368 - 12.75px ball glyphs, the page's most-scanned content.
   - LOW page.py:26 - en-US money grouping for a ZA audience (R1 234,50).
+  Resolved 2026-09-02, local-CI.sh green on both lanes.
+
+  _js() escapes `<`, `>` and `&` for the HTML script context json.dumps() does
+  not cover. Still unreachable - the token is secrets.token_urlsafe and `built`
+  is an ISO timestamp - which is why it was LOW, and it is now one writer safer.
+
+  #settings-msg and #progress carry role=status and aria-live=polite, so what
+  they say is announced rather than written silently into the page.
+
+  A win with no expiry sorts LAST: "" compares below every real date, so an
+  absent value was rendering as the most urgent line on the page. A negative
+  expires_in_days is no longer flattened to "today" - it names its date, which
+  s4.5 requires of every win, and says the claim date has passed.
+
+  _draws_cell() escapes its value, the one interpolation that did not.
+
+  Dismissed - en-US money grouping. The bank's own SMSes write R1,234.50 (comma
+  thousands, dot decimal): tickets.py's PAYOUT and parse() patterns both read
+  that form, so the page matches the messages it reports on. Switching to
+  R1 234,50 would make the page disagree with its own source.
+
+  Corrected - the ball glyphs were cited at 12.75px, which assumed rem tracks
+  body's 15px. `rem` is root-relative and only body is set, so they were 13.6px.
+  Raised to 1rem either way; the concern was right and the figure was not.
   **Layman:** Smaller display and accessibility fixes on the local page
   Kind: review-fix.
   Source: review-code-2026-09-01 lane page-renderer.
 
-- 📋 [LOTTO-0045] **Deferred review findings on the HTTP surface.**
+- ✅ [LOTTO-0045] **Deferred review findings on the HTTP surface.**
   From the 2026-09-01 review-code sweep. The lane's CRITICAL (request
   smuggling past the Host allowlist) and both HIGHs (the inert timeout, the
   501 path) were fixed; these remain.
@@ -2426,11 +2493,34 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   socket WITHOUT sending `Connection: close` - adding it reddened INV-14. A
   well-behaved client therefore sees a reset rather than a clean close.
   Whether s4.1 is meant to reach framing headers needs deciding.
+  Resolved 2026-09-02, local-CI.sh green on both lanes.
+
+  _token_ok() rejects a non-ASCII token header instead of raising out of
+  compare_digest(), which refuses any code point above U+007F. http.client
+  decodes headers as iso-8859-1 and Fetch permits 0x80-0xFF, so the client got
+  no response at all and a traceback reached the stderr log_message() is
+  silenced to keep clean.
+
+  do_GET() guards its render and answers 500, which still carries
+  SECURITY_HEADERS (INV-12). It had no guard where do_POST does, so a renderer
+  failure gave the client a reset connection. Only the exception's TYPE is
+  printed, because request-derived text must not reach the journal.
+
+  settings.json and the autostart .desktop entry are written through
+  supervise.write_atomic(): temp file then rename. A truncated .desktop reads as
+  "autostart on" and autostarts nothing, because presence IS the state.
+
+  The contract question is SETTLED by the user, 2026-09-02: leave it as it is.
+  s4.1's "no response carries any header outside its row" stands as written, and
+  the smuggling fix keeps closing the socket without announcing it. Relaxing
+  INV-14 to admit Connection: close would loosen the assertion that catches a
+  reflected header, for politeness. A well-behaved client sees a reset in that
+  one rejection case, which is harmless.
   **Layman:** Smaller robustness fixes on the local web server
   Kind: review-fix.
   Source: review-code-2026-09-01 lane http-security.
 
-- 📋 [LOTTO-0046] **Deferred review findings in the supervisor.**
+- ✅ [LOTTO-0046] **Deferred review findings in the supervisor.**
   From the 2026-09-01 review-code sweep. The lane's HIGH (the state file
   truncated in place) was fixed, and the 0700/0600 permissions went with it.
 
@@ -2448,6 +2538,36 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   - LOW supervise.py:636 died_early races stop; supervise.py:513 post()
     authenticates to whatever holds the port; supervise.py:179 %a/%b go
     through LC_TIME and Qt calls setlocale.
+  Resolved 2026-09-02, local-CI.sh green on both lanes.
+
+  start() mints the token into a local and assigns self.token and self.child
+  together, only once Popen has returned; a failed spawn clears both and
+  re-raises. Minting into self.token first left a token beside no child, so
+  post()'s `if not self.token` guard passed and sent the token to whatever holds
+  the port, and refresh() polled its full 300-second deadline - holding the
+  tray's one-job flag - over a build never started.
+
+  is_ready() uses refresh()'s guard: only a child of OURS that has died ends it
+  early. A Supervisor that spawned nothing is s4.1 and s4.6 case 3, and a bare
+  is_running() test returned False for a server answering perfectly. post()
+  carries the same guard, so a dead child is caught before the token is sent.
+
+  _read_warned() drops a record whose `final` is not a date. It is compared
+  lexically against an ISO cutoff, so junk was never older than it, never pruned
+  - and its ref stayed in the warned set for good, silencing the one notice this
+  project exists to give. expiry_notices() reads the file once instead of twice,
+  so the write test compares against what it actually read.
+
+  expiry_notice() takes its day and month names from explicit tables. %a and %b
+  go through LC_TIME and Qt calls setlocale(), so those two words would have
+  arrived in the desktop's language inside an English sentence.
+
+  died_early() no longer reports a stopped watcher as one that died at startup:
+  stop() raises a flag before it terminates.
+
+  Residual, stated rather than closed: a malformed record the reader drops is
+  still left on disk. It is invisible to every reader, and spotting it here
+  would need a second reader of that file, which s4.5 forbids.
   **Layman:** Smaller robustness fixes in the code that runs the server and watcher
   Kind: review-fix.
   Source: review-code-2026-09-01 lane supervisor-lifecycle.
@@ -2670,7 +2790,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Source: session-audit-2026-09-02 backlog tally.
   Lanes: docs.
 
-- 📋 [LOTTO-0061] **The adb bulk import writes to the dump with no record-boundary guard.**
+- ✅ [LOTTO-0061] **The adb bulk import writes to the dump with no record-boundary guard.**
   Split out of LOTTO-0040 because it needs a decision, not an edit.
 
   The dump's record boundary is `^Row: N address=` and the format has no
@@ -2688,6 +2808,95 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   be `format_row` re-used, so one guard rather than two), or accept the exposure
   on the grounds that the bulk import is a one-off already performed. Measured
   2026-09-02: no body in the dump carries the shape.
+  Resolved 2026-09-02 - the user chose to build the filter rather than accept the
+  exposure (2026-09-02).
+
+  tools/import_adb.py sits in the README's import pipe. It decides a real record
+  boundary by INDEX: adb numbers its result set from 0 and each header is one
+  more than the last - measured across 954 records in the live dump, zero
+  non-sequential steps - so a header carrying any other number is body text and
+  gets the same leading space watch_sms.py::format_row gives it. One guard, two
+  writers, identical bytes.
+
+  Proved: the live dump passes through byte-identical and exits 0; a crafted
+  stream carrying a forged header goes from 3 records to 2 and exits 2.
+
+  Bounded honestly in its own docstring: it stops a forged RECORD, not forged
+  payout TEXT. A neutralised line stays in the body it was found in, and
+  parse_payout() searches a whole body - so the sentence still parses as a
+  payout of the record it sits in. That is not this tool's hole and is filed
+  separately.
   **Layman:** Importing messages over the USB cable trusts the phone's output completely, unlike the wireless path
   Kind: security.
   Source: review-code-2026-09-01 lane sms-parsing, deferred out of LOTTO-0040.
+
+- 📋 [LOTTO-0062] **A payout SMS is admitted on its wording alone, never on who sent it.**
+  Found next door while proving LOTTO-0061's filter, and out of its scope.
+
+  `watch_sms.py::wanted()` admits a message on keywords in its BODY. The sender
+  is captured into the dump and read by nobody: `rows()` returns it, `load()`
+  and `load_payouts()` both discard it. So any message whose body carries the
+  bank's payout wording parses as a Payout, whoever sent it.
+
+  Measured 2026-09-02: a crafted body reconciles as a real payment even after
+  LOTTO-0061's boundary guard has neutralised the forged record around it,
+  because `parse_payout()` searches a whole body and the neutralised line stays
+  in the body it was found in.
+
+  The blast radius is bounded by an existing decision and that is why this is
+  not critical: `reconcile()` never resolves a disagreement in the SMS's favour,
+  so a fake payment surfaces as a `no_ticket` or `high` row rather than as money
+  the app believes. It still inflates "the bank paid" and adds noise to the one
+  figure sign 5 is judged by.
+
+  The decision this needs: pin the sender. The dump holds the real address on
+  every record, so the allowlist can be read off the existing data rather than
+  guessed - but a bank changing its sending number would then silently stop
+  every import, which is the failure mode this project cares most about. Weigh
+  that before building it.
+  **Layman:** Anyone who can text the phone could add a fake winnings message to the ledger
+  Kind: security.
+  Source: in-session-2026-09-02, found while building LOTTO-0061's import filter.
+
+- 📋 [LOTTO-0063] **CLAUDE.md states the cardinal rule as a sufficient condition; LOTTO-0002 adds prohibitions it does not carry.**
+  LOTTO-0054's second half, filed on its own because it needs a gate this
+  session did not run.
+
+  CLAUDE.md says "An empty page is correct only when it carries a notice naming
+  why", which reads as SUFFICIENT. LOTTO-0002 s6 adds prohibitions it does not
+  carry: no ticket table, no zero total, no empty wins list. That gap is what
+  let LOTTO-0050's CRITICAL ship - a page that had the notice and rendered R0.00
+  under it satisfied CLAUDE.md's phrasing exactly.
+
+  The recommended fix is to DELETE the restatement rather than reconcile it:
+  have CLAUDE.md point at LOTTO-0002 s6 as the owner and name the three
+  prohibitions in one clause. Two copies of one rule is two rules that will
+  disagree again.
+
+  Why it is filed rather than done: CLAUDE.md is a contract document, and this
+  edit changes what a conformer builds - a session reading only CLAUDE.md would
+  now refuse a page it previously shipped. CLAUDE.md rule 14 owes it a
+  `review-contract` gate before anyone builds under it, and that is a cold read
+  of the whole file rather than of this diff.
+  **Layman:** Two of our own documents describe the same safety rule differently, and the shorter one is the one that gets read
+  Kind: doc-fix.
+  Source: review-code-2026-09-01, split out of LOTTO-0054 on 2026-09-02.
+
+- 📋 [LOTTO-0064] **LOTTO-0036's empty-period row was changed by decision and owes its gate.**
+  LOTTO-0036 s6's failure-mode row said the periods section renders "its caption
+  and no table"; page.py rendered NEITHER. The user settled it on 2026-09-02: it
+  renders the heading plus a sentence saying no period has a scored draw yet and
+  that this is not a total of zero. Both the spec row and page.py now say that,
+  and local-CI.sh is green over the change.
+
+  What is outstanding is the gate, not the work. LOTTO-0036 is a spec, the edit
+  changes what a conformer renders, and CLAUDE.md rule 14's trigger is therefore
+  met. The gate was NOT run - recorded here rather than left implicit, because a
+  considered skip and never having thought about it look identical otherwise.
+
+  Run `review-contract docs/specs/LOTTO-0036-period-totals.md`. It caps at 2
+  loops for a spec, and the implementation already exists, so the cold read is
+  checking a contract against code rather than guarding code not yet written.
+  **Layman:** A spec was corrected to match what the page now does, and the usual review of that spec has not been run
+  Kind: doc-fix.
+  Source: in-session-2026-09-02, user decision on LOTTO-0054.

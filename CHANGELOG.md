@@ -8,6 +8,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The cable import now carries the record-boundary guard the wireless path has** (LOTTO-0061)
+  tools/import_adb.py sits in the README's adb pipe and neutralises a line inside a message body that claims to be a record boundary, deciding by the record index adb numbers from 0. The live dump passes through byte-identical; a crafted stream loses its forged record and the tool exits non-zero.
+
+- **MIT licence** (LOTTO-0056)
+  The repository is public and had no LICENSE, so by default nobody could legally reuse it. Chosen by the user on 2026-09-02.
+
 - **INV-61: `draws_left`'s `today` boundary is checked** (LOTTO-0007)
   A ninth case in `tools/verify_expiry.py`,
   `draws_left_today_boundary`, asserts a ticket reads 1 draw left on its
@@ -251,6 +257,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The period section says why it is empty instead of vanishing** (LOTTO-0054)
+  It now renders its heading and a sentence saying no period has a scored draw yet, and that this is not a total of zero. It previously rendered nothing at all, which reads as a fault; the spec asked for a bare heading, which invites "so I won nothing". Settled by the user on 2026-09-02.
+
 - **backfill refuses to write an incomplete archive** (LOTTO-0041)
   One HTTP failure aborted the run on the spot. Failures are now collected across every pool and reported together, and the archive is not written at all: a missing year is a hole that history.covered() would score an entry straight across. The current year's listing page is also no longer cached, since it is still growing.
 
@@ -461,6 +470,21 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importing the derivation it is testing.
 
 ### Fixed
+
+- **A failed server spawn no longer leaves a token behind with no server** (LOTTO-0046)
+  The token was minted before the process started, so a failed spawn passed the "is the server running" guard and sent the token to whatever held the port. Readiness and refresh now agree about a supervisor that owns no child; a warned-ticket record with an unparsable date is dropped rather than silencing that ticket's re-buy notice for good; and the notice's day and month names no longer follow the desktop's language.
+
+- **A non-ASCII token header no longer leaves the client with no response at all** (LOTTO-0045)
+  compare_digest refuses any character above U+007F and raised, so the request died with a traceback. The page renderer is also guarded, and the settings and autostart files are written atomically — a truncated autostart entry reads as "on" and autostarts nothing.
+
+- **A win with no expiry date no longer sorts to the top as the most urgent** (LOTTO-0044)
+  An absent date compared below every real one. A win already past its claim date now names that date rather than being flattened to "today", and the two status regions the page updates by script announce themselves to a screen reader.
+
+- **"The dump is missing" and "the first build failed" are separate again** (LOTTO-0043)
+  The guard resolved the dump against the code and the loader against the working directory, so started from anywhere else the page reported the wrong one of two states it deliberately keeps apart. The page also refuses to render a merge of two tickets that carry no reference.
+
+- **A missing price-table row no longer kills the whole page build** (LOTTO-0043)
+  An unresolved ticket has one pool and no increment to look up, so its entry is priced at the ticket's own cost. Before, a post-handover Daily Lotto Plus purchase raised KeyError and the page rendered a bare "1" as the reason, blaming the operator's API for a gap in a hardcoded table.
 
 - **The archive and its cache resolve from the code, not the working directory** (LOTTO-0041)
   backfill.CACHE and the archive path are anchored to __file__, and history.py imports the archive path from backfill rather than keeping its own copy. Verified by loading draws with the working directory outside the repository.

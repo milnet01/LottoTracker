@@ -21,6 +21,23 @@ def _e(s):
     return html.escape(str(s), quote=True)
 
 
+def _js(value):
+    """A Python value as a JS literal, safe inside a <script> block.
+
+    json.dumps escapes for a JSON parser, not for an HTML script context: `<`
+    and `/` come through bare, so a value spelling `</script>` would end the
+    block early. Neither current writer can produce one - the token is
+    secrets.token_urlsafe and `built` is an ISO timestamp - which is what keeps
+    this theoretical. It is one new writer away from live.
+    """
+    return (
+        json.dumps(value)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
+
+
 def _rands(cents):
     """Cents -> 'R1,234.50'. Only ever called with an integer (LOTTO-0002 §4.1)."""
     return f"R{cents / 100:,.2f}"
@@ -46,7 +63,7 @@ def _draws_cell(value):
     """
     if value is None:
         return '<td class="notcheckable">unknown &mdash; not checkable</td>'
-    return f"<td>{value}</td>"
+    return f"<td>{_e(value)}</td>"
 
 
 def _balls(numbers, special=None):
@@ -145,7 +162,9 @@ def _uncheckable_banner(u):
 
 def _wins_section(model):
     live = [w for w in model.get("wins", []) if not w.get("expired")]
-    live.sort(key=lambda w: w.get("expires") or "")
+    # A win with no expiry date sorts LAST, not first: "" compares below every
+    # real date, so an absent value was reading as the most urgent line here.
+    live.sort(key=lambda w: (not w.get("expires"), w.get("expires") or ""))
     if not live:
         body = (
             '<p class="muted">No unexpired winning lines. This counts only the '
@@ -156,8 +175,17 @@ def _wins_section(model):
         for w in live:
             d = w.get("expires_in_days")
             cls = "soon" if d is not None and d <= 30 else ""
-            if d is not None and d <= 0:
+            if d == 0:
                 cls, when = "today", "today"
+            elif d is not None and d < 0:
+                # Past its claim date. Not "today" - and s4.5 requires every
+                # win to name its date, which the old `d <= 0` branch threw
+                # away along with the distinction.
+                cls = "today"
+                when = (
+                    f'{_e(w.get("expires"))} '
+                    '<span class="muted">(claim date passed)</span>'
+                )
             else:
                 when = f"{_e(w.get('expires'))}"
                 if d is not None:
@@ -309,7 +337,19 @@ def _periods_section(model):
     p = model.get("periods") or {}
     buckets = p.get("buckets") or []
     if not buckets:
-        return ""
+        # The heading and a reason, never a bare heading and never nothing.
+        # A caption over an empty table invites "so I won nothing"; the whole
+        # section vanishing reads as a fault. Both are the cardinal rule, and
+        # naming why is what CLAUDE.md's "an empty page is correct only when
+        # it carries a notice naming why" asks for. User decision 2026-09-02;
+        # s6 said caption and no table.
+        return (
+            "<section><h2>Spend against winnings by period</h2>"
+            '<p class="notcheckable">No period has a scored draw in it yet, so '
+            "there is nothing to compare. This is not a total of zero &mdash; "
+            "it means no draw this ticket history covers has been checked "
+            "against a result.</p></section>"
+        )
     rows, opts = [], {"year": [], "month": []}
     for i, b in enumerate(buckets):
         hide = "" if i == 0 else ' style="display:none"'
@@ -373,7 +413,10 @@ def _settings_section(model):
         "<section><h2>Settings</h2>"
         + sw("autostart", "Start the tray when I log in")
         + sw("open_on_start", "Open this page when the tray starts")
-        + '<p class="muted" id="settings-msg"></p></section>'
+        # role=status + aria-live: the switches write their result here, and
+        # without it a screen reader is told nothing at all.
+        + '<p class="muted" id="settings-msg" role="status" '
+        'aria-live="polite"></p></section>'
     )
 
 
@@ -389,7 +432,7 @@ th{font-weight:600;font-size:.85rem;color:#555}
 .nums{white-space:nowrap}
 .ball{display:inline-block;min-width:1.6rem;padding:.1rem .3rem;margin:.05rem .1rem;
  border-radius:.8rem;background:#e8eef6;text-align:center;font-variant-numeric:tabular-nums;
- font-size:.85rem}
+ font-size:1rem}
 .ball.special{background:#f6e6cf;font-weight:600}
 .notcheckable{color:#8a5a00;font-style:italic}
 .muted{color:#666;font-size:.9rem}
@@ -552,8 +595,8 @@ def render(model, token):
             "This takes about half a minute on the first run, longer if the "
             "operator's site is dropping connections. Nothing below is a "
             "result yet. "
-            f'<span id="progress">{n} {"lookup" if n == 1 else "lookups"} '
-            "so far.</span></div>"
+            f'<span id="progress" role="status" aria-live="polite">{n} '
+            f'{"lookup" if n == 1 else "lookups"} so far.</span></div>'
         )
     elif model.get("no_dump") or model.get("no_build") or (
             model.get("error") and not built):
@@ -597,8 +640,8 @@ def render(model, token):
             "today may already have lapsed.</footer>"
         )
     script = JS % (
-        json.dumps(token),
-        json.dumps(built),
+        _js(token),
+        _js(built),
         "true" if building else "false",
     )
     return (

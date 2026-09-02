@@ -158,6 +158,12 @@ UNKNOWN_GAME_NOTICE = (
 )
 
 
+# Explicit, not %a/%b - see expiry_notice().
+_DAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
 def expiry_notice(game_name, final_draw, draws_left):
     """One ticket's re-buy warning, as a string. LOTTO-0034 §4.7, INV-54.
 
@@ -171,12 +177,17 @@ def expiry_notice(game_name, final_draw, draws_left):
     bounded here rather than widened at the call site.
 
     The date is formatted by hand rather than with %-d: the zero-padded %d
-    reads as a serial number in a sentence, and %-d is glibc-only.
+    reads as a serial number in a sentence, and %-d is glibc-only. The day and
+    month names come from the tables below rather than %a and %b, which go
+    through LC_TIME - and Qt calls setlocale() when QApplication is built, so
+    those two words would arrive in the desktop's language inside an otherwise
+    English sentence.
     """
     return (
         f"Your {game_name} ticket has {draws_left} "
         f"draw{'' if draws_left == 1 else 's'} left — last draw "
-        f"{final_draw:%a} {final_draw.day} {final_draw:%b}. "
+        f"{_DAY_NAMES[final_draw.weekday()]} {final_draw.day} "
+        f"{_MONTH_NAMES[final_draw.month - 1]}. "
         "Time to buy the next one."
     )
 
@@ -196,9 +207,46 @@ def _read_warned(path):
         return []
     if not isinstance(data, dict) or not isinstance(data.get("warned"), list):
         return []
-    return [r for r in data["warned"]
-            if isinstance(r, dict) and isinstance(r.get("ref"), str)
-            and isinstance(r.get("final"), str)]
+
+    def usable(r):
+        if not (isinstance(r, dict) and isinstance(r.get("ref"), str)
+                and isinstance(r.get("final"), str)):
+            return False
+        try:
+            datetime.date.fromisoformat(r["final"])
+        except ValueError:
+            # `final` is compared LEXICALLY against an ISO cutoff, so a value
+            # that is not a date is never older than it and is never pruned -
+            # and its `ref` then stays in the warned set for good, silencing
+            # the one notice this project exists to give (INV-55, INV-56).
+            return False
+        return True
+
+    return [r for r in data["warned"] if usable(r)]
+
+
+def write_atomic(path, text, mode=None):
+    """Write text via a temp file in the same directory, then rename.
+
+    open(path, "w") truncates BEFORE the write, so an interrupted write leaves
+    a short file that reads as a complete one. serve.py writes the autostart
+    .desktop entry through this, where the stakes are highest: presence IS the
+    state, so a truncated entry reads as "autostart on" and autostarts nothing.
+
+    _write_warned() below stays separate rather than calling this. It also
+    fsyncs and chmods, and LOTTO-0034 s4.5 chose its crash direction on
+    purpose; folding the two would put that argument in a helper shared with
+    callers that do not make it.
+    """
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    if mode is not None:
+        os.chmod(tmp, mode)
+    os.replace(tmp, path)
 
 
 def _write_warned(path, records):
@@ -283,7 +331,13 @@ def expiry_notices(today, tickets=None, state_path=None):
     # Pruned on every write, keyed on the ticket's own final draw rather than
     # on the write date, so the file cannot grow without bound (INV-55).
     cutoff = (today - datetime.timedelta(days=PRUNE_DAYS)).isoformat()
-    records = [r for r in _read_warned(path) if r["final"] >= cutoff]
+    # Read ONCE. The write test at the end compared against a SECOND call, so
+    # a record the reader had dropped was absent from both sides and never
+    # triggered the rewrite that would clear it from disk. Such a record is
+    # still left there: it is invisible to every reader, and spotting it here
+    # would need a second reader of this file, which s4.5 forbids.
+    on_disk = _read_warned(path)
+    records = [r for r in on_disk if r["final"] >= cutoff]
     warned = {r["ref"] for r in records}
 
     notices, unknown = [], False
@@ -305,7 +359,7 @@ def expiry_notices(today, tickets=None, state_path=None):
             expiry_notice(expiry.DISPLAY_NAME[t.game], final, left)
         )
 
-    if records != _read_warned(path):
+    if records != on_disk:
         _write_warned(path, records)
 
     if unknown:
@@ -454,27 +508,40 @@ class Supervisor:
         # Per start(), not per process: a Stop then Start is a new run and gets
         # a new token, so a tab left open across the restart is told to reload
         # rather than staying silently authorised.
-        self.token = secrets.token_urlsafe(32)
-        self.child = subprocess.Popen(
-            [sys.executable, os.path.join(HERE, "serve.py")],
-            # Not optional. tickets.load()'s default dump path is relative to
-            # the working directory, and an autostart session's cwd is not the
-            # repository, so without this the child finds no messages and
-            # renders an empty page. history.ARCHIVE and backfill.CACHE were on
-            # the same list until LOTTO-0041 anchored them to __file__.
-            cwd=HERE,
-            env={
-                **os.environ,
-                "LOTTO_TOKEN": self.token,
-                # BOTH port variables, both set to the port this object already
-                # decided on. serve.py::resolve_port() reads $PORT first, and a
-                # $PORT inherited from the session would otherwise send the
-                # child somewhere the tray is not looking - which is the 421 on
-                # every request that §4.5 exists to prevent.
-                "LOTTO_PORT": str(self.port),
-                "PORT": str(self.port),
-            },
-        )
+        token = secrets.token_urlsafe(32)
+        try:
+            child = subprocess.Popen(
+                [sys.executable, os.path.join(HERE, "serve.py")],
+                # Not optional. tickets.load()'s default dump path is relative
+                # to the working directory, and an autostart session's cwd is
+                # not the repository, so without this the child finds no
+                # messages and renders an empty page. history.ARCHIVE and
+                # backfill.CACHE were on the same list until LOTTO-0041
+                # anchored them to __file__.
+                cwd=HERE,
+                env={
+                    **os.environ,
+                    "LOTTO_TOKEN": token,
+                    # BOTH port variables, both set to the port this object
+                    # already decided on. serve.py::resolve_port() reads $PORT
+                    # first, and a $PORT inherited from the session would send the
+                    # child somewhere the tray is not looking - which is the
+                    # 421 on every request that §4.5 exists to prevent.
+                    "LOTTO_PORT": str(self.port),
+                    "PORT": str(self.port),
+                },
+            )
+        except OSError:
+            # A failed spawn must leave NOTHING behind. Minting into
+            # self.token first left a token set beside no child, so post()'s
+            # `if not self.token` guard passed and sent the token to whatever
+            # holds the port - and refresh() polled its full 300-second
+            # deadline, holding the tray's one-job flag, over a build that was
+            # never started.
+            self.token, self.child = None, None
+            raise
+        # Both, and only once the spawn has actually returned a child.
+        self.token, self.child = token, child
 
     def is_running(self):
         return self.child is not None and self.child.poll() is None
@@ -489,7 +556,13 @@ class Supervisor:
         """
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if not self.is_running():
+            # Only a child of OURS that has died ends this early. A Supervisor
+            # that spawned nothing - s4.1 and s4.6 case 3, the managed run
+            # where something else started serve.py - has no child to be dead,
+            # and a bare `not self.is_running()` returned False for a server
+            # answering perfectly. refresh() already guards it this way; two
+            # methods of one class disagreed about the same shape.
+            if self.child is not None and not self.is_running():
                 return False
             try:
                 urllib.request.urlopen(self.url + "/status", timeout=1)
@@ -534,6 +607,12 @@ class Supervisor:
         """
         if not self.token:
             raise RuntimeError("the server is not running")
+        # A child of OURS that has died means the port may now belong to
+        # something else, and this request carries the token. Same shape as
+        # is_ready() and refresh(): a Supervisor that spawned nothing has no
+        # child to test and is not covered by this.
+        if self.child is not None and not self.is_running():
+            raise RuntimeError("the server stopped")
         req = urllib.request.Request(
             self.url + path, method="POST", headers={"X-Lotto-Token": self.token}
         )
@@ -628,11 +707,15 @@ class SmsWatch:
         # REAL DUMP. A verifier with a side effect on live data is not one.
         self.command = command or [sys.executable, os.path.join(HERE, "watch_sms.py")]
         self.child = None
+        # Raised by stop() before it terminates, so died_early() can tell a
+        # watcher that was stopped from one that fell over at startup.
+        self._stopped = False
 
     def start(self):
         """Spawn the watcher. No-op if one is already running."""
         if self.is_running():
             return
+        self._stopped = False
         self.child = subprocess.Popen(
             self.command,
             # For the reason Supervisor.start() gives: the dump, and the thread
@@ -658,7 +741,10 @@ class SmsWatch:
             self.child.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             return False
-        return True
+        # A watcher the user STOPPED did not die at startup. stop() raises this
+        # flag before it terminates, so a wait that returns because of a stop
+        # is not reported as the "dbus-python is missing" case.
+        return not self._stopped
 
     def stop(self, timeout=5.0):
         """terminate(), then kill() after the timeout, then wait().
@@ -667,6 +753,10 @@ class SmsWatch:
         sits in a GLib main loop and may be mid-write to the dump, and a child
         that ignores SIGTERM would outlive the tray holding a D-Bus name.
         """
+        # Before the terminate(), not after: died_early() may already be inside
+        # its wait() on another thread, and it reads this flag once the wait
+        # returns to decide whether the exit was a death or a stop.
+        self._stopped = True
         if self.child is None:
             return
         if self.child.poll() is None:

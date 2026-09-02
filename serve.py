@@ -32,6 +32,11 @@ import page
 import results
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# ONE answer for where the dump is. build_model()'s guard resolved it against
+# HERE and tickets.load() against the working directory, so started from
+# anywhere else the page reported "the first build failed" for a dump that is
+# merely missing - two named states of the cardinal rule collapsed into one.
+DUMP = os.path.join(HERE, "lotto_sms_raw.txt")
 DEFAULT_PORT = 4322
 MAX_BODY = 4096  # LOTTO-0014 §4.1: an unbounded rfile.read() is a hang
 BODY_KEYS = ("autostart", "open_on_start")
@@ -61,6 +66,7 @@ from supervise import (  # noqa: E402
     autostart_path,
     read_settings,
     settings_path,
+    write_atomic,
 )
 
 DESKTOP_ENTRY = """[Desktop Entry]
@@ -72,6 +78,19 @@ Terminal=false
 Categories=Utility;
 X-GNOME-Autostart-enabled=true
 """
+
+
+def _settings_snapshot():
+    """read_settings() under the same lock write_settings() holds.
+
+    That function writes two files and re-reads them; a read taken outside the
+    lock can catch the pair half-updated and report a switch the user did not
+    set - the failure the read-back exists to prevent, arriving from the other
+    side. build_model() and do_GET() both read settings while a POST may be in
+    flight.
+    """
+    with _settings_lock:
+        return read_settings()
 
 
 def write_settings(changes):
@@ -86,13 +105,10 @@ def write_settings(changes):
         if "autostart" in changes:
             path = autostart_path()
             if changes["autostart"]:
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                with open(path, "w") as fh:
-                    fh.write(
-                        DESKTOP_ENTRY.format(
-                            python=sys.executable, here=HERE
-                        )
-                    )
+                write_atomic(
+                    path,
+                    DESKTOP_ENTRY.format(python=sys.executable, here=HERE),
+                )
             else:
                 # Delete it. Rewriting X-GNOME-Autostart-enabled to false would
                 # leave the file present, and "presence IS the state" is what
@@ -102,10 +118,10 @@ def write_settings(changes):
                 except FileNotFoundError:
                     pass
         if "open_on_start" in changes:
-            path = settings_path()
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w") as fh:
-                json.dump({"open_on_start": changes["open_on_start"]}, fh)
+            write_atomic(
+                settings_path(),
+                json.dumps({"open_on_start": changes["open_on_start"]}),
+            )
         return read_settings()
 
 
@@ -204,10 +220,23 @@ def build_model():
     import history
     import tickets
 
-    if not os.path.exists(os.path.join(HERE, "lotto_sms_raw.txt")):
-        return {"no_dump": True, "settings": read_settings()}
+    if not os.path.exists(DUMP):
+        return {"no_dump": True, "settings": _settings_snapshot()}
 
-    all_tickets = tickets.load()
+    all_tickets = tickets.load(DUMP)
+
+    # LOTTO-0002 s4.1: `ref` joins tickets[] <-> entries[] <-> wins[]. A ticket
+    # whose SMS carried no `Ref:` falls back to "?", and two of those collapse
+    # onto one key - won_by_entry here, resolved_refs below and period_buckets'
+    # own join would each merge two tickets and render the merge as fact. The
+    # spec says report it rather than render it, and nothing did.
+    anonymous = [t for t in all_tickets if t.ref == "?"]
+    if len(anonymous) > 1:
+        raise RuntimeError(
+            f"{len(anonymous)} tickets carry no Ref:, so they share the '?' "
+            f"sentinel and every join keyed on ref would merge them into one. "
+            f"Refusing to render the merge (LOTTO-0002 s4.1)."
+        )
     wins = check.check(all_tickets)
     _lines, counts = check.uncheckable_report(all_tickets)
     today = datetime.date.today()
@@ -229,7 +258,19 @@ def build_model():
             unresolved_n += 1
             unresolved_cents += round(t.cost * 100)
         for plus_flag, pool_id in t.pools:
-            cost_cents = inc[plus_flag] * len(t.boards) * t.ndraws
+            if t.resolved:
+                cost_cents = inc[plus_flag] * len(t.boards) * t.ndraws
+            else:
+                # An UNRESOLVED ticket has exactly one pool - the fallback to
+                # its printed name - and its price matched no row in the era's
+                # table, so there is no increment to look up. inc[plus_flag]
+                # raised KeyError for a post-handover Daily Lotto Plus, because
+                # ('daily', 'sizekhaya') carries no plus_flag 1 row: the whole
+                # build died and State.fail() rendered `{"what": "1"}`, blaming
+                # the operator's API for a gap in a hardcoded table. What IS
+                # known is the price the bank charged, and with one pool it all
+                # belongs to this entry. INV-7: reported, never guessed at.
+                cost_cents = round(t.cost * 100)
             spend_life += cost_cents
             ok = history.scorable(t, plus_flag)
             if ok and t.resolved:
@@ -244,6 +285,8 @@ def build_model():
                     f"(earliest {rows[0]['date']})"
                 )
             covered = len(history.covered(t, plus_flag)) if ok else None
+            # covered() re-runs scorable() and re-walks the pool's draw list,
+            # so it is called once here rather than twice.
             entries.append(
                 {
                     "ref": t.ref,
@@ -335,7 +378,7 @@ def build_model():
             "lifetime_cents": won_life,
             "unexpired_cents": won_live,
         },
-        "settings": read_settings(),
+        "settings": _settings_snapshot(),
     }
 
 
@@ -463,7 +506,12 @@ def refresh(state, build_model_fn):
         check._struct.clear()
         try:
             state.finish(build_model_fn())
-        except Exception as exc:  # noqa: BLE001 - any failure keeps the model
+        except BaseException as exc:  # noqa: BLE001 - any failure keeps the model
+            # BaseException, not Exception: SystemExit, KeyboardInterrupt and
+            # MemoryError are none of them, and one escaping here leaves
+            # begin()'s `building` flag set for the life of the process, with
+            # /status reporting a build that ended long ago. The same class of
+            # escape took the SMS watcher down at login (LOTTO-0050).
             state.fail(exc)
 
     threading.Thread(target=work, daemon=True).start()
@@ -553,6 +601,14 @@ def make_server(build_model_fn, token, port):
 
         def _token_ok(self):
             got = self.headers.get("X-Lotto-Token") or ""
+            # compare_digest refuses a str carrying any code point above
+            # U+007F, and http.client decodes headers as iso-8859-1 - so the
+            # bytes 0x80-0xFF, which Fetch permits in a header value, reach
+            # here as exactly such a string. It raised TypeError: the client
+            # got no response at all, and a traceback reached the stderr
+            # log_message() is silenced to keep clean.
+            if not got.isascii():
+                return False
             return secrets.compare_digest(got, token)
 
         def _read_body(self):
@@ -656,10 +712,21 @@ def make_server(build_model_fn, token, port):
             # not the state, on the one page whose entire job is not doing
             # that. Read only when absent; a built model already carries it.
             if "settings" not in view:
-                view["settings"] = read_settings()
-            self._send(
-                200, page.render(view, token).encode(), "text/html; charset=utf-8"
-            )
+                view["settings"] = _settings_snapshot()
+            try:
+                body = page.render(view, token).encode()
+            except Exception as exc:  # noqa: BLE001
+                # do_POST guards its one raising call and this had none, so a
+                # renderer failure reached ThreadingHTTPServer.handle_error and
+                # the client got a reset connection rather than a response. The
+                # 500 still carries SECURITY_HEADERS (INV-12). Only the
+                # exception's TYPE is printed: log_message() is silenced
+                # because request-derived text must not reach the journal, and
+                # a rendering exception can quote model data.
+                print(f"render failed: {type(exc).__name__}", file=sys.stderr)
+                self._send(500)
+                return
+            self._send(200, body, "text/html; charset=utf-8")
 
         # Every other method routes through the same ladder. Without these,
         # BaseHTTPRequestHandler answers 501 from handle_one_request() before

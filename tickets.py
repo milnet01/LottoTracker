@@ -286,9 +286,10 @@ def rows(raw):
     A body carrying its OWN `Row: N address=` line therefore forges a record,
     and this reader cannot tell one from a real boundary: the format has no
     escaping, so the guard has to sit on the writing side.
-    `watch_sms.py::format_row` neutralises the shape on write, so the
-    cable-free half is covered; the adb bulk import documented in README.md is
-    not. Measured 2026-09-02: no body in the dump carries one.
+    Both writers guard it. `watch_sms.py::format_row` does so as it appends,
+    and the adb bulk import pipes through `tools/import_adb.py` (LOTTO-0061),
+    which decides by the record index adb numbers from 0. Measured 2026-09-02:
+    no body in the dump carries the shape.
     """
     out = []
     for row in re.split(r"^Row: \d+ address=", raw, flags=re.M)[1:]:
