@@ -1743,7 +1743,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   way. Widening the catch is NOT the fix — the fix is a second wording, or a
   reason the case cannot arise. LOTTO-0034 §4.1 now states the precondition and
   the exception. Same origin as (p).
-  (r) `draws_left`'s `today` boundary is checked by nothing, and LOTTO-0034
+  (r) ✅ **fixed 2026-09-02.** `draws_left`'s `today` boundary was checked by nothing, and LOTTO-0034
   §4.1 credited INV-51 with pinning it. INV-51's case never calls `draws_left`
   and takes no `today` at all. Confirmed 2026-08-31 by mutation: changing
   `expiry.py::draws_left`'s `d >= today` to `d > today` leaves **all eight**
@@ -1751,10 +1751,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   `TODAY` (`expiry_is_pure`) interpolates the value into its message and never
   asserts it. A flip there silently costs every ticket its final-day warning,
   which is the day the warning matters most, and the whole suite still reports
-  PASS. Wanted: a ninth case and a tenth break — a ticket whose final draw is
-  exactly `today`, asserting `draws_left == 1`. The spec now records the gap in
-  §4.1 and §10 rather than implying coverage. Found by the review-contract
-  loop 4 on that spec.
+  PASS. Closed by a ninth case, `draws_left_today_boundary` (INV-61), and a tenth break, `today_boundary_off_by_one`. It pins BOTH sides — the final draw day and the day after — across every game in `GAMES`, since a one-sided assertion goes green against a defect arriving from the other direction and a 7-day pattern hides one a weekly pattern shows. Observed red under its own break, and `mutation_probe` on `expiry.py` killed all four boundary routes with that case alone (a control mutation survived). LOTTO-0034 §4.1, §5 and §10 now record it as covered. Found by the review-contract loop 4 on that spec.
 
   (s) A ticket bought in the gap left by a draw moved LATER is warned about too
   late. The moved draw sits on a day `DRAW_DAYS` does not list, so the calendar

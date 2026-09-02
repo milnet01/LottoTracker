@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""LOTTO-0034 INV-49..INV-56: the re-buy warning, from the calendar alone.
+"""LOTTO-0034 INV-49..INV-56, LOTTO-0007(r) INV-61: the re-buy warning, from
+the calendar alone.
 
-    python3 tools/verify_expiry.py                       # all eight
+    python3 tools/verify_expiry.py                       # all nine
     python3 tools/verify_expiry.py --list
     python3 tools/verify_expiry.py --break no_lower_bound   # RED-TEST: must FAIL
 
@@ -10,7 +11,7 @@ This item is greenfield, so there was no pre-fix code to red-test against.
 a one-off hand edit, exactly as CLAUDE.md records for verify_page.py.
 
 IT GOES IN local-CI.sh's DATA-DEPENDENT LANE, and it has no weak mode. Three of
-the eight cases need real data and not the same data:
+the nine cases need real data and not the same data:
 
     calendar_matches_history    the merged draw record, via history.all_draws()
     calendar_matches_real_draws the merged draw record AND lotto_sms_raw.txt
@@ -318,6 +319,35 @@ def unknown_game_is_loud():
     return "one notice for 5 unknown tickets, and it recurs"
 
 
+def draws_left_today_boundary():
+    """INV-61: draws_left is 1 on a ticket's own final draw day, 0 the day after.
+
+    LOTTO-0007(r). §4.1's `today` boundary was pinned by nothing:
+    `calendar_matches_real_draws` never calls `draws_left` and takes no
+    `today` at all. Mutation-caught 2026-08-31 - flipping `d >= today` to
+    `d > today` left all eight then-existing cases green, silently costing
+    every ticket its final-day warning, the day it matters most.
+
+    Both sides are pinned, because an assertion on only one side can go green
+    against a defect arriving from the other direction: `d > today` (this
+    case's own --break) fails the final-draw-day side but not the day-after
+    side, while a hypothetical `d >= today - 1 day` would fail the reverse.
+    Pinned across every game in GAMES too, since DRAW_DAYS differs per game
+    and `daily` draws every day - a defect surviving only on a 7-day pattern
+    would pass here on lotto or powerball alone.
+    """
+    for game in GAMES:
+        final = expiry.final_draw_date(game, TODAY, 1)
+        assert expiry.draws_left(game, TODAY, 1, final) == 1, (
+            f"{game}: draws_left is not 1 on the ticket's own final draw day"
+        )
+        day_after = final + datetime.timedelta(days=1)
+        assert expiry.draws_left(game, TODAY, 1, day_after) == 0, (
+            f"{game}: draws_left is not 0 the day after the final draw"
+        )
+    return f"1 on the final draw day, 0 the day after, across {', '.join(GAMES)}"
+
+
 CASES = [
     ("calendar_matches_history", "INV-49", calendar_matches_history),
     ("expiry_is_pure", "INV-50", expiry_is_pure),
@@ -327,6 +357,7 @@ CASES = [
     ("notice_names_nothing_else", "INV-54", notice_names_nothing_else),
     ("state_file_is_pruned", "INV-55", state_file_is_pruned),
     ("unknown_game_is_loud", "INV-56", unknown_game_is_loud),
+    ("draws_left_today_boundary", "INV-61", draws_left_today_boundary),
 ]
 
 BREAKS = {
@@ -339,11 +370,12 @@ BREAKS = {
     "no_prune": "state_file_is_pruned",
     "swallow_unknown_game": "unknown_game_is_loud",
     "notice_per_unknown_ticket": "unknown_game_is_loud",
+    "today_boundary_off_by_one": "draws_left_today_boundary",
 }
 
 
 def _apply_break(name):
-    """Apply one deliberate defect. Seven of the nine patch production code.
+    """Apply one deliberate defect. Most patch production code directly.
 
     Said plainly rather than implied, as verify_payouts.py does: only
     `notice_per_unknown_ticket` patches expiry_notices()' OUTPUT rather than
@@ -381,6 +413,13 @@ def _apply_break(name):
         # A bare except, written as a default: the ticket is dropped in silence.
         expiry.draws_left = lambda g, s, n, t: (
             real(g, s, n, t) if g in expiry.DRAW_DAYS else 0)
+    elif name == "today_boundary_off_by_one":
+        real = expiry.draw_dates
+        # `d >= today` read as `d > today`: a draw ON today no longer counts
+        # as not-yet-happened, so a ticket loses its final-day warning - the
+        # exact mutation LOTTO-0007(r) was filed against.
+        expiry.draws_left = lambda g, s, n, t: sum(
+            1 for d in real(g, s, n) if d > expiry._as_date(t))
     elif name == "notice_per_unknown_ticket":
         real = supervise.expiry_notices
 

@@ -8,6 +8,18 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **INV-61: `draws_left`'s `today` boundary is checked** (LOTTO-0007)
+  A ninth case in `tools/verify_expiry.py`,
+  `draws_left_today_boundary`, asserts a ticket reads 1 draw left on its
+  own final draw day and 0 the day after, for every game in `GAMES`;
+  `--break today_boundary_off_by_one` is the tenth deliberate defect and
+  red-tests it. That boundary was pinned by nothing — the case credited
+  with it never called `draws_left` — so reading `d >= today` as
+  `d > today` cost every ticket its final-day warning while the suite
+  still reported PASS. `expiry.py` is unchanged: the behaviour was
+  already right, the check was missing. LOTTO-0034 §4.1, §5 and §10
+  record it as covered.
+
 - **What you spent against what you won, month by month and year by year** (LOTTO-0036)
   Sign of success 4, and the last of the five with nothing built at all. The
   page gains a *Spend against winnings by period* section with a dropdown: one

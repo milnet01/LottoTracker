@@ -125,15 +125,18 @@ def draws_left(game, start, ndraws, today):
 boundary is `start`, inclusive, because a ticket bought on a draw day is
 entered in that day's draw. Leaving either open shifts every date by one.
 
-**Only the `start` boundary is checked, and INV-51 is what checks it.** The
-`today` boundary is pinned by nothing: `calendar_matches_real_draws` never
-calls `draws_left` and takes no `today` at all. Confirmed 2026-08-31 by
-mutation — changing `draws_left`'s `d >= today` to `d > today` leaves **all
-eight cases green**, because the one fixture whose draw falls on `TODAY`
+**Both boundaries are now checked.** `calendar_matches_real_draws` (INV-51)
+checks `start`; `draws_left_today_boundary` (INV-61, LOTTO-0007(r)) checks
+`today`, pinning both sides — the final draw day itself and the day after —
+across every game in `GAMES`, so a defect surviving on only one side or only
+one game's weekly pattern cannot pass unseen. Before INV-61, the `today`
+boundary was pinned by nothing: `calendar_matches_real_draws` never calls
+`draws_left` and takes no `today` at all. Confirmed 2026-08-31 by mutation —
+changing `draws_left`'s `d >= today` to `d > today` left **all eight then-existing
+cases green**, because the one fixture whose draw falls on `TODAY`
 interpolates the value into a message and never asserts it. A flip there
 silently costs every ticket its final-day warning, which is the day the warning
-matters most. §10 records it as uncovered rather than letting this sentence
-imply otherwise; a ninth case is filed against LOTTO-0007.
+matters most. §10 no longer records this as uncovered.
 
 **A game absent from `DRAW_DAYS` raises `KeyError`; neither function returns
 `None`.** `check.py::paying_combinations()` raises for the same reason — an
@@ -526,8 +529,7 @@ cannot score is LOTTO-0031's failure exactly. INV-53 and INV-56 both say so.
   what a cancelled draw produces, and what a later move produces for a ticket
   spanning it (§4.2).
   *Test:* `tools/verify_expiry.py`, case `calendar_matches_real_draws`.
-  *Scope: the `start` boundary only. `draws_left`'s `today` boundary is pinned
-  by nothing* — §10 records it.
+  *Scope: the `start` boundary only. `draws_left`'s `today` boundary is INV-61's.*
   *Breaks when:* a draw day changes; the ndraws-th-draw rule is off by one at
   the start boundary — an entry bought on a draw day is entered in that day's
   draw, and treating `start` as exclusive shifts every date later, which is
@@ -588,6 +590,16 @@ cannot score is LOTTO-0031's failure exactly. INV-53 and INV-56 both say so.
   ticket, which after a rebrand is a burst of hundreds. This is LOTTO-0031's failure
   class, where a rebranded name parsed to `None` and the ticket was silently
   never scored.
+
+- **INV-61** — `expiry.draws_left()` reads `1` on a ticket's own final draw
+  day and `0` from the day after, for every game in `GAMES`.
+  *Test:* `tools/verify_expiry.py`, case `draws_left_today_boundary`.
+  *Scope: the `today` boundary only — INV-51 is the `start` boundary.*
+  *Breaks when:* `d >= today` is read as `d > today` (or the reverse, at the
+  other boundary). LOTTO-0007(r): proven missing by mutation 2026-08-31 —
+  that exact flip left all eight then-existing cases green, because the one
+  fixture whose draw fell on `TODAY` interpolated the value into a message
+  and never asserted it.
 
 ## 6. Failure modes
 
@@ -780,9 +792,9 @@ would silently destroy the feature it exists to check, before every push.
 | INV-54 | `tools/verify_expiry.py::notice_names_nothing_else` |
 | INV-55 | `tools/verify_expiry.py::state_file_is_pruned` |
 | INV-56 | `tools/verify_expiry.py::unknown_game_is_loud` |
+| INV-61 | `tools/verify_expiry.py::draws_left_today_boundary` |
 | §4.6's date guard firing once a day — INV-53's `sync()` half | **nothing** — it lives in `tray.py::sync()`, which needs a `QSystemTrayIcon`; the project has no Qt-constructing test. The wording, the selection and the state file are all checkable because §4.7 puts them in `supervise.py`; the call site is not. Same exposure LOTTO-0003 INV-37 records. |
 | A draw day changing in the real world | **nothing in production** — INV-49 catches it only when the verifier is run. Accepted, as for `TIER_PRICES`. |
-| `draws_left`'s `today` boundary (§4.1) | **nothing** — INV-51 pins the `start` boundary only. Verified by mutation 2026-08-31: `d >= today` → `d > today` leaves all eight cases green, and the ticket loses its final-day warning. A ninth case is filed against LOTTO-0007. |
 | §4.5's write-before-notice ORDERING | **nothing** — inside `expiry_notices()` both orderings look identical to two successive calls, so INV-53 catches the write being removed and not its being moved. Observing it needs the process to die between the two statements. Held by the paragraph in §4.5. |
 | A state-file WRITE failure (§4.5) | **nothing** — `_write_warned()` is unguarded and `tray.py` adds no `try`, so it reaches the timer slot. Contract unresolved; filed against LOTTO-0007. |
 | `DISPLAY_NAME` covering every `DRAW_DAYS` key (§4.7) | **nothing** — INV-56 covers a game missing from `DRAW_DAYS`, which is the opposite direction. A game added to one table and not the other raises in the timer slot. |

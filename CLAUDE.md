@@ -96,7 +96,7 @@ python3 tools/verify_periods.py   # INV-57..INV-60: cost against winnings per
 python3 tools/verify_payouts.py   # INV-40..INV-47: the bank's own payout SMSes,
                                   # reconciled per VAS reference against every
                                   # computed win; --break/--list like verify_page
-python3 tools/verify_expiry.py    # INV-49..INV-56: the re-buy warning - the draw
+python3 tools/verify_expiry.py    # INV-49..INV-56, INV-61: the re-buy warning - the draw
                                   # calendar against real history in BOTH
                                   # directions, that an EXPIRED ticket is never
                                   # warned about, and that a notice is said once
