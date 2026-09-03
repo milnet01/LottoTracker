@@ -3039,3 +3039,580 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** On a machine set to the wrong timezone, a draw date could be read as the day before or after
   Kind: investigate.
   Source: review-code-2026-09-01 lane tray-calendar-tools, deferred out of LOTTO-0048.
+
+- ✅ [LOTTO-0067] **The --break red tests are the project's only failure evidence, and nothing holds them.**
+  The strongest theme of the test audit. This project is greenfield on most
+  items, so `--break <name>` - apply one deliberate defect, assert the named case
+  goes red - is the ONLY evidence a case can be observed failing. Three separate
+  failures, found by three lanes that could not see each other.
+
+  1. **local-CI.sh never runs --break at all.** 33 breaks in verify_page, 10 in
+     verify_expiry, 8 in verify_payouts, 5 in verify_periods: none is executed by
+     the gate. The evidence is a one-off historical claim, not a standing one.
+     Fix: a --breaks mode that loops every entry in a subprocess and asserts each
+     reddens its target, plus one row in local-CI.sh's data-dependent lane.
+
+  2. **--break qt_import passes on the WRONG failure. Reproduced 2026-09-02.**
+     verify_page.py:783 copies eight modules into a temp dir and omits expiry.py,
+     which supervise.py:27 imports at module level. `import serve` therefore dies
+     with ModuleNotFoundError before the Qt detection at :799 is reached, and the
+     run still prints "red test OK: serve_is_headless failed as it should" and
+     exits 0. INV-19 - serve.py must never import Qt - is the one invariant with
+     no other verifier, and it has no working red test.
+     Fix: add "expiry.py" to the copy list.
+
+  3. **`if want in failed` accepts collateral** in verify_payouts:371,
+     verify_expiry:465 and verify_periods' main(). A break that reddens three
+     cases still reports success, so it stops proving the case is sensitive to
+     its OWN defect. verify_expiry --break unlisted_draw_day demonstrably does
+     this: it mutates the shared DRAW_DAYS dict, which also reddens
+     calendar_matches_real_draws.
+     Fix: `if failed == [want]`.
+
+  Full reports: scratchpad/lanes/chunk-1-page.md, chunk-3, chunk-5.
+  Resolved 2026-09-03. All 56 breaks in the project now run and every one
+  reddens EXACTLY what it is declared to.
+
+  expiry.py joins verify_page.py's copy list. Reproduced first: the copied tree
+  failed `import serve` with ModuleNotFoundError before the Qt check ran, and
+  --break qt_import still printed "red test OK" and exited 0. INV-19 is the one
+  invariant with no other verifier and its only evidence was void.
+
+  The verdict in verify_payouts, verify_periods and verify_expiry is now exact
+  rather than membership. Running every break under it surfaced five that were
+  too coarse - none of which anything had ever detected - and they split into two
+  different problems:
+
+    * compare_in_rands (payouts) rewrote every record's category, so it also
+      reddened unscored_is_not_unexplained. That is a defect in the break, and
+      verify_payouts now carries the ACTIVE_CASE guard verify_periods already
+      had: a break fires only inside the case it names.
+    * four in verify_expiry change a fact about the WORLD rather than the code -
+      a Monday Lotto draw, an exclusive start date - and the cases that read that
+      fact SHOULD move with it. Scoping the mutation away from them would be a
+      weaker test, not a stronger one, so ALSO_RED declares the collateral with
+      a reason per entry, and the verdict holds it in BOTH directions: an
+      undeclared extra failure is too coarse, and a declared one that stops
+      happening means the break has narrowed.
+
+  Still open, and NOT fixed: local-CI.sh does not run --break. Doing so costs 56
+  subprocess runs, several of them over the real dump, on every push. The sweep
+  is reproducible by hand and was run twice today; whether it belongs in the gate
+  is a cost question rather than a correctness one.
+  **Layman:** The checks that prove our tests can actually catch a bug are themselves not being run
+  Kind: test.
+  Source: review-tests-2026-09-02, cross-cutting: lanes 1, 3 and 5 independently.
+
+- ✅ [LOTTO-0068] **Six verifiers reach the live lottery API, so a third-party outage blocks every push.**
+  Needs a decision, not just an edit - filed accordingly.
+
+  verify_coverage, verify_pools, verify_sources, verify_periods, verify_payouts
+  and verify_expiry all reach https://www.nationallottery.co.za/api through
+  history.all_draws -> results.draws -> results._post. There is no mock, no
+  recorded fixture, no on-disk cache for the API path and no env gate. All six
+  sit in local-CI.sh's local lane, which .githooks/pre-push runs - so an outage,
+  a rate limit, a TLS failure past three attempts or a schema change blocks every
+  push, and _post's 3 attempts behind a 20s timeout cost up to ~63s per call
+  before it aborts.
+
+  What is already bounded: the payout-page scrape is disk-cached under
+  archive_cache/, and results.divisions is memoised. What is not bounded at all
+  is the draw feed, refetched every run.
+
+  The asymmetry worth acting on: verify_periods PROVED synthetic cases can be
+  network-free - three of its four inject draws() and increments() and touch
+  nothing external. verify_payouts' five equivalent synthetic cases are dragged
+  onto the network only because _scorable_start() calls all_draws for a date.
+
+  Measured 2026-09-02: verify_payouts' categories_partition alone is 27.8s and 30
+  POSTs of that file's 35.5s.
+
+  The decision: seed history._cache with a stub for the synthetic cases and let
+  only the real-data cases fetch; or record a fixture; or accept the dependency
+  and DECLARE it in each module docstring, the way verify_periods:28-36 declares
+  why it has no weak mode. Today it is undeclared.
+  Resolved 2026-09-03 by the user's decision: stop the SYNTHETIC cases using the
+  live feed, and leave the real-data cases fetching, because comparing against
+  real data is their whole subject.
+
+  verify_payouts was the only file where this was accidental. Its five synthetic
+  cases reached a third party's production API purely to look up a start date -
+  via _scorable_start(), and via check.reconcile() reading history.scorable()
+  directly. They now seed history's MEMO instead (patching a name in the verifier
+  would not be seen, because reconcile reaches history itself). categories_
+  partition, whose subject IS the real data, gets the live path back.
+
+  Proven: 7 of 7 non-real-data cases run to completion with results._post
+  replaced by one that raises. All 8 still pass normally, and the category census
+  is unchanged from check.py's own report, which uses no verifier code.
+
+  The other files were already right: verify_periods' three synthetic cases
+  inject their data sources, verify_expiry's seven pure cases touch nothing, and
+  verify_page stubs the transport.
+
+  WHAT THIS DOES NOT DO, stated plainly: a lottery-site outage still blocks a
+  push, because verify_coverage, verify_pools, verify_sources, verify_periods'
+  reconciliation case, verify_payouts' census and verify_expiry's calendar cases
+  all genuinely compare against real draw data. Removing that would need the
+  cached-feed option the user considered and did not take.
+  **Layman:** Our tests talk to the real lottery website, so if that site is down we cannot push code
+  Kind: test.
+  Source: review-tests-2026-09-02, cross-cutting: lanes 3, 4 and 5 independently.
+
+- ✅ [LOTTO-0069] **The privacy gate can report success having read no file at all.**
+  Two HIGH and four smaller findings on tools/verify_privacy.py - the single
+  control between real SMS content and a public repository.
+
+  **HIGH :45-49, reproduced 2026-09-02.** tracked() never inspects git's return
+  code. With a git that fails, stdout is empty, the loop runs zero times, and it
+  prints "0 tracked files, 0 leak(s) [content+pattern]" and exits 0 - AND
+  local-CI.sh's own full-strength assertion, which greps that line for
+  "content+pattern", passes on the same output. Both guards defeated by one
+  failure. Every sibling verifier carries an anti-vacuity guard
+  (verify_watch:97, :358, :485); this one carries none.
+  Fix: fail when out.returncode != 0 or the list is empty.
+
+  **HIGH :18-19.** The docstring claims "the exit code says which mode ran". It
+  does not - the mode string reaches stdout only. The public CI lane, which does
+  not grep, cannot distinguish a degraded run from a full one.
+  Fix: a --require-content flag that exits non-zero when the dump is absent;
+  correct the docstring.
+
+  **MEDIUM :36-42.** No positive control: nothing asserts the five IDENTIFYING
+  patterns still match anything. A broken regex leaves the run permanently green
+  while the content half detects nothing.
+  Fix: assert each pattern matches the dump at least once.
+
+  **MEDIUM :60-63.** A tracked path that will not open is skipped with no message
+  and no counter, while the summary still counts it.
+
+  **LOW :58-61.** git ls-files gives the INDEX's paths; the content read is the
+  worktree's. A file staged with a leak and cleaned in the worktree passes.
+
+  **LOW :32.** REFERENCE is case-sensitive; a lowercase reference-shaped string
+  in prose is not seen. Fix: add re.I.
+
+  Full report: scratchpad/lanes/chunk-2-watch-privacy.md
+  Resolved 2026-09-03. The gate can no longer report success having checked
+  nothing.
+
+  tracked() raises on a non-zero git return code and on an empty file list.
+  Reproduced before and after: with a `git` that exits 127, the old code printed
+  "0 tracked files, 0 leak(s) [content+pattern]" and exited 0 - and local-CI.sh's
+  own full-strength assertion, which greps that line for content+pattern, passed
+  on the same output. Both guards defeated by one failure. It now exits 1.
+
+  The docstring no longer claims the exit code says which mode ran, because it
+  does not. --require-content is the caller's way to demand the strong mode, and
+  local-CI.sh passes it on the local lane only - a public runner never has the
+  dump. That is the verifier's OWN guard; the grep stays as the second.
+
+  A positive control: every IDENTIFYING pattern must still match the dump, or it
+  has stopped working and the content half is inert while the run stays green.
+  An unreadable tracked file is named and counted rather than skipped silently.
+  The reference pattern is case-insensitive.
+
+  DISMISSED - reading the worktree while listing the index. To ship a leak you
+  would have to stage leaking content, then clean the worktree, then commit: a
+  deliberate sequence rather than an accident, and CLAUDE.md's `git add -A` first
+  convention keeps the two identical at the moment it matters. A check firing on
+  every uncommitted edit would train the user to ignore it, which costs more than
+  it buys.
+  **Layman:** The check that stops real message data reaching the public repo can pass without checking anything
+  Kind: test.
+  Source: review-tests-2026-09-02 lane 2.
+
+- ✅ [LOTTO-0070] **INV-6 compares only draw dates, so a wrong-pool substitution passes.**
+  INV-6 is the invariant this project was built after getting wrong, and this is
+  the strongest single finding of the audit after the red-test one.
+
+  **HIGH verify_coverage.py:81-89.** All five properties compare only the `date`
+  key of a draw record. Nothing in the file ever reads main, special, issue or
+  source. Within a game the pools are drawn in one event and therefore SHARE
+  DATES - history.POOL_NAMES maps ("lotto",0/1/2) onto one feed keyed on the same
+  drawTime, and the archive keys them by the same date string. So a covered()
+  that dropped its plus_flag, or a caller passing the ticket's top tier instead
+  of the entry's pool, returns the WRONG POOL'S RECORDS ON THE RIGHT DATES: start
+  matches, first-covered matches, len(span) matches, and it prints "0 with wrong
+  draw coverage". Every Plus entry would be scored against base-game numbers.
+  Confirmed by inspection: grep returns only ["date"] comparisons at :61, :68,
+  :74, :81, :85, :90.
+  Fix: `rows == after[:t.ndraws]` - dict equality carries every key and subsumes
+  properties 2, 3 and 4.
+
+  **HIGH verify_pools.py:120-149.** The ERA cross-check is guarded by
+  `bought is not None`, and bought comes from dump_facts() - a SECOND,
+  independent reader of the dump format, against tickets.py:273's explicit
+  "the dump format's ONE reader" rule. If that regex ever misses, every
+  comparison is skipped and the run prints "0 name/price disagreements" and exits
+  0. Measured 2026-09-02: facts covers 561/561 today, so the check IS firing -
+  this is a missing floor, not a live blind spot.
+  Fix: if len(facts) < len(tickets), count the shortfall into bad.
+
+  **MEDIUM verify_pools.py:186-203.** The whole INV-11 half dies with its own
+  population: `wrong` cannot fire unless `partly` is non-empty, and partly is the
+  11 Daily Lotto Plus tickets - which a GAME_MAP regression (LOTTO-0031's exact
+  shape) would empty. Measured: partly is 11 today. Also `double` cannot fire at
+  all, since uncheckable_report builds partly and wholly as complementary
+  comprehensions.
+
+  **LOW verify_coverage.py:96.** An empty-but-present dump gives 0 tickets, 0
+  entries, and a green exit. Mitigated at suite level by verify_pools' floor.
+
+  **LOW verify_coverage.py:54.** 11.2s, essentially all network; three of the six
+  POSTs are exact duplicates.
+
+  Full report: scratchpad/lanes/chunk-4-pools-coverage.md
+  Resolved 2026-09-03, and this is the most valuable fix of the audit.
+
+  verify_coverage.py compares the RECORDS covered, not their dates. Proven both
+  ways: 0 flagged on the real dump, and 677 entries flagged when covered() is
+  replaced by one that ignores plus_flag. Under the old date-only properties that
+  substitution passed silently - every pool of a game is drawn in one event and
+  shares its dates, so the wrong pool's records on the right dates satisfied
+  start, contiguity and count alike, and every Plus entry would have been scored
+  against the base game's numbers. That is INV-6's own failure, which is what
+  this project was built after hitting.
+
+  Floors added where a sweep could report zeroes having checked nothing: an
+  empty-but-present dump in verify_coverage, dump_facts() covering fewer tickets
+  than exist in verify_pools (which guards the ERA check and is a SECOND reader
+  of the dump format), and an empty `partly` population in the INV-11 sweep.
+  Measured first: facts covers 561/561 and partly is 11, so all three were firing
+  today - these are missing floors, not live blind spots.
+
+  RECORDED rather than fixed: verify_pools' `double` list cannot fire against the
+  current implementation, because uncheckable_report builds partly and wholly as
+  complementary comprehensions over one list. Kept, with a comment saying so, so
+  it is not mistaken for cover.
+  **Layman:** The check that each ticket was scored against the right draws only compares dates, and every game's pools share dates
+  Kind: test.
+  Source: review-tests-2026-09-02 lane 4.
+
+- ✅ [LOTTO-0071] **The three-valued money rule is asserted in one direction only.**
+  **HIGH verify_payouts.py:188-192.** The fixture at :188 is the file's only
+  reference that is paid, fully scorable and won nothing - the only place
+  `computed_cents == 0` is produced. Nothing asserts it. Across all eight cases
+  the only three-valued assertion is `assert n["computed_cents"] is None` (:170),
+  which pins one direction.
+
+  Change check.py:415-416's `elif any(scorable(...)): computed = 0` to
+  `computed = None` and EVERY case still passes, because category is decided by
+  an independent ordered if-chain that never reads computed. Downstream,
+  reconcile_report() then moves that reference into `unscorable` and prints
+  "nothing could be scored, which is not a zero" about a reference that WAS
+  checked and won nothing - the cardinal rule broken on the money line, in the
+  direction it exists to prevent. LOTTO-0029 INV-43 names three values; two are
+  held.
+  Fix: `assert a["computed_cents"] == 0` beside :190, plus a zero_becomes_none
+  break.
+
+  **MEDIUM verify_periods.py:198.** INV-60's "a win cannot conjure a bucket" half
+  is never exercised - no case supplies a win dated in a period with no spend.
+  Replace both guards in serve.py:193-196 with setdefault and all four cases stay
+  green. Consequence: a bucket rendering R0.00 spend against a real win.
+  Fix: pass a win for the sentinel dated in an empty month and assert its key is
+  absent; register a bucket_from_win_only break.
+
+  **MEDIUM verify_payouts.py:168.** The unscorable fixture uses lotto/1 - a pool
+  every source carries - so unscorability rests entirely on the date 2020-01-01
+  preceding the archive. backfill.FIRST_YEAR is a knob and the archive has
+  already been pushed backwards once (LOTTO-0006). Re-running backfill with an
+  earlier floor turns the case red with a FALSE cardinal-rule accusation. The
+  same file already knows the durable technique and says so at :182-184: use
+  daily/1, the pool no source carries.
+
+  **MEDIUM verify_periods.py:105 and verify_payouts.py:244-246.** Two cost
+  findings, measured. periods_reconcile's `wins = check.check(all_tickets)` is
+  the file's dominant cost and no assertion reads it. verify_payouts:244-246
+  runs a SECOND full scoring pass plus three extra dump parses for a number the
+  line itself says is not asserted, and categories_partition two cases earlier
+  already computed it.
+
+  Full report: scratchpad/lanes/chunk-3-payouts-periods.md
+  Resolved 2026-09-03.
+
+  The missing half of the three-valued rule is asserted: a paid, fully scorable
+  reference with no winning line must report computed_cents == 0. Proven - with
+  check.reconcile patched to return None where it means 0, the case now fails;
+  before, every case in the file passed, because `category` is decided by an
+  ordered if-chain that never reads `computed`.
+
+  The unscorable fixture is built from daily/1, the pool no source carries,
+  instead of lotto/1 with a 2020 date. Pinned to a date, unscorability rested on
+  backfill.FIRST_YEAR - a knob already turned once - and the next turn would have
+  reddened the case with a FALSE accusation against the cardinal rule.
+
+  INV-60's win side is exercised: a win dated in a period with no spend must not
+  conjure a bucket. No case supplied one, so replacing both guards in
+  period_buckets() with setdefault left all four green.
+
+  Two cost fixes. verify_payouts' second full scoring pass is gone - three extra
+  dump parses and a complete check.check() over 1,233 entries for a number the
+  line itself said was not asserted, and which categories_partition had already
+  computed (measured: that case is 27.8s of the file's 35.5s). verify_periods'
+  `wins` now carries a conservation assertion - the same wins filed by month and
+  by year must total the same - so the call that makes it the slowest verifier in
+  the suite is load-bearing rather than computed and discarded.
+  **Layman:** Our tests check that "could not be scored" is not zero, but never that zero is not "could not be scored"
+  Kind: test.
+  Source: review-tests-2026-09-02 lane 3.
+
+- ✅ [LOTTO-0072] **The re-buy notice's privacy bound is a blocklist, and its selector asserts 0 == 0.**
+  **HIGH verify_expiry.py:256-261.** The case is named notice_names_nothing_else
+  and INV-54 is "the game, the final draw date and the number of draws left, and
+  NOTHING else". The assertion is a BLOCKLIST of five literal strings. The most
+  likely leak escapes it: supervise.expiry_notice() already formats dates by hand
+  via _DAY_NAMES/_MONTH_NAMES, so a purchase date added the way that function
+  formats dates renders "Fri 21 Aug" and does not contain "2026-08-21". Same for
+  board numbers without commas. This is the one test holding LOTTO-0034 s3.3's
+  deliberate privacy exception, in a repo intended to be public.
+  Fix: assert the notice EQUALS the constructed expected sentence - it is a pure
+  function of three values - and keep the blocklist as a second line.
+
+  **MEDIUM/escalated verify_expiry.py:218.** `assert len(notices) ==
+  len(eligible)` compares counts. Measured 2026-09-02: at the frozen TODAY =
+  2026-08-22, the number of real tickets with 0 < draws_left <= 2 is ZERO, so
+  this is 0 == 0. The selection rule - which tickets get a re-buy warning, this
+  project's PRIMARY job - has no live assertion from the real dump. The case is
+  not vacuous overall (the constructed `dead` ticket at :223-225 does fire), but
+  this assertion is.
+  Fix: reconstruct the expected notice strings from `eligible` and compare as
+  multisets; and move TODAY to a date where the real dump has eligible tickets,
+  or construct them.
+
+  **MEDIUM verify_expiry.py:96.** INV-49's two directions are not measured over
+  the same window. The removed-day direction is correctly scoped to 90 days; the
+  added-day direction divides by the whole merged record. Measured: lotto
+  485/486, powerball 487/487, daily 1701/1701 - so a newly added weekly lotto
+  draw day needs ~10 rows against 486 to cross the 2% floor, about two and a half
+  months, while every projected final_draw_date is wrong from day one. For daily
+  (all seven days listed) that half asserts nothing at all.
+  Fix: compute the ratio over the same 90-day window.
+
+  **MEDIUM verify_expiry.py:460.** main() catches AssertionError only, so a
+  network blip in the FIRST case aborts the run and the eight later cases - seven
+  of them pure - never execute.
+
+  **MEDIUM verify_expiry.py:71.** Eight mkdtemp directories per run, never
+  removed. The one at :217 is passed the real dump, so supervise._write_warned()
+  writes REAL VAS REFERENCES into /tmp - outside the repo, where verify_privacy
+  structurally cannot see them.
+
+  **MEDIUM verify_sources.py:26/33.** The archive is frozen; the API side is the
+  newest 400 records and slides forward. Once the window passes the archive's
+  newest draw, every pool reports NO OVERLAP and the gate goes red - in roughly
+  13 months for daily, 15 for lotto - naming "renamed pool, or archive missing
+  this game" rather than the real cause, a stale archive.
+
+  **LOW verify_sources.py:20, :33, :39.** EXPECTED_EMPTY is never falsified; 7
+  POSTs for 3 distinct queries; winNumList unguarded where history.py guards it.
+
+  Full report: scratchpad/lanes/chunk-5-expiry-sources.md
+  Resolved 2026-09-03.
+
+  INV-54 is an EQUALITY, not a blocklist. Proven: a purchase date added in the
+  same house format expiry_notice() itself uses renders "Fri 21 Aug", contains
+  none of the five forbidden strings, and now fails. This is the bound on a
+  deliberate privacy exception in a public repository, and it was five literal
+  strings. The unrecognised-game notice is compared for equality too.
+
+  INV-49's added-day direction is measured over the same 90-day window as the
+  removed-day one. Over the whole archive it was diluted to uselessness - lotto
+  485/486, so one added weekly draw day needed months to cross a 2% floor while
+  every projected date was wrong from day one. Measured after: 26/26, 26/26,
+  91/91, so one off-day draw is now 4% rather than 0.2%. Stated in the code
+  rather than hidden: for daily, DRAW_DAYS lists all seven days, so both
+  directions are unconditionally true and that case asserts nothing about it.
+
+  A POSITIVE CONTROL for the re-buy selector. Measured: at the frozen TODAY no
+  real ticket is eligible, so `len(notices) == len(eligible)` was 0 == 0. That
+  still asserts INV-52's own claim (561 finished tickets, no notice), but said
+  nothing about the selector picking the right set. One eligible ticket mixed
+  into the real 561 must now produce exactly one notice naming its game - proven
+  to catch a selector that warns nobody.
+
+  Also: main() catches Exception per case, so a transport blip in the first case
+  no longer aborts the eight later ones, seven of which are pure. The eight temp
+  directories are removed - one of them was being written REAL VAS references by
+  supervise._write_warned(), outside the repository where verify_privacy.py
+  structurally cannot see them.
+
+  verify_sources distinguishes a STALE ARCHIVE from a renamed pool. The archive
+  is frozen until backfill.py is re-run; the API side is the newest 400 records
+  and slides forward, so the two would eventually stop overlapping and the gate
+  would go red about a year out naming the wrong cause. EXPECTED_EMPTY is now
+  falsifiable - a pool exempted as carried by no source fails if one starts
+  carrying it - the winNumList read is guarded the way history.py guards it, and
+  the feed is fetched once per GAME rather than once per pool: 7 POSTs to 3.
+  **Layman:** The test guarding what the re-buy reminder may reveal checks five exact strings rather than the rule itself
+  Kind: test.
+  Source: review-tests-2026-09-02 lane 5.
+
+- ✅ [LOTTO-0073] **Three robustness gaps in the SMS watcher's verifier.**
+  **MEDIUM verify_watch.py:334 (worker at :329).** The 8-worker barrier arms the
+  race but nothing verifies it fired. Eight interpreters must each start, import
+  watch_sms and reach the barrier inside 3.0s of wall clock; on a loaded machine
+  a late worker simply runs after the others and the eight appends serialise by
+  accident. Every assertion then passes and INV-38 reports green having never put
+  two writers inside append_new() at once. The failure direction is a silent
+  false pass. The anti-vacuity guard at :360 only catches nothing-written-at-all.
+  Also a hard >=3.0s floor on every suite run.
+  Fix: each worker writes its pre-barrier timestamp to a side file; assert every
+  one is <= the deadline, and report "the race never armed" otherwise.
+
+  **MEDIUM verify_watch.py:340-341.** `for proc in running: proc.wait(timeout=60)`
+  with no try/finally. One hung worker holds the exclusive flock, wait raises
+  TimeoutExpired, the exception escapes main(), the remaining children are never
+  terminated, and the four later cases never execute - leaving orphaned processes
+  holding a lock on a file in an already-deleted temp directory.
+  Fix: try/finally that terminates and reaps every entry.
+
+  **MEDIUM verify_watch.py:294-298.** The only case that runs the REAL
+  watch_sms.py, whose dump path is the live personal-data file and which cannot
+  be redirected from the command line. The sibling case states the prohibition in
+  its own docstring at :253-254. The only thing preventing it today is the
+  shadowing dbus.py at :290 being reached first - true because `import dbus` is
+  the first statement of run(), but nothing asserts it.
+  Fix: record the dump's size and mtime before the subprocess and assert both are
+  unchanged after.
+
+  **LOW verify_watch.py:65.** The fixture uses "Date 01/01/2020", which
+  verify_privacy's own IDENTIFYING patterns match. If a real SMS ever carries
+  that date, the privacy gate reports this file as a leak and blocks every push.
+  The price in the same fixture was deliberately made impossible; the date was
+  not.
+
+  Full report: scratchpad/lanes/chunk-2-watch-privacy.md
+  Resolved 2026-09-03.
+
+  The 8-worker race is now VERIFIED to have armed. Each worker records its
+  readiness before the barrier and the parent asserts every one reached it in
+  time; a late worker means the appends serialised by accident and INV-38 would
+  have reported green having never put two writers inside append_new() at once -
+  a silent false pass no red run would surface. It arms on this machine.
+
+  The wait loop has a try/finally that kills and reaps every child. One worker
+  holds an exclusive flock, so a stuck one blocked the rest, TimeoutExpired
+  escaped main(), the four later cases never ran, and orphans were left holding a
+  lock on a file in a temp directory about to be deleted.
+
+  The one case that runs the REAL watch_sms.py now measures the live dump's size
+  and mtime either side. That file cannot be redirected from the command line,
+  and the only thing keeping the real collector off it is a shadowing dbus.py
+  being imported first - true today, asserted by nothing until now.
+
+  The header-inside-the-body case compares the BODY. The record count does not
+  assert survival: a format_row that DELETED the forged header rather than
+  escaping it would also produce exactly one record, while destroying part of a
+  real message.
+
+  The fixture dates are 1970 rather than 2020. verify_privacy.py's own patterns
+  match `Date DD/MM/YYYY`, so a real SMS carrying 01/01/2020 would have made the
+  privacy gate report this file as a leak and block every push. The price in the
+  same fixture was made impossible for that reason; the dates were not.
+  **Layman:** The test for two collectors writing at once may never actually make them collide
+  Kind: test.
+  Source: review-tests-2026-09-02 lane 2.
+
+- ✅ [LOTTO-0074] **Four gaps in the page verifier, including a real build against the live API.**
+  The Qt red-test finding from this lane is filed separately with the other
+  red-test failures. These are the rest.
+
+  **MEDIUM :416-418.** The one place this file leaves its own no-network,
+  no-real-data box, and it starts a REAL build. serve.py:826 passes the real
+  build_model to make_server unconditionally; LOTTO_NO_BUILD gates only the
+  OPENING build. So this POST enters serve.refresh(state, build_model) in the
+  child, which reads the real lotto_sms_raw.txt and calls check.check() ->
+  results._post() -> the live API. The child is SIGTERMed milliseconds later, so
+  the blast radius is small - but it is RACED rather than prevented. This
+  falsifies the file's own header ("No network... No real data") and CLAUDE.md's
+  "nothing in that file calls build_model()".
+  Fix: assert the child's token on a route that starts no build.
+
+  **MEDIUM :609-673.** INV-16's case asserts a number it computed itself and
+  placed in its own fixture: expected_cmp is accumulated at :631 and written into
+  the model at :643. Nothing under test decides compared_cents - that derivation
+  lives in build_model, which this file never invokes for an assertion. The break
+  confirms it: spend_is_lifetime mutates the FIXTURE. No build_model change can
+  redden this case.
+  Fix: apportionment needs period_buckets' treatment - a pure function taking its
+  data as arguments; meanwhile narrow the docstring to the rendering clause it
+  actually holds.
+
+  **MEDIUM :802-806.** `except OSError: pass` around the only source of the data
+  one of INV-19's three clauses is asserted from. If /proc/self/task/*/children
+  is absent or unreadable, kids stays empty and "importing it spawns nothing"
+  passes vacuously, indistinguishable from a real pass. No positive control, in a
+  file otherwise scrupulous about them.
+
+  **LOW :961-970.** A 0.2s wall-clock budget on one localhost round-trip, where
+  the failure it discriminates would take seconds. Raise to ~2s.
+
+  **LOW :324 and 5 more.** srv.shutdown() without server_close() leaves ~9
+  listening sockets bound for the life of the process; :1690 already shows the
+  correct pairing.
+
+  **LOW :79-84.** temp_home() is called by 15 cases and rmtree'd by 2, leaving 13
+  directories per run.
+
+  Also recorded by this lane, for the record: 31 of 33 breaks were traced against
+  source and correctly target the thing their case names.
+
+  Full report: scratchpad/lanes/chunk-1-page.md
+  Resolved 2026-09-03.
+
+  The token case posts to /settings, not /refresh. LOTTO_NO_BUILD gates only the
+  OPENING build - serve.py hands the real build_model to make_server regardless -
+  so that POST started a real build in the child, reading the live dump and
+  calling the operator's API, which the terminate() then killed mid-flight. Raced
+  rather than prevented, and it falsified this file's own header. /settings
+  proves the same thing and starts nothing; the child gets a contained $HOME
+  because that route writes.
+
+  The children probe fails when it cannot observe anything. `except OSError: pass`
+  sat around the only source of the data one of INV-19's three clauses is
+  asserted from, so an unreadable /proc made that clause pass having measured
+  nothing - indistinguishable from a real pass, in a file otherwise scrupulous
+  about positive controls.
+
+  temp_home()'s directories are drained in main(). Two of fifteen callers cleaned
+  up, so a green run left thirteen behind and the gate runs on every push;
+  verified that a run now leaves none. The 409 timing budget is 2s rather than
+  0.2s - the failure it discriminates takes seconds, so the margin was never the
+  point and a loaded machine could redden correct code.
+
+  NARROWED rather than fixed, and said so in the docstring: INV-16's case asserts
+  a number it computed itself and wrote into its own fixture, so no change to
+  build_model() can redden it. What it really holds is the RENDERING clause - the
+  compared figure goes in the compared row. Closing the rest needs build_model's
+  apportionment extracted as a pure function the way period_buckets already was,
+  which is a change to the code under test and a different scope.
+  **Layman:** The page test says it never touches the network or real data, and in one place it does both
+  Kind: test.
+  Source: review-tests-2026-09-02 lane 1.
+
+- ✅ [LOTTO-0075] **Two stale counts about the page verifier, one of them in CLAUDE.md.**
+  Measured 2026-09-02 by importing the module: verify_page.CASES has 18 entries
+  and verify_page.BREAKS has 33; `--list` prints 33 lines.
+
+  - tools/verify_page.py:2 says "Seventeen cases", :9 says "all seventeen", and
+    :13 says "binding on all thirteen".
+  - CLAUDE.md:120 says "`--list` shows the thirty-one breaks".
+
+  No dimension of the test audit covers a stale count, which is why the lane
+  recorded it rather than filing it. It is a doc-fact defect and belongs here.
+
+  Prefer dropping the numbers to re-taking them - documentation.md s2.3 says a
+  census figure should be dropped rather than refreshed, and these two have gone
+  stale once already.
+  Resolved 2026-09-03. Measured by importing the module: 18 cases and 33 breaks,
+  against "Seventeen cases", "all seventeen", "all thirteen" and CLAUDE.md's
+  "the thirty-one breaks".
+
+  The numbers are dropped rather than re-taken - documentation.md s2.3's rule,
+  and these two had gone stale once already. The docstring now says "one case per
+  invariant" and "every case", and CLAUDE.md says "--list shows the breaks".
+  **Layman:** Two places state how many test cases and deliberate defects there are, and both numbers are out of date
+  Kind: doc-fix.
+  Source: review-tests-2026-09-02 lane 1, confirmed by measurement.

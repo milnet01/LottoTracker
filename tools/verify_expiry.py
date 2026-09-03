@@ -44,6 +44,7 @@ user would never be told. Do not narrow this.
 import datetime
 import json
 import os
+import shutil
 import sys
 import tempfile
 
@@ -68,8 +69,21 @@ def ticket(game="powerball", start=datetime.datetime(2026, 8, 1), ndraws=10,
                   60.0, [(0, 100)], start, True)
 
 
+_TEMP_DIRS = []  # drained in main()'s finally; 8 call sites
+
+
 def _tmp_state():
-    return os.path.join(tempfile.mkdtemp(prefix="lotto-expiry-"), "warned.json")
+    """A fresh state-file path, registered for removal.
+
+    Nothing removed these, so a green run left eight directories in /tmp and
+    the pre-push gate runs on every push. One of them is passed the REAL dump,
+    so supervise._write_warned() writes real VAS references into it - outside
+    the repository, where verify_privacy.py (which compares TRACKED files)
+    structurally cannot see them.
+    """
+    d = tempfile.mkdtemp(prefix="lotto-expiry-")
+    _TEMP_DIRS.append(d)
+    return os.path.join(d, "warned.json")
 
 
 # ------------------------------------------------------------------- the cases
@@ -90,21 +104,39 @@ def calendar_matches_history():
         rows = all_draws(game, 0)
         assert rows, f"{game}: no draw record - run backfill.py"
         days = expiry.DRAW_DAYS[game]
-        on = sum(1 for r in rows
-                 if datetime.date.fromisoformat(r["date"]).weekday() in days)
-        share = on / len(rows)
-        assert share >= 0.98, f"{game}: only {on}/{len(rows)} draws on a listed day"
 
+        # BOTH directions over the SAME 90-day window. The added-day direction
+        # used to divide by the whole merged record, which dilutes it to
+        # uselessness: a genuinely added weekly draw day contributes about one
+        # row a week against a denominator in the hundreds, so it needs MONTHS
+        # to cross a 2% floor - while every projected final draw date is wrong
+        # from the first day. Measured 2026-09-02: lotto was 485/486 over the
+        # archive and is 26/26 over 90 days, so one off-day draw is 4% here
+        # against 0.2% there.
         newest = datetime.date.fromisoformat(rows[-1]["date"])
         window = newest - datetime.timedelta(days=90)
-        seen = {datetime.date.fromisoformat(r["date"]).weekday() for r in rows
-                if datetime.date.fromisoformat(r["date"]) >= window}
+        recent = [r for r in rows
+                  if datetime.date.fromisoformat(r["date"]) >= window]
+        assert recent, f"{game}: no draw at all in the 90 days to {newest}"
+
+        on = sum(1 for r in recent
+                 if datetime.date.fromisoformat(r["date"]).weekday() in days)
+        share = on / len(recent)
+        assert share >= 0.98, (
+            f"{game}: only {on}/{len(recent)} draws in the 90 days to "
+            f"{newest} fell on a listed day - an ADDED draw day")
+
+        seen = {datetime.date.fromisoformat(r["date"]).weekday() for r in recent}
         missing = sorted(days - seen)
         assert not missing, (
             f"{game}: table lists weekday(s) {missing} with no draw in the 90 "
             f"days to {newest} - a removed draw day"
         )
-        out.append(f"{game} {on}/{len(rows)}")
+        # Stated rather than hidden: for daily, DRAW_DAYS lists all seven days,
+        # so BOTH directions are unconditionally true and this case asserts
+        # nothing about it. A game that draws every day has no calendar to get
+        # wrong; the check is real for lotto and powerball.
+        out.append(f"{game} {on}/{len(recent)} in 90d")
     return ", ".join(out)
 
 
@@ -220,6 +252,25 @@ def expired_tickets_are_silent():
         f"{len(real)} - expired tickets are being warned about"
     )
 
+    # A POSITIVE CONTROL, because both sides of that equality are ZERO against
+    # today's dump - measured 2026-09-02, no real ticket is within WARN_AT of
+    # its final draw at TODAY. `0 == 0` still asserts this case's own claim
+    # (561 mostly-finished tickets produce no notice, which is INV-52), but it
+    # says nothing about the selector picking the RIGHT set: a selector that
+    # returned a different set of the same size would pass it, and at size zero
+    # every selector returns the same set. One eligible ticket mixed into the
+    # real 561 must produce exactly one notice, and it must be that ticket's.
+    live = ticket(start=datetime.datetime.combine(TODAY, datetime.time()),
+                  ndraws=1)
+    assert 0 < expiry.draws_left(live.game, live.start, live.ndraws, TODAY) \
+        <= supervise.WARN_AT, "the control ticket is not itself eligible"
+    mixed = supervise.expiry_notices(TODAY, real + [live], _tmp_state())
+    assert len(mixed) == 1, (
+        f"{len(mixed)} notices for ONE eligible ticket among {len(real)} "
+        f"finished ones - the selector is not picking the right set")
+    assert expiry.DISPLAY_NAME[live.game] in mixed[0], (
+        f"the one notice does not name the eligible ticket's game: {mixed[0]!r}")
+
     dead = ticket(start=datetime.datetime(2020, 1, 1), ndraws=10)
     assert expiry.draws_left(dead.game, dead.start, dead.ndraws, TODAY) == 0
     assert supervise.expiry_notices(TODAY, [dead], _tmp_state()) == []
@@ -251,6 +302,25 @@ def notice_names_nothing_else():
     """
     t = ticket(start=datetime.datetime(2026, 8, 21), ndraws=2)
     body = supervise.expiry_notices(TODAY, [t], _tmp_state())[0]
+
+    # EQUALITY, written out here rather than rebuilt from expiry_notice() -
+    # rebuilding it from the function under test would assert only that the
+    # function equals itself. This is the whole of INV-54: anything ADDED to
+    # the notice fails, whatever form it takes. The blocklist below stays as a
+    # second line of defence, but it is not the bound - a blocklist only
+    # refuses the five spellings someone thought of, and the likeliest leak
+    # escapes it, because expiry_notice() already formats dates by hand, so a
+    # purchase date added the way it formats them reads "Fri 21 Aug" and
+    # contains none of the forbidden strings.
+    #
+    # A wording change is expected to fail this and that is correct: the bound
+    # on a privacy exception should be re-affirmed deliberately, not drift.
+    expected = ("Your PowerBall ticket has 1 draw left — last draw "
+                "Tue 25 Aug. Time to buy the next one.")
+    assert body == expected, (
+        f"the notice is not exactly the game, the date and the count:\n"
+        f"  got      {body!r}\n  expected {expected!r}")
+
     for want in ("PowerBall", "1 draw left", "Tue 25 Aug"):
         assert want in body, f"notice omits {want!r}"
     forbidden = {
@@ -264,6 +334,9 @@ def notice_names_nothing_else():
     unknown = supervise.expiry_notices(
         TODAY, [ticket(game="scratchcard")], _tmp_state())
     assert len(unknown) == 1
+    # Equality here too, for the same reason.
+    assert unknown[0] == supervise.UNKNOWN_GAME_NOTICE, (
+        f"the unrecognised-game notice is not the fixed sentence: {unknown[0]!r}")
     for name in expiry.DISPLAY_NAME.values():
         assert name not in unknown[0], f"unknown-game notice names {name}"
     assert "scratchcard" not in unknown[0], "unknown-game notice names the game"
@@ -374,6 +447,34 @@ BREAKS = {
 }
 
 
+# Breaks whose collateral is CORRECT, and why each one is.
+#
+# verify_periods.py and verify_payouts.py scope their breaks to the named case,
+# because those patch a FUNCTION and the other cases have no business seeing
+# the patched one. Several breaks here are different in kind: they change a
+# fact about the WORLD - the draw calendar, where a ticket's window starts -
+# and the cases that read that fact SHOULD move with it. Scoping such a
+# mutation away from a case that genuinely depends on it would be a weaker
+# test, not a stronger one, so the collateral is declared instead.
+#
+# Measured 2026-09-02 by running every break in the project. The verdict below
+# holds this in BOTH directions: an undeclared extra failure is too coarse, and
+# a declared one that stops happening is a break that has narrowed.
+ALSO_RED = {
+    # Lotto gaining a Monday draw is a calendar change. The case checking the
+    # table against history and the case checking projected dates against real
+    # draws both rest on it.
+    "unlisted_draw_day": ["calendar_matches_real_draws"],
+    # `start` read as exclusive shifts every projected final draw date, so
+    # every case that names one moves with it.
+    "exclusive_start": ["notice_names_nothing_else", "draws_left_today_boundary"],
+    # With nothing ever recorded there is nothing to prune either.
+    "never_records": ["state_file_is_pruned"],
+    # A swallowed unknown game removes the notice the wording case inspects.
+    "swallow_unknown_game": ["notice_names_nothing_else"],
+}
+
+
 def _apply_break(name):
     """Apply one deliberate defect. Most patch production code directly.
 
@@ -457,17 +558,31 @@ def main(argv):
         try:
             detail = fn()
             print(f"  {inv}  {name:28} PASS  {detail}")
-        except AssertionError as e:
+        except Exception as e:  # noqa: BLE001 - report the case, keep going
             failed.append(name)
             print(f"  {inv}  {name:28} FAIL  {e}")
+
+    for d in _TEMP_DIRS:
+        shutil.rmtree(d, ignore_errors=True)
+    _TEMP_DIRS.clear()
 
     print()
     if broken:
         want = BREAKS[broken]
-        if want in failed:
-            print(f"RED-TEST OK: {want} failed under --break {broken}")
+        # EXACTLY the cases this break is DECLARED to redden - the named one
+        # plus whatever ALSO_RED says is legitimate collateral for it.
+        expected = sorted({want, *ALSO_RED.get(broken, [])})
+        if sorted(failed) == expected:
+            print(f"RED-TEST OK: {' + '.join(expected)} failed "
+                  f"under --break {broken}")
             return 0
-        print(f"RED-TEST FAILED: {want} still passes under --break {broken}")
+        extra = sorted(set(failed) - set(expected))
+        missing = sorted(set(expected) - set(failed))
+        if extra:
+            print(f"RED-TEST TOO COARSE: {broken} also reddened {extra}, "
+                  f"which ALSO_RED does not declare")
+        if missing:
+            print(f"RED-TEST NARROWED: {broken} no longer reddens {missing}")
         return 1
     if failed:
         print(f"{len(failed)} of {len(CASES)} FAILED: {', '.join(failed)}")

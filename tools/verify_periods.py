@@ -128,7 +128,20 @@ def periods_reconcile():
     need(years + res == compared,
          f"years {years} + residue {res} != compared spend {compared}")
     need(got["buckets"], "the real dump produced no buckets at all")
-    return f"{len(got['buckets'])} buckets, {compared}c reconciled"
+
+    # The WIN side carries an assertion too, so `wins` above - which is what
+    # drags this case onto the network and makes it the slowest in the suite -
+    # is load-bearing rather than computed and discarded. A conservation
+    # identity rather than a re-derivation: the same wins filed by month and by
+    # year must total the same, so a win landing in a month bucket but not its
+    # year (or the reverse) fails here.
+    won_m = sum(b["won_cents"] for b in got["buckets"] if b["kind"] == "month")
+    won_y = sum(b["won_cents"] for b in got["buckets"] if b["kind"] == "year")
+    need(won_m == won_y,
+         f"month buckets carry {won_m}c won and year buckets {won_y}c - the "
+         f"same wins filed under two period kinds must total the same")
+    return (f"{len(got['buckets'])} buckets, {compared}c reconciled, "
+            f"{won_m}c won filed consistently")
 
 
 def periods_by_draw_date():
@@ -201,6 +214,24 @@ def empty_period_is_absent():
     need("2026-02" not in m,
          "a February bucket exists, but no draw fell in February")
     need(set(m) == {"2026-01", "2026-03"}, f"unexpected buckets {sorted(m)}")
+
+    # THE WIN SIDE of the same rule, and nothing exercised it. period_buckets()
+    # says "the key set comes from the SPEND side; a win whose period carries
+    # no spend is dropped rather than conjuring a bucket" - and every case here
+    # passed wins=[] or a win in a month that already had spend, so replacing
+    # both of its `if … in months/years` guards with setdefault left all four
+    # green. A conjured bucket renders R0.00 spend against a real win: a period
+    # the ledger never charged for, presented as one it won in.
+    stray = [{"ref": t.ref, "date": "2026-02-11", "amount": 25.0}]
+    got_stray = serve.period_buckets([t], stray,
+                                     draws("2026-01-05", "2026-03-05"),
+                                     increments)
+    m_stray = buckets_of(got_stray, "month")
+    need("2026-02" not in m_stray,
+         "a win dated in February conjured a February bucket, which carries "
+         "no spend - INV-60's win side")
+    need(set(m_stray) == {"2026-01", "2026-03"},
+         f"the stray win changed the key set: {sorted(m_stray)}")
 
     only_unresolved = ticket(ref=UNRESOLVED_REF, start="2026-06-01",
                              ndraws=1, resolved=False)
@@ -338,9 +369,16 @@ def main(argv):
     print()
     if broken_name:
         want = BREAKS[broken_name]
-        if want in failed:
+        # EXACTLY the named case - see verify_payouts.py's note. The
+        # ACTIVE_CASE guard in _apply_break() is what makes this achievable
+        # here; this is the assertion that holds it.
+        if failed == [want]:
             print(f"RED-TEST OK: {want} failed under --break {broken_name}")
             return 0
+        if want in failed:
+            others = [f for f in failed if f != want]
+            print(f"RED-TEST TOO COARSE: {broken_name} also reddened {others}")
+            return 1
         print(f"RED-TEST FAILED: {want} still passes under --break {broken_name}")
         return 1
     if failed:

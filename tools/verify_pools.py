@@ -116,6 +116,21 @@ def main(argv=()):
     bad = unresolved = 0
     disagree = {"pre": 0, "post": 0}
 
+    # An anti-vacuity floor for the ERA check below, which is guarded by
+    # `bought is not None` - and `bought` comes from dump_facts(), a SECOND
+    # reader of the dump format with its own split and its own copy of the head
+    # regex, against tickets.py::rows()' "the dump format's ONE reader" rule.
+    # If that regex ever misses - which is the very event the era check exists
+    # for - every comparison is skipped, `disagree` stays at zero, and the
+    # summary reports "0 name/price disagreements" and exits 0. A run that
+    # checked nothing would be byte-identical to a healthy one. This file
+    # already floors its other sweeps the same way.
+    if len(facts) < len(tickets):
+        print(f"  FACTS GAP: dump_facts() resolved {len(facts)} of "
+              f"{len(tickets)} tickets, so the era and name checks below are "
+              f"skipped for the rest")
+        bad += 1
+
     for t in tickets:
         name, bought = facts.get(t.ref, (None, None))
         # The era decides the tier table, so a parser that stopped reading the
@@ -190,7 +205,24 @@ def main(argv=()):
         if any(reaches(t, pf) for pf, _ in t.pools)
         and not all(reaches(t, pf) for pf, _ in t.pools)
     ]
+    # And a floor for this sweep, because `wrong` cannot be non-empty unless
+    # `partly` is. The known population is the 11 Daily Lotto Plus tickets,
+    # which exist only because GAME_MAP maps that name onto a pool no source
+    # carries - so a GAME_MAP or parse() regression that drops them (LOTTO-0031's
+    # exact shape, a rebranded name parsing to None) empties `partly`, and this
+    # whole INV-11 sweep reports zeroes and passes. The detector would be
+    # killed by the same event that most needs one.
+    if not partly:
+        print("  NO PARTLY-UNCHECKABLE TICKETS: the population this sweep "
+              "needs is empty, so nothing below was checked")
+        bad += 1
+
     wrong = [t for t in partly if t in counts["wholly"]]
+    # NOTE: `double` cannot fire against the current implementation -
+    # check.uncheckable_report() builds `partly` and `wholly` as complementary
+    # comprehensions over one list, so their intersection is empty by
+    # construction. Kept because it costs nothing and would catch a rewrite
+    # that made them independent; recorded so it is not mistaken for cover.
     double = [t for t in counts["wholly"] if t in counts["partly"]]
     for t in wrong:
         print(f"  WHOLLY {t.ref}: checkable in one pool, reported as excluded")

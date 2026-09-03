@@ -51,6 +51,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import check  # noqa: E402
+import history  # noqa: E402
 import tickets  # noqa: E402
 from history import all_draws  # noqa: E402
 from tickets import Ticket, load, load_payouts, parse_payout, rows  # noqa: E402
@@ -79,6 +80,39 @@ def _ticket(ref, game="lotto", pools=((0, 100),), start="2026-07-01", boards=Non
     return Ticket(game, pools[-1][0], pools[-1][1], d, 1,
                   boards if boards is not None else [("A", [1, 2, 3, 4, 5, 6], None)],
                   ref, 5.0, list(pools), d, True)
+
+
+# The five SYNTHETIC cases need one thing from the draw record: a date early
+# enough that history.scorable() says yes, and - for daily/1 - a pool with no
+# draws at all. Neither needs the live feed, and reaching for it dragged those
+# cases onto a third party's production API purely to look up a date. An
+# outage then reddened them for a reason that has nothing to do with the code
+# under test, on a check that runs on every push. So they seed history's memo
+# instead. `categories_partition` is the one case whose subject IS the real
+# data; _real_draws() hands it back the live path.
+#
+# Seeding the MEMO rather than patching all_draws: check.reconcile() reaches
+# history.scorable() directly, so a patched name in this module would not be
+# seen. User decision 2026-09-02.
+_STUB_START = "2020-01-01"
+_STUB = {
+    ("lotto", 0): [{"date": _STUB_START, "main": [1, 2, 3, 4, 5, 6],
+                    "special": 7, "issue": None, "source": "stub"}],
+    ("daily", 0): [{"date": _STUB_START, "main": [1, 2, 3, 4, 5],
+                    "special": None, "issue": None, "source": "stub"}],
+    ("daily", 1): [],          # the pool no source carries - unscorable
+}
+
+
+def _stub_draws():
+    """Seed history's memo so the synthetic cases make no network call."""
+    history._cache.update(_STUB)
+
+
+def _real_draws():
+    """Drop the stubs so the real-data case sees the real record."""
+    for key in _STUB:
+        history._cache.pop(key, None)
 
 
 def _scorable_start(game="lotto", plus_flag=0):
@@ -165,7 +199,16 @@ def disagreement_keeps_both():
     assert r["paid_cents"] == 1200, f"paid_cents is {r['paid_cents']}c, expected 1200c"
     assert wins == before, "reconcile() mutated the wins list it was passed"
     # None must stay distinguishable from 0 (the cardinal rule at this layer).
-    unscorable = [_ticket(SYNTH_B, pools=((1, 101),), start="2020-01-01")]
+    # daily/1 for unscorability, NOT lotto/1 with an early date - the sibling
+    # case below gives the reason and this fixture used to get it wrong. Pinned
+    # to a date, unscorability rests on backfill.FIRST_YEAR, which is a knob
+    # that has ALREADY been turned once (LOTTO-0006 pushed the archive back to
+    # the earliest purchase SMS). The next turn would make this case red with a
+    # false accusation against the cardinal rule - the most expensive kind of
+    # failure message to misdiagnose. A pool no source carries cannot rot.
+    unscorable = [_ticket(SYNTH_B, game="daily", pools=((1, 101),),
+                          start=_scorable_start("daily", 0),
+                          boards=[("A", [1, 2, 3, 4, 5], None)])]
     n = check.reconcile(unscorable, [], [_payout(SYNTH_B, 900)])[0]
     assert n["computed_cents"] is None, (
         f"a reference nothing could score reports {n['computed_cents']!r}; None "
@@ -193,6 +236,20 @@ def unscored_is_not_unexplained():
     assert b["category"] == "unscored", (
         f"a paid reference carrying an unscorable entry landed in "
         f"{b['category']!r} rather than 'unscored'")
+    # The OTHER half of the three-valued rule, and it was missing. `a` is the
+    # only fixture in this file that is paid, fully scorable and won nothing -
+    # the only place `computed_cents == 0` is produced. Without this assertion
+    # you can change check.py's `elif any(scorable(...)): computed = 0` to
+    # `computed = None` and every case in this file still passes, because
+    # `category` is decided by an ordered if-chain that never reads `computed`.
+    # reconcile_report() would then move this reference into the unscorable
+    # count and say "nothing could be scored, which is not a zero" about a
+    # reference that WAS checked and won nothing - the cardinal rule broken on
+    # the money line, in the direction it exists to prevent (INV-43).
+    assert a["computed_cents"] == 0, (
+        f"a paid, fully scorable reference with no winning line reports "
+        f"{a['computed_cents']!r}; 0 means 'checked, won nothing' and None "
+        f"means 'not checkable', and the two must not converge")
     # A disjointness assertion would be the WRONG clause: merging empties
     # `unexplained`, and the empty set is disjoint from everything, so the
     # obvious test passes against precisely the merge this forbids.
@@ -241,9 +298,12 @@ def unpaid_carries_draw_date():
         f"first_win is {unpaid[0]['first_win']!r}, expected the EARLIEST "
         f"winning line '2026-07-02' - without it a reader cannot tell a "
         f"three-day-old win awaiting payment from a prize never paid")
-    real = sum(1 for r in check.reconcile(load(), check.check(load()), load_payouts())
-               if r["category"] == "unpaid")
-    print(f"  {real} unpaid references against the real dump (printed, not asserted)")
+    # The real-dump figure was printed here from a SECOND full scoring pass -
+    # two more dump parses, another load_payouts(), and check.check() over all
+    # 1,233 entries - for a number the line itself says is not asserted, and
+    # which categories_partition (two cases earlier in CASES) has already
+    # computed. Measured 2026-09-02: that case is 27.8s of this file's 35.5s.
+    # It prints its own full category census, this one included.
     return "earliest winning date carried"
 
 
@@ -281,6 +341,8 @@ CASES = [
     ("no_payouts_is_not_agreement", "INV-47", no_payouts_is_not_agreement),
 ]
 
+ACTIVE_CASE = None  # set by main(); a break fires only in its own case
+
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
 BREAKS = {
     "accept_debits": "purchase_is_not_a_payout",
@@ -304,6 +366,15 @@ def _apply_break(name):
     real = check.reconcile
 
     def broken(tk, wins, payouts):
+        # Scoped to the case the break names, the way verify_periods.py does
+        # it. Injected globally, a defect reddens whichever OTHER cases happen
+        # to share the code path, and "exactly the named case fails" stops
+        # being checkable. Measured 2026-09-02: compare_in_rands rewrote every
+        # record's category, so it also reddened unscored_is_not_unexplained,
+        # and the red test could no longer prove cents_not_floats observes the
+        # float defect rather than something else.
+        if ACTIVE_CASE != BREAKS[name]:
+            return real(tk, wins, payouts)
         if name == "census_without_payouts" and not payouts:
             # The INV-47 guard removed: fall through and categorise anyway.
             return [{"ref": w["ref"], "paid_cents": None,
@@ -357,8 +428,13 @@ def main(argv):
             _apply_break(broken)
             print(f"BREAK {broken}: {BREAKS[broken]} must FAIL\n")
 
+    global ACTIVE_CASE
     failed = []
     for name, inv, fn in CASES:
+        ACTIVE_CASE = name
+        # Only the real-data case reaches the live feed. Every other case here
+        # is synthetic and was touching it purely to look up a start date.
+        _real_draws() if name == "categories_partition" else _stub_draws()
         try:
             detail = fn()
             print(f"  {inv}  {name:30} PASS  {detail}")
@@ -369,9 +445,16 @@ def main(argv):
     print()
     if broken:
         want = BREAKS[broken]
-        if want in failed:
+        # EXACTLY the named case, not merely among the failures. A break that
+        # reddens three cases no longer proves this one observes THAT defect,
+        # and the docstring's "one deliberate defect" was held by nothing.
+        if failed == [want]:
             print(f"RED-TEST OK: {want} failed under --break {broken}")
             return 0
+        if want in failed:
+            others = [f for f in failed if f != want]
+            print(f"RED-TEST TOO COARSE: {broken} also reddened {others}")
+            return 1
         print(f"RED-TEST FAILED: {want} still passes under --break {broken}")
         return 1
     if failed:

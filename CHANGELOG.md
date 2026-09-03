@@ -260,6 +260,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Tests no longer talk to the lottery website when they have no need to** (LOTTO-0068)
+  Five tests build their own fake tickets and were reaching the real site only to look up a date, so an outage failed them for a reason unconnected to the code. They now run with no network at all — verified with connections refused. The tests whose subject is real draw data still fetch it.
+
 - **The Python 3.8 floor is enforced by the linter instead of only claimed** (LOTTO-0049)
   ruff.toml sets target-version = "py38", so syntax newer than the stated floor is an error on both machines. Measured 2026-09-02: every module compiles under CPython 3.8.20 and 3.9.25. Library use at that floor is still unproven and is tracked separately.
 
@@ -476,6 +479,27 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importing the derivation it is testing.
 
 ### Fixed
+
+- **Smaller test-suite fixes** (LOTTO-0074)
+  The page tests no longer start a real results fetch in a child process, no longer leave thirteen temporary directories behind per run, and fail rather than pass silently when they cannot observe what they are measuring. The results-source check now distinguishes a stale archive from a renamed game, and fetches once per game instead of once per pool.
+
+- **The collector tests no longer risk the live message file, and prove their own race ran** (LOTTO-0073)
+  The test for two collectors writing at once could pass without ever making them collide; it now checks that they did. The one test that runs the real collector measures the live message file either side, children are always cleaned up, and the sample messages use a date no real message can carry — the old one would have blocked every push if a real message ever matched it.
+
+- **The money rule is checked in both directions** (LOTTO-0071)
+  "Nothing could be scored" was asserted never to read as zero, but zero was never asserted not to read as "nothing could be scored" — so that half could have broken silently. Also: a fixture that would have gone red for the wrong reason the next time the results archive is extended, and a rule about winnings conjuring a spending period that no test exercised.
+
+- **The re-buy reminder's privacy bound is exact, and its selector is actually tested** (LOTTO-0072)
+  The bound was a list of five exact strings, so a purchase date written the way the app itself writes dates would have passed. It is now an equality. The test that no ticket is warned about too early was comparing zero against zero against real data, so a positive control was added. The draw-calendar check is measured over 90 days rather than the whole archive, where one added draw day took months to show.
+
+- **Every deliberate-defect test now proves the case it names, and only that case** (LOTTO-0067)
+  One of them reddened because a module was missing from a copied directory rather than because of the fault it injects — and it reported success anyway, leaving the rule it guards with no working evidence. All 56 across the project now run and each reddens exactly what it is declared to; where a break changes a fact about the world rather than the code, the extra cases it should redden are declared with a reason.
+
+- **The check that each ticket was scored against the right draws compares the draws, not just their dates** (LOTTO-0070)
+  Every pool of a game is drawn in one event and shares its dates, so a scorer that lost track of which pool it was scoring returned the wrong pool's numbers on the right dates and passed every property. Verified: 0 entries flagged normally, 677 flagged when that fault is injected. Three sweeps that could report zeroes having checked nothing now say so instead.
+
+- **The privacy gate can no longer pass having checked nothing** (LOTTO-0069)
+  It ignored git's exit code, so a git that could not run left it reading no files at all and reporting a clean result — and the second guard, which greps that same output line, passed too. It now fails, asks for the strong mode explicitly on the local gate, checks that its own leak patterns still match anything, and names a tracked file it could not read instead of skipping it.
 
 - **The message inspector no longer prints message text raw, or guesses which phone** (LOTTO-0048)
   Bodies and senders go through the same terminal-safe filter the scoring report uses, so an escape sequence in a message cannot drive the terminal. The device is chosen by asking KDE Connect for paired and reachable devices, rather than taking the first remembered one — which could be a phone last seen months ago. Its two fixed sleeps are replaced by the stop-growing poll the watcher already uses, so a slow link no longer produces a confident negative from a partial read.

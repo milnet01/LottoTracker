@@ -40,6 +40,16 @@ def main():
     tickets = load()
     bad = 0
 
+    # An anti-vacuity floor, and the sibling verifiers all carry one. A dump
+    # that EXISTS but yields nothing - truncated, or recreated empty by a
+    # failed append - gives 0 tickets and 0 entries, so the PARSE GAP check
+    # below sees 0 == 0 and the 90% floor is guarded off by `entries` being
+    # empty. The run then prints all zeroes and exits 0, reporting INV-6 green
+    # having verified nothing. (A MISSING dump is already safe: load() raises.)
+    if not tickets:
+        print("  NO TICKETS: the dump parsed to nothing, so nothing was checked")
+        bad += 1
+
     if os.path.exists(DUMP):
         expected = open(DUMP, errors="replace").read().count("Played R")
         if len(tickets) != expected:
@@ -89,6 +99,25 @@ def main():
             continue
         if len(rows) != t.ndraws and rows[-1]["date"] != known[-1]["date"]:
             print(f"  {who}: wants {t.ndraws} draws, got {len(rows)}, not at end")
+            bad += 1
+            continue
+
+        # The DECISIVE property, and the reason the four above are not enough:
+        # each of them compares only the `date` key. Every pool of a game is
+        # drawn in one event and therefore shares its dates - POOL_NAMES maps
+        # ("lotto", 0/1/2) onto one feed keyed on the same drawTime, and the
+        # archive keys them by the same date string. So a covered() that lost
+        # its plus_flag, or a caller passing the ticket's top tier instead of
+        # the entry's pool, returns the WRONG POOL'S records on the RIGHT
+        # dates: every date property above still passes, and every Plus entry
+        # is scored against the base game's numbers. That is INV-6's own
+        # failure, and it is what this project was built after hitting.
+        # Comparing the records carries main, special, issue and source too.
+        want = after[: t.ndraws]
+        if rows != want:
+            print(f"  {who}: the {len(rows)} records covered are not the "
+                  f"{len(want)} on record for this pool - same dates, "
+                  f"different draws?")
             bad += 1
 
     # A floor, because "everything is unscorable" is what a missing

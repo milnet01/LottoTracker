@@ -89,7 +89,7 @@ if [ "$CI_ONLY" -eq 0 ] && [ "$FORCE" -eq 0 ]; then
     if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qv '\.md$'; then
         echo "local-CI: documentation only ($(printf '%s\n' "$changed" | wc -l) file(s), all .md)."
         echo "          Running the privacy check anyway - prose is its subject."
-        out=$(python3 tools/verify_privacy.py 2>&1); rc=$?
+        out=$(python3 tools/verify_privacy.py --require-content 2>&1); rc=$?
         printf '  %-32s %s\n' "verify_privacy.py" \
             "$([ "$rc" -eq 0 ] && echo PASS || echo "FAIL (rc=$rc)")"
         if [ "$rc" -ne 0 ]; then
@@ -161,7 +161,17 @@ run "verify_page.py"    python3 tools/verify_page.py
 # and no dump. Its one dump-dependent case says so and carries on when there is
 # none, which is why it is honest to run it where there never is one.
 run "verify_watch.py"   python3 tools/verify_watch.py
-run "verify_privacy.py" python3 tools/verify_privacy.py
+# --require-content ONLY on the local lane. It makes verify_privacy.py exit
+# non-zero when the dump is absent, which is the strong mode this machine can
+# always run; a public runner never has the dump, so asking there would fail
+# every CI run. This is the verifier's OWN guard - the grep below is the
+# second, independent one, and lane 2 of the 2026-09-02 test audit showed a
+# single failure could defeat the grep alone.
+if [ "$CI_ONLY" -eq 0 ]; then
+    run "verify_privacy.py" python3 tools/verify_privacy.py --require-content
+else
+    run "verify_privacy.py" python3 tools/verify_privacy.py
+fi
 PRIVACY_OUT="$LAST_OUT"
 # LAST_OUT belongs to whichever run() ran last, so this capture depended on
 # textual adjacency alone: insert a check between the two lines and the

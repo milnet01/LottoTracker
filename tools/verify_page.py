@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Seventeen cases, one per invariant INV-12 to INV-21, INV-23 to INV-25 and
+"""One case per invariant INV-12 to INV-21, INV-23 to INV-25 and
 INV-27 to INV-30 — the local page, the tray that drives it, and (since
 LOTTO-0019) the results transport underneath both.
 
 Joins tools/verify_privacy.py, verify_sources.py, verify_coverage.py and
 verify_pools.py. Exit code is the signal, as with the other four.
 
-    python3 tools/verify_page.py            # all seventeen
+    python3 tools/verify_page.py            # every case
     python3 tools/verify_page.py --list
     python3 tools/verify_page.py --break host_endswith   # RED-TEST: must FAIL
 
-Three constraints, inherited from LOTTO-0002 §7 and binding on all thirteen:
+Three constraints, inherited from LOTTO-0002 §7 and binding on every case:
 
   * No network. The seam is the BUILDER, not the model: make_server takes a
     callable, so POST /refresh has something to invoke.
@@ -76,9 +76,19 @@ def need(cond, msg):
 # --------------------------------------------------------------- fixtures
 
 
+_TEMP_HOMES = []  # drained in main()'s finally; 15 cases call temp_home()
+
+
 def temp_home():
-    """A fresh $HOME and $XDG_CONFIG_HOME. Both, never just $HOME."""
+    """A fresh $HOME and $XDG_CONFIG_HOME. Both, never just $HOME.
+
+    Registered for removal rather than left behind. Two of the fifteen callers
+    used to rmtree their own, so a green run left thirteen directories in /tmp
+    - some carrying a written autostart .desktop entry - and the pre-push gate
+    runs on every push.
+    """
     d = tempfile.mkdtemp(prefix="lotto-verify-")
+    _TEMP_HOMES.append(d)
     os.environ["HOME"] = d
     os.environ["XDG_CONFIG_HOME"] = os.path.join(d, ".config")
     return d
@@ -398,8 +408,13 @@ def token_required():
     # The channel the tray depends on: a child spawned with LOTTO_TOKEN in its
     # environment accepts that token. LOTTO_NO_BUILD keeps it off the network.
     child_port = supervise.free_port()
+    # A contained $HOME, because the route below WRITES settings. Without it
+    # the child would write into whatever $HOME this process last set.
+    child_home = tempfile.mkdtemp(prefix="lotto-childhome-")
     env = {**os.environ, "LOTTO_TOKEN": "childtoken-0123456789",
-           "LOTTO_PORT": str(child_port), "LOTTO_NO_BUILD": "1"}
+           "LOTTO_PORT": str(child_port), "LOTTO_NO_BUILD": "1",
+           "HOME": child_home,
+           "XDG_CONFIG_HOME": os.path.join(child_home, ".config")}
     child = subprocess.Popen([sys.executable, os.path.join(ROOT, "serve.py")],
                              cwd=ROOT, env=env,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -413,12 +428,23 @@ def token_required():
                 time.sleep(0.1)
         else:
             raise Fail("the LOTTO_TOKEN child never came up")
-        st, _, _ = req(child_port, "POST", "/refresh", host=f"127.0.0.1:{child_port}",
-                        headers={"X-Lotto-Token": "childtoken-0123456789"})
-        need(st == 202, f"child did not accept its LOTTO_TOKEN: got {st}")
+        # /settings, NOT /refresh. LOTTO_NO_BUILD gates only the OPENING
+        # build: serve.py hands the real build_model to make_server
+        # regardless, so POST /refresh started a REAL build in the child -
+        # reading the live lotto_sms_raw.txt and calling the operator's API -
+        # which the terminate() below then killed mid-flight. That is raced,
+        # not prevented, and it falsified this file's own header ("No network
+        # ... No real data"). /settings proves the same thing - the child
+        # accepts the token it was spawned with - and starts nothing.
+        st, _, _ = req(child_port, "POST", "/settings",
+                       host=f"127.0.0.1:{child_port}",
+                       headers={"X-Lotto-Token": "childtoken-0123456789"},
+                       body={"open_on_start": False})
+        need(st == 200, f"child did not accept its LOTTO_TOKEN: got {st}")
     finally:
         child.terminate()
         child.wait(timeout=5)
+        shutil.rmtree(child_home, ignore_errors=True)
 
 
 EXPECTED_HEADERS = {
@@ -607,8 +633,25 @@ def render_pure(model, token="tok"):
 
 
 def spend_over_checkable():
-    """INV-16 — the compared spend is the apportioned cost of the checkable
-    entries of RESOLVED tickets, and nothing else."""
+    """INV-16, the RENDERING half only - and the distinction is the point.
+
+    What this holds: _spend_section puts the compared figure in the compared
+    row and the lifetime figure in the lifetime row, and does not swap them.
+
+    What it does NOT hold, despite the invariant's name: that `compared_cents`
+    is the apportioned cost of the checkable entries of RESOLVED tickets. That
+    derivation lives in serve.py::build_model(), which this file never invokes
+    for an assertion - `expected_cmp` below is accumulated BY THIS CASE and
+    then written into the model it renders, so the final check compares the
+    case's arithmetic against the case's own fixture. The `spend_is_lifetime`
+    break confirms it by mutating the FIXTURE, not any production code: no
+    change to build_model() can turn this case red.
+
+    Closing that gap needs the treatment period_buckets() already got - a pure
+    function taking its data as arguments, asserted the way
+    tools/verify_periods.py asserts INV-57..60. Until then this docstring
+    claims only what it can.
+    """
     temp_home()
     import tickets as tk
 
@@ -781,14 +824,21 @@ def serve_is_headless():
     if broken("qt_import") or broken("pyqt_import"):
         binding = "PySide6.QtCore" if broken("qt_import") else "PyQt6.QtCore"
         root = tempfile.mkdtemp(prefix="lotto-qt-")
+        # expiry.py is on this list because supervise.py imports it at module
+        # level and serve.py imports supervise. Without it `import serve` in
+        # the copied tree died with ModuleNotFoundError BEFORE the Qt check
+        # below ran - so both Qt breaks reddened this case for a reason that
+        # has nothing to do with Qt, and printed "red test OK" anyway. INV-19
+        # is the one invariant with no other verifier, and its only evidence
+        # was void (measured 2026-09-02).
         for f in ("serve.py", "page.py", "supervise.py", "check.py", "history.py",
-                  "tickets.py", "results.py", "backfill.py"):
+                  "tickets.py", "results.py", "backfill.py", "expiry.py"):
             shutil.copy(os.path.join(ROOT, f), root)
         with open(os.path.join(root, "serve.py"), "a") as fh:
             fh.write(f"\nimport {binding}  # noqa: F401\n")
 
     probe = (
-        "import sys, os, json, re\n"
+        "import sys, os, json, re, glob\n"
         "import {mod}\n"
         # Three arms, one per binding this could arrive as. The PyQt arm is
         # LOTTO-0017: without it a `PyQt6.QtCore` import passes a check whose
@@ -798,13 +848,20 @@ def serve_is_headless():
         # package merely containing the letters does not.
         "qt = [m for m in sys.modules if 'PySide' in m "
         "or re.fullmatch(r'Qt|PyQt\\d*', m.split('.')[0])]\n"
-        "kids = []\n"
+        # NOT `except OSError: pass`. This glob is the ONLY source of the data
+        # the "spawns nothing" clause is asserted from, so swallowing to an
+        # empty list made that clause pass having measured NOTHING - and a
+        # kernel built without CONFIG_PROC_CHILDREN, or an unreadable /proc,
+        # is indistinguishable from a real pass. `kids` comes back null when it
+        # could not be observed, and the parent fails on that.
+        "kids, seen = [], glob.glob('/proc/self/task/*/children')\n"
         "try:\n"
-        "    import glob\n"
-        "    for p in glob.glob('/proc/self/task/*/children'):\n"
+        "    for p in seen:\n"
         "        kids += open(p).read().split()\n"
+        "    if not seen:\n"
+        "        kids = None\n"
         "except OSError:\n"
-        "    pass\n"
+        "    kids = None\n"
         "print(json.dumps({{'qt': qt, 'children': kids}}))\n"
     )
     for mod in ("serve", "supervise"):
@@ -818,6 +875,10 @@ def serve_is_headless():
         need(out.returncode == 0, f"importing {mod} failed: {out.stderr.strip()[:300]}")
         data = json.loads(out.stdout.strip().splitlines()[-1])
         need(not data["qt"], f"importing {mod} pulled in Qt: {data['qt']}")
+        need(data["children"] is not None,
+             f"could not observe {mod}'s children: /proc/self/task/*/children "
+             f"is absent or unreadable, so the 'spawns nothing' clause would "
+             f"have passed having measured nothing")
         need(not data["children"], f"importing {mod} spawned {data['children']}")
     if root != ROOT:
         shutil.rmtree(root, ignore_errors=True)
@@ -965,7 +1026,12 @@ def refresh_reports_the_build():
             f"a refresh during a build reported {busy!r}, expected REFRESH_BUSY",
         )
         need(
-            time.monotonic() - started < 0.2,
+            # 2s, not 0.2s. The failure this discriminates - a refresh that
+            # POLLED instead of reporting at once - takes SECONDS, so the
+            # margin is enormous either way; at 0.2s a loaded machine turns a
+            # correct implementation red with a message naming a defect it
+            # does not have.
+            time.monotonic() - started < 2.0,
             "the 409 was polled on rather than reported at once",
         )
 
@@ -2053,6 +2119,10 @@ def main(argv):
         except Exception as exc:  # noqa: BLE001 - report, do not mask
             failures += 1
             print(f"  ERROR {inv}  {name}\n          {type(exc).__name__}: {exc}")
+
+    for d in _TEMP_HOMES:
+        shutil.rmtree(d, ignore_errors=True)
+    _TEMP_HOMES.clear()
 
     if BREAK:
         if failures:

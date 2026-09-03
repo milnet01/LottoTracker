@@ -61,10 +61,17 @@ WHERE = (
 # verbatim and `tools/verify_privacy.py` refused the push. R99.00 is the amount
 # tickets.py's own docstring uses, already proven absent from real data. A
 # sample here must be impossible, not merely invented.
+#
+# The DATES are impossible for the same reason, and were not until 2026-09-02.
+# 01/01/2020 is merely invented, and verify_privacy.py's IDENTIFYING patterns
+# match `Date DD/MM/YYYY` and `Date DD Mon YYYY` and then test them against the
+# dump - so a real SMS carrying that date would make the privacy gate report
+# THIS file as a leak and block every push until the fixture was edited. 1970
+# predates the South African lottery, so no real message can carry it.
 BODIES = [
-    "Played R99.00 Lotto Plus 2 for 1 draw(s)\nDate 01/01/2020 to 01/01/2020\n"
+    "Played R99.00 Lotto Plus 2 for 1 draw(s)\nDate 01/01/1970 to 01/01/1970\n"
     "A: 07 11 19 23 31 44\nRef:VAS00000000000",
-    "Played R99.00 Powerball\nDate 01 Jan 2020 (for 10 draws)\n"
+    "Played R99.00 Powerball\nDate 01 Jan 1970 (for 10 draws)\n"
     "A: 08 14 27 33 41 -07\nRef:VAS00000000000",
     "Played R99.00 LOTTO 5 MAX for 2 draws\nRef:VAS00000000000",
     "Your lotto transaction was unsuccessful.",
@@ -127,11 +134,21 @@ def round_trip():
         if got_date != date_ms:
             print(f"  ROUND TRIP {name}: date {got_date} != {date_ms}")
             bad += 1
-        # The body survives except for the deliberate header guard, which is
-        # asserted by the record count above.
-        if "Row: " not in body and got_body != body.strip():
-            print(f"  ROUND TRIP {name}: body changed in the round trip")
-            bad += 1
+        if "Row: " not in body:
+            if got_body != body.strip():
+                print(f"  ROUND TRIP {name}: body changed in the round trip")
+                bad += 1
+        else:
+            # The header case, and the record count above does NOT assert this.
+            # format_row neuters the shape with a leading space rather than
+            # deleting it - and a format_row that DELETED it would also produce
+            # exactly one record, while silently destroying part of a real
+            # message. So the payload has to be checked for survival.
+            payload = body.split("\n", 1)[1].strip()
+            if payload not in got_body:
+                print(f"  ROUND TRIP {name}: the neutered header's payload was "
+                      f"destroyed rather than escaped")
+                bad += 1
     return bad
 
 
@@ -291,11 +308,30 @@ def absent_dbus_is_named():
             "raise ImportError('no dbus in this environment')"
         )
         env = {**os.environ, "PYTHONPATH": tmp}
+        # This is the ONLY case that runs the real watch_sms.py, whose dump
+        # path is the LIVE personal-data file and cannot be redirected from
+        # the command line. The sibling case states the prohibition outright.
+        # What stops it writing today is the shadowing dbus.py above being
+        # reached first - true because `import dbus` is the first statement of
+        # run(), and asserted by nothing. If that shadow ever fails to take, a
+        # live collector runs against a paired phone and appends real messages
+        # here, and the timeout kills it only AFTER the writes. So the dump is
+        # measured either side.
+        live = os.path.join(os.path.dirname(__file__), "..",
+                            "lotto_sms_raw.txt")
+        before = ((os.path.getsize(live), os.path.getmtime(live))
+                  if os.path.exists(live) else None)
         done = subprocess.run(
             [sys.executable, os.path.join(os.path.dirname(__file__), "..",
                                           "watch_sms.py"), "--once"],
             capture_output=True, text=True, env=env, timeout=60,
         )
+        after = ((os.path.getsize(live), os.path.getmtime(live))
+                 if os.path.exists(live) else None)
+        if before != after:
+            print("  ABSENT DBUS: the real watcher TOUCHED the live dump - "
+                  "the dbus shadow did not take")
+            return 1
     said = (done.stdout + done.stderr).lower()
     if done.returncode == 0:
         print("  ABSENT DBUS: the watcher exited 0 with no way to collect anything")
@@ -326,6 +362,9 @@ def concurrent_appends_serialise():
         "base, path, go = int(sys.argv[1]), sys.argv[2], float(sys.argv[3])\n"
         f"msgs = [('Std Bank', 1700000000000 + base * 1000 + i, {BODIES[0]!r})\n"
         f"        for i in range({per})]\n"
+        # Readiness is recorded BEFORE the barrier, so the parent can tell an
+        # overlap that happened from one it merely hoped for.
+        "open(path + '.ready.%d' % base, 'w').write(repr(time.time()))\n"
         "time.sleep(max(0.0, go - time.time()))\n"
         "watch_sms.append_new(msgs, path)\n"
     )
@@ -337,9 +376,37 @@ def concurrent_appends_serialise():
                               str(go)])
             for w in range(workers)
         ]
-        for proc in running:
-            proc.wait(timeout=60)
+        try:
+            for proc in running:
+                proc.wait(timeout=60)
+        finally:
+            # One worker holds an exclusive flock on the sidecar, so a stuck
+            # one blocks the rest and wait() raises TimeoutExpired. Without
+            # this the exception escapes main(), the later cases never run, and
+            # up to seven children are left alive holding a lock on a file in a
+            # temp directory that is about to be deleted.
+            for proc in running:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait(timeout=5)
+
+        # Did the race actually ARM? Eight interpreters must each start, import
+        # watch_sms and reach the barrier within the window; on a loaded machine
+        # a late worker simply runs after the others and the appends serialise
+        # by accident. Every assertion below then passes and INV-38 reports
+        # green having never put two writers inside append_new() at once - a
+        # silent false pass, which no red run would surface.
+        ready = []
+        for w in range(workers):
+            mark = f"{path}.ready.{w}"
+            ready.append(float(open(mark).read()) if os.path.exists(mark) else None)
         raw = open(path, errors="replace").read()
+
+    late = [w for w, r in enumerate(ready) if r is None or r > go]
+    if late:
+        print(f"  CONCURRENT: worker(s) {late} reached the barrier after it "
+              f"opened, so their appends did not overlap - the race never armed")
+        bad += 1
 
     records = tickets.rows(raw)
     indices = [int(m.group(1)) for m in
