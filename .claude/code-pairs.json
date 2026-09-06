@@ -1,0 +1,70 @@
+{
+  "_comment": "Things that must change together where nothing points from one side to the other. Seeded 2026-09-06 from LOTTO-0056. Every site below was verified to exist on that date. Format: ~/.claude/skills/write-code/references/code-pairs.md",
+  "pairs": [
+    {
+      "name": "SMS admission filter",
+      "sites": [
+        "watch_sms.py:INCLUDE",
+        "docs/specs/LOTTO-0001-lottery-ticket-tracker.md 4.1 (the adb WHERE clause)"
+      ],
+      "why": "The dump has two writers and one reader, and each writer states the same admission decision in a different language - a Python tuple of substrings against a SQL LIKE clause - so there is no shared token to search. Fixing the parser alone leaves a message the parser handles correctly and never receives.",
+      "added": "2026-09-06 - seeded from LOTTO-0056. LOTTO-0030 is the measured failure: the filter excluded 366 payout SMSes the parser could already read. INV-32 now asserts the two agree."
+    },
+    {
+      "name": "Board price table",
+      "sites": [
+        "tickets.py:TIER_PRICES",
+        "docs/specs/LOTTO-0009-entered-pools.md 4.2 (the price table)"
+      ],
+      "why": "Hardcoded because no feed publishes board prices, so the spec's table and the code's table are one decision written twice with no link between them. A price change is silent everywhere else; tools/verify_pools.py is the only thing that makes it loud.",
+      "added": "2026-09-06 - seeded from LOTTO-0056."
+    },
+    {
+      "name": "Draw calendar against observed history",
+      "sites": [
+        "expiry.py:DRAW_DAYS",
+        "the merged draw record history.py builds (checked by tools/verify_expiry.py, INV-49)"
+      ],
+      "why": "The project's second hardcoded table, and it rots the same way as the first. The operator can add or remove a draw day with no signal in the data we fetch. INV-49 checks the table against observed history in BOTH directions, because a one-directional check passes a removed draw day forever.",
+      "added": "2026-09-06 - seeded from LOTTO-0056."
+    },
+    {
+      "name": "Game-name tables across a rebrand",
+      "sites": [
+        "tickets.py:GAME_MAP (the SMS wording)",
+        "backfill.py:PAYOUT_SLUG (the URL slug)",
+        "history.py:POOL_NAMES (the pool name)",
+        "README.md (the prose game list)"
+      ],
+      "why": "Each table spells the same game differently - SMS wording, URL slug, pool name, prose - so no token is shared and nothing points from one to the next. This pair has already failed once.",
+      "added": "2026-09-06 - seeded from LOTTO-0056. The June 2026 rebrand renamed Lotto Plus 2 to Lotto 5 Max and PowerBall Plus to XTRA. Three of the four tables were updated at the time and GAME_MAP was not, because no SMS had used the new wording yet; the first arrived 2026-08-08, parsed to None, and the ticket was silently never scored (LOTTO-0031)."
+    },
+    {
+      "name": "Port precedence, two entry points",
+      "sites": [
+        "serve.py:resolve_port",
+        "supervise.py:_port_or_default"
+      ],
+      "why": "Both must read $PORT, then $LOTTO_PORT, then 4322, so there is one knob whichever way the page is started - and they DIVERGE deliberately on a bad value (serve.py exits, the tray falls back with a notification). Nothing in either file points at the other; CLAUDE.md's architecture section is the only place the coupling is written down, and a reader of one function cannot see it.",
+      "added": "2026-09-06 - seeded from LOTTO-0056, per LOTTO-0013 4.5."
+    },
+    {
+      "name": "Ball colours keyed on game strings",
+      "sites": [
+        "page.py:BASE_CSS (the tr[data-game=...] .ball selectors)",
+        "tickets.py:GAME_MAP (the game values: lotto, powerball, daily)"
+      ],
+      "why": "The stylesheet matches on the game string that GAME_MAP produces. Renaming a game value drops its colour silently: CSS that matches nothing is not an error, no test names the link, and the balls simply fall back to the default grey. The two sides share the string but nothing declares the dependency.",
+      "added": "2026-09-06 - added with LOTTO-0076, which created the coupling."
+    },
+    {
+      "name": "Verifier break names and the spec clauses citing them",
+      "sites": [
+        "tools/verify_*.py:BREAKS",
+        "the *Test:* clause of each invariant in docs/specs/"
+      ],
+      "why": "Each verifier's BREAKS registry carries the comment 'Named in the *Test:* clauses', and that is the whole of the link. Renaming or removing a break leaves the spec citing one that does not exist; the suite still passes and nothing reports the dangling name.",
+      "added": "2026-09-06 - seeded from LOTTO-0056."
+    }
+  ]
+}
