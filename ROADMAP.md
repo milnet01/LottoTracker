@@ -1289,7 +1289,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: doc-fix.
   Source: verify-delivery-2026-09-01 sign 5.
 
-- 📋 [LOTTO-0053] **Document parse_page's second failure mode in LOTTO-0001 s6.**
+- ✅ [LOTTO-0053] **Document parse_page's second failure mode in LOTTO-0001 s6.**
   LOTTO-0001 s6 says of a markup change: "backfill.py::parse_page() returns
   an empty dict, which surfaces as a game with 0 draws", and cites the
   slug rename as the case that already happened. That is still true and is
@@ -1306,6 +1306,17 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   reader knows the skip line exists and what it means. Not fixed in the
   LOTTO-0050 pass because adding a failure mode is authoring rather than a
   mechanical correction, and this project gates authoring edits to a spec.
+  Resolved 2026-09-06. LOTTO-0001 section 6 now carries both markup
+  failure modes. The first is unchanged (a row that stops parsing yields an
+  empty dict and a game with 0 draws). The second is new prose: a ball whose
+  CSS class no longer identifies its ROLE produces a WELL-FORMED wrong
+  record, which is INV-1's failure arriving where INV-3's overlap check
+  cannot see it. The bullet names `backfill.py::SHAPE` as the guard, what it
+  is keyed on, and the printed skip line, so a reader meeting that line knows
+  the draw is absent from the archive rather than wrong in it.
+
+  CLAUDE.md rule 14: checked. The edit describes behaviour the code already
+  has, so no conformer builds anything different from it; no gate run.
   **Layman:** The spec lists one way the results scraper can go wrong; there are now two
   Kind: doc.
   Source: review-code-2026-09-01 lane results-sources; verify-delivery follow-up.
@@ -1341,7 +1352,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: investigate.
   Source: review-code-2026-09-01 lanes page-renderer and build-and-periods.
 
-- 📋 [LOTTO-0055] **The nine verifier scripts have never been audited, and they are half the tree.**
+- ✅ [LOTTO-0055] **The nine verifier scripts have never been audited, and they are half the tree.**
   `tools/verify_*.py` is 4,491 lines across nine scripts - 51% of the
   repository - and it IS this project's entire test suite; there is no test
   runner behind it. It was deliberately excluded from the 2026-09-01
@@ -1358,6 +1369,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   `tools/verify_page.py` alone is 2,068 lines and would need splitting
   across lanes. Run `review-tests`; it also runs the suite once for a
   baseline, which review-code does not.
+  Resolved 2026-09-02. The audit this item asked for ran. Its lane
+  reports are in `docs/reviews/` (the five `chunk-*.md` files plus
+  `test-audit-2026-09-02-measurements.md`), and its findings were filed as
+  LOTTO-0067 to LOTTO-0075, all now closed. The item stayed open only
+  because nothing flipped it when the audit landed; corrected here rather
+  than left as a false open.
   **Layman:** The tests that check everything else have never themselves been checked
   Kind: test.
   Source: review-code-2026-09-01 coverage gap.

@@ -716,10 +716,25 @@ the project, not the next free number in this file.
   `verify_pools.py` — raises on the missing dump rather than scoring zero
   tickets. A clean exit reporting "0 wins" from an absent dump is the cardinal
   failure, so raising is intended, not an oversight.
-- **The archive site changes markup.** `backfill.py::parse_page()` returns
-  an empty dict, which surfaces as a game with 0 draws. This has already
-  happened once: the site renamed Lotto Plus 2 to Lotto 5 Max and the
-  hardcoded slug silently matched nothing.
+- **The archive site changes markup, and there are two modes.** In the first,
+  a row stops parsing at all: `backfill.py::parse_page()` returns an empty
+  dict, which surfaces as a game with 0 draws. That one has already happened
+  — the site renamed Lotto Plus 2 to Lotto 5 Max and the hardcoded slug
+  silently matched nothing.
+- **The archive site changes a ball's ROLE**, which is the more dangerous of
+  the two because the record it produces is well-formed. Roles are read off
+  the CSS class, so one appended class stops `endswith()` matching, the
+  PowerBall is filed as an extra main number and `special` becomes `None`.
+  Nothing downstream can tell: the record flows through `history.py`
+  untouched and scores every archive-era PowerBall line one match high while
+  never matching the PB — INV-1's failure arriving from the side INV-3's
+  overlap check cannot reach, in the era where most wins live.
+  `backfill.py::SHAPE` is the guard (added by LOTTO-0050): keyed on the page
+  slug, it names the main-ball count and whether a special is expected, and
+  `parse_page()` checks every row against it. A row that disagrees is
+  dropped and said out loud — `SKIPPED <slug> <date>: ...`, naming what it
+  saw and what was expected — so the draw is *absent* from the archive
+  rather than wrong in it. A wrong record is worse than no record.
 - **An unrecognised SMS format.** `parse()` returns `None` and the message is
   skipped. This failed silently once — 552 of 558 tickets were dropped by a
   pattern that did not allow `draw(s)` — which is why INV-6's test asserts
