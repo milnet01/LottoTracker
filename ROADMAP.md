@@ -3103,7 +3103,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: security.
   Source: in-session-2026-09-02, found while building LOTTO-0061's import filter.
 
-- 📋 [LOTTO-0063] **CLAUDE.md states the cardinal rule as a sufficient condition; LOTTO-0002 adds prohibitions it does not carry.**
+- ✅ [LOTTO-0063] **CLAUDE.md states the cardinal rule as a sufficient condition; LOTTO-0002 adds prohibitions it does not carry.**
   LOTTO-0054's second half, filed on its own because it needs a gate this
   session did not run.
 
@@ -3145,6 +3145,34 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   cardinal-rule restatement against LOTTO-0002 section 6, the Python floor
   moving to 3.9+, and this. Listing them here rather than filing a third item,
   because they want the same single run.
+  Resolved 2026-09-06. The owed `review-contract` gate ran: genre standard,
+  three loops, three cold lanes each, converging at the cap. Eighteen verified
+  findings, all fixed. Loop rows are in docs/reviews/, not in CLAUDE.md, which
+  every session loads in full.
+
+  This item's OWN premise did not reproduce. Nine cold lanes, each holding
+  LOTTO-0002 section 6 including its first-build branch, read the two documents
+  against each other and none raised a conflict: "correct only when" states
+  necessity, not sufficiency. The requested edit was applied regardless, as this
+  item's request rather than as a gate finding — the prohibition on a ticket
+  table, a zero total or an empty wins list is now named in one clause, with
+  LOTTO-0002 section 6 pointed at as its owner.
+
+  What the gate did find, in the three changes it was owed for: the push-gate
+  paragraph filed under this item was wrong twice over. A documentation-only
+  push does NOT skip the gate — local-CI.sh runs verify_privacy.py at full
+  strength on that branch and fails if it fails — and the classifier reads
+  GATE_RANGES under the hook, not upstream..HEAD.
+
+  The sharpest finding of the run was outside this item and outside the subject:
+  LOTTO-0014 section 4.3 licensed a POST /refresh against a LOTTO_NO_BUILD child,
+  claiming the flag suppresses every build. It does not, and restoring the case
+  that spec described would run a real build against the live SMS dump and the
+  operator's API. Corrected there.
+
+  Two code-side copies surfaced and deliberately not fixed, a docs gate never
+  editing code: expiry.py, serve.py and verify_page.py's own comment restate
+  wording this run corrected.
   **Layman:** Two of our own documents describe the same safety rule differently, and the shorter one is the one that gets read
   Kind: doc-fix.
   Source: review-code-2026-09-01, split out of LOTTO-0054 on 2026-09-02.
