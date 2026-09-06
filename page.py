@@ -191,7 +191,8 @@ def _wins_section(model):
                 if d is not None:
                     when += f' <span class="muted">({d} days)</span>'
             rows.append(
-                f'<tr class="{cls}"><td>{_e(w["game"])}/{_e(w["plus_flag"])}</td>'
+                f'<tr class="{cls}" data-game="{_e(w["game"])}">'
+                f'<td>{_e(w["game"])}/{_e(w["plus_flag"])}</td>'
                 + _numbers_cell(w.get("numbers"), w.get("special"))
                 + _numbers_cell(w.get("drawn_main"), w.get("drawn_special"))
                 + f'<td>{_e(w.get("division"))}</td><td>{_e(w.get("matched"))}</td>'
@@ -227,7 +228,7 @@ def _outstanding_section(model):
         out = []
         for e in entries:
             out.append(
-                f'<tr><td>{_e(e["ref"])}</td>'
+                f'<tr data-game="{_e(e["game"])}"><td>{_e(e["ref"])}</td>'
                 f'<td>{_e(e["game"])}/{_e(e["plus_flag"])}</td>'
                 + _boards_cell(e.get("boards"))
                 + (
@@ -409,8 +410,24 @@ def _settings_section(model):
             f'<span id="{key}-lbl">{_e(label)}</span></div>'
         )
 
+    # The selected option is the DEFAULT, never the stored choice: the choice
+    # lives in the browser and the renderer is pure, so the server cannot know
+    # it. The script re-syncs the control on load; marking anything else here
+    # would be the page asserting something it has not got.
+    opts = "".join(
+        f'<option value="{_e(tid)}"'
+        + (" selected" if tid == DEFAULT_THEME else "")
+        + f">{_e(label)}</option>"
+        for tid, label, _colours in THEMES
+    )
+    theme = (
+        '<div class="row"><label for="theme">Colour theme</label>'
+        f'<select id="theme">{opts}</select></div>'
+    )
+
     return (
         "<section><h2>Settings</h2>"
+        + theme
         + sw("autostart", "Start the tray when I log in")
         + sw("open_on_start", "Open this page when the tray starts")
         # role=status + aria-live: the switches write their result here, and
@@ -420,38 +437,172 @@ def _settings_section(model):
     )
 
 
-CSS = """
+# ------------------------------------------------------------------ themes
+# Every theme fills the SAME eleven roles. One left unset falls through to
+# whatever the browser paints - white, for most of them - which is the blinding
+# first paint this feature exists to remove. So the completeness is asserted
+# (INV-62), not trusted.
+#
+# The named palettes take their background, foreground and accent hexes from the
+# published palettes they are named after. The two NOTICE surfaces are derived
+# tints in every theme, not palette members: no palette publishes a "warning
+# background", and inventing one is honest where claiming provenance would not
+# be.
+THEME_ROLES = (
+    "bg", "fg", "dim", "line", "panel",
+    "accent", "warn", "warn-bg", "bad", "bad-bg", "on",
+)
+
+DEFAULT_THEME = "dark"
+
+# id, dropdown label, palette. Order is the dropdown's order: dark first,
+# because that is the default and the reason this exists.
+THEMES = [
+    ("dark", "Dark", {
+        "bg": "#16181d", "fg": "#e8e9ec", "dim": "#9aa0aa", "line": "#2c3038",
+        "panel": "#21242b", "accent": "#d8a13a", "warn": "#f0b45a",
+        "warn-bg": "#2e2716", "bad": "#e8705f", "bad-bg": "#33201d",
+        "on": "#4caf50"}),
+    ("contrast", "High contrast", {
+        "bg": "#000000", "fg": "#ffffff", "dim": "#d6d6d6", "line": "#7a7a7a",
+        "panel": "#141414", "accent": "#ffd400", "warn": "#ffd400",
+        "warn-bg": "#332b00", "bad": "#ff8a80", "bad-bg": "#3d0000",
+        "on": "#00e05a"}),
+    ("warm", "Warm dark", {
+        "bg": "#201b17", "fg": "#f0e6d8", "dim": "#b9a892", "line": "#3a3129",
+        "panel": "#2b241e", "accent": "#e0a458", "warn": "#f2be74",
+        "warn-bg": "#362a19", "bad": "#e28874", "bad-bg": "#3a241f",
+        "on": "#7ea36a"}),
+    ("nord", "Nord", {
+        "bg": "#2e3440", "fg": "#eceff4", "dim": "#a9b3c4", "line": "#4c566a",
+        "panel": "#3b4252", "accent": "#88c0d0", "warn": "#ebcb8b",
+        "warn-bg": "#3b3a2e", "bad": "#bf616a", "bad-bg": "#402f33",
+        "on": "#a3be8c"}),
+    ("dracula", "Dracula", {
+        "bg": "#282a36", "fg": "#f8f8f2", "dim": "#9aa4c8", "line": "#44475a",
+        "panel": "#343746", "accent": "#bd93f9", "warn": "#f1fa8c",
+        "warn-bg": "#3b3a2c", "bad": "#ff5555", "bad-bg": "#40282c",
+        "on": "#50fa7b"}),
+    ("gruvbox", "Gruvbox", {
+        "bg": "#282828", "fg": "#ebdbb2", "dim": "#a89984", "line": "#504945",
+        "panel": "#3c3836", "accent": "#d79921", "warn": "#fabd2f",
+        "warn-bg": "#3c3423", "bad": "#fb4934", "bad-bg": "#3f2723",
+        "on": "#98971a"}),
+    ("tokyo", "Tokyo Night", {
+        "bg": "#1a1b26", "fg": "#c0caf5", "dim": "#7f88ad", "line": "#2f334d",
+        "panel": "#24283b", "accent": "#7aa2f7", "warn": "#e0af68",
+        "warn-bg": "#2e2a20", "bad": "#f7768e", "bad-bg": "#33222a",
+        "on": "#9ece6a"}),
+    ("catppuccin", "Catppuccin Mocha", {
+        "bg": "#1e1e2e", "fg": "#cdd6f4", "dim": "#a6adc8", "line": "#313244",
+        "panel": "#26263a", "accent": "#cba6f7", "warn": "#f9e2af",
+        "warn-bg": "#34301f", "bad": "#f38ba8", "bad-bg": "#372430",
+        "on": "#a6e3a1"}),
+    ("monokai", "Monokai", {
+        "bg": "#272822", "fg": "#f8f8f2", "dim": "#a6a48f", "line": "#49483e",
+        "panel": "#32332a", "accent": "#66d9ef", "warn": "#e6db74",
+        "warn-bg": "#3a3722", "bad": "#f92672", "bad-bg": "#3b2029",
+        "on": "#a6e22e"}),
+    ("solarized-dark", "Solarized Dark", {
+        "bg": "#002b36", "fg": "#93a1a1", "dim": "#7d9497", "line": "#073642",
+        "panel": "#073642", "accent": "#268bd2", "warn": "#b58900",
+        "warn-bg": "#1d3320", "bad": "#dc322f", "bad-bg": "#33221f",
+        "on": "#859900"}),
+    ("light", "Light", {
+        "bg": "#fafafa", "fg": "#1a1a1a", "dim": "#555555", "line": "#e0e0e0",
+        "panel": "#f0f0f0", "accent": "#b26a00", "warn": "#8a5a00",
+        "warn-bg": "#fff8e1", "bad": "#c0392b", "bad-bg": "#fdecea",
+        "on": "#2d7a2d"}),
+    ("solarized-light", "Solarized Light", {
+        "bg": "#fdf6e3", "fg": "#3f5b62", "dim": "#586e75", "line": "#eee8d5",
+        "panel": "#eee8d5", "accent": "#268bd2", "warn": "#8a6600",
+        "warn-bg": "#f6efd4", "bad": "#dc322f", "bad-bg": "#f7e5df",
+        "on": "#657b00"}),
+    ("sepia", "Sepia", {
+        "bg": "#f4ecd8", "fg": "#3b3228", "dim": "#6d5d49", "line": "#ddd0b4",
+        "panel": "#eae0c8", "accent": "#a06a2c", "warn": "#8a5a00",
+        "warn-bg": "#f0e2bd", "bad": "#a3402f", "bad-bg": "#f0dcd4",
+        "on": "#5f7d3c"}),
+]
+
+THEME_IDS = [t[0] for t in THEMES]
+_PALETTES = {tid: colours for tid, _label, colours in THEMES}
+
+
+def _theme_block(selector, colours):
+    return selector + "{" + "".join(
+        "--%s:%s;" % (role, colours[role]) for role in THEME_ROLES
+    ) + "}"
+
+
+def _themes_css():
+    """The default palette on :root, then one override block per theme.
+
+    The default lives on `:root` rather than behind a `data-theme`, so a page
+    that never runs a line of JavaScript is still dark. That is the whole
+    mechanism: nothing here waits for a script to avoid painting white.
+    """
+    out = [_theme_block(":root", _PALETTES[DEFAULT_THEME])]
+    for tid, _label, colours in THEMES:
+        out.append(_theme_block('html[data-theme="%s"]' % tid, colours))
+    return "\
+".join(out)
+
+
+# Applied in <head>, before the body exists, so a stored choice is in force at
+# the FIRST paint. Reading it after the body has rendered is what produces the
+# flash of the default theme this whole feature is about.
+# The pattern guard is not decoration: the value is attacker-writable in
+# principle (anything running in this origin), and it lands in an attribute.
+THEME_BOOT = (
+    'try{var t=localStorage.getItem("lotto-theme");'
+    'if(t&&/^[a-z0-9-]{1,32}$/.test(t))'
+    'document.documentElement.setAttribute("data-theme",t)}catch(e){}'
+)
+# Colour is stated once, as the eleven roles above; every rule below reads a
+# variable rather than a hex. That is what makes a new theme a table row instead
+# of a second copy of this stylesheet.
+BASE_CSS = """
 body{font:15px/1.5 system-ui,sans-serif;margin:0 auto;padding:1.5rem;max-width:64rem;
- color:#1a1a1a;background:#fafafa}
+ color:var(--fg);background:var(--bg)}
 h1{font-size:1.4rem;margin:0 0 .25rem}h2{font-size:1.1rem;margin:2rem 0 .5rem}
-h3{font-size:.95rem;margin:1.25rem 0 .4rem;color:#444}
+h3{font-size:.95rem;margin:1.25rem 0 .4rem;color:var(--dim)}
 table{border-collapse:collapse;width:100%;margin:.5rem 0}
-th,td{text-align:left;padding:.3rem .5rem;border-bottom:1px solid #e4e4e4}
-th{font-weight:600;font-size:.85rem;color:#555}
+th,td{text-align:left;padding:.3rem .5rem;border-bottom:1px solid var(--line)}
+th{font-weight:600;font-size:.85rem;color:var(--dim)}
 .money{text-align:right;font-variant-numeric:tabular-nums}
 .nums{white-space:nowrap}
 .ball{display:inline-block;min-width:1.6rem;padding:.1rem .3rem;margin:.05rem .1rem;
- border-radius:.8rem;background:#e8eef6;text-align:center;font-variant-numeric:tabular-nums;
- font-size:1rem}
-.ball.special{background:#f6e6cf;font-weight:600}
-.notcheckable{color:#8a5a00;font-style:italic}
-.muted{color:#666;font-size:.9rem}
-.notice{background:#fff8e1;border-left:4px solid #e0a800;padding:.6rem .8rem;margin:.8rem 0}
-.notice.bad{background:#fdecea;border-left-color:#c0392b}
-tr.soon td{background:#fff8e1}tr.today td{background:#fdecea;font-weight:600}
+ border-radius:.8rem;background:#4a5568;color:#fff;text-align:center;
+ font-variant-numeric:tabular-nums;font-size:1rem}
+.ball.special{background:#6a1b9a;color:#fff;font-weight:600}
+tr[data-game="lotto"] .ball{background:#c62828}
+tr[data-game="lotto"] .ball.special{background:#6a1b9a}
+tr[data-game="powerball"] .ball{background:#1565c0}
+tr[data-game="powerball"] .ball.special{background:#bf360c}
+tr[data-game="daily"] .ball{background:#2e7d32}
+.notcheckable{color:var(--warn);font-style:italic}
+.muted{color:var(--dim);font-size:.9rem}
+.notice{background:var(--warn-bg);border-left:4px solid var(--accent);padding:.6rem .8rem;margin:.8rem 0}
+.notice.bad{background:var(--bad-bg);border-left-color:var(--bad)}
+tr.soon td{background:var(--warn-bg)}tr.today td{background:var(--bad-bg);font-weight:600}
 .row{display:flex;align-items:center;gap:.6rem;margin:.4rem 0}
 .switch{position:relative;display:inline-block;width:2.6rem;height:1.4rem;flex:none}
 .switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
-.slider{position:absolute;inset:0;background:#bbb;border-radius:1rem;transition:.15s;
+.slider{position:absolute;inset:0;background:var(--line);border-radius:1rem;transition:.15s;
  pointer-events:none}
 .slider:before{content:"";position:absolute;width:1.1rem;height:1.1rem;left:.15rem;
- top:.15rem;background:#fff;border-radius:50%;transition:.15s}
-.switch input:checked+.slider{background:#2d7a2d}
+ top:.15rem;background:var(--fg);border-radius:50%;transition:.15s}
+.switch input:checked+.slider{background:var(--on)}
 .switch input:checked+.slider:before{transform:translateX(1.2rem)}
-.switch input:focus-visible+.slider{outline:2px solid #05f;outline-offset:2px}
-footer{margin-top:2.5rem;color:#666;font-size:.85rem}
-button{font:inherit;padding:.3rem .7rem}
+.switch input:focus-visible+.slider{outline:2px solid var(--accent);outline-offset:2px}
+footer{margin-top:2.5rem;color:var(--dim);font-size:.85rem}
+button,select{font:inherit;padding:.3rem .7rem;background:var(--panel);color:var(--fg);
+ border:1px solid var(--line);border-radius:.25rem}
+button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 """
+
+CSS = _themes_css() + BASE_CSS
 
 # Four jobs and no others (LOTTO-0002 §4.1): the two POSTs (custom header, so a
 # cross-origin form post cannot forge them), filtering (must never touch the
@@ -481,6 +632,27 @@ function wire(id){
  });
 }
 wire("autostart");wire("open_on_start");
+// The theme. It writes a data-theme attribute and one localStorage key holding
+// a theme NAME, and nothing else: no query parameter, no fragment, no history
+// entry, and no ticket data anywhere (INV-21, INV-63). It deliberately does not
+// POST: the two switches above are the tray's business, a colour is this
+// browser's, and routing it through /settings would give settings.json a second
+// writer for no gain.
+var th=document.getElementById("theme");
+if(th){
+ try{var saved=localStorage.getItem("lotto-theme");
+     // Adopt it only if the dropdown offers it. Assigning an unknown value
+     // blanks the select, which then disagrees with what is on the screen -
+     // and a stored name outlives the release that dropped that theme.
+     if(saved){for(var i=0;i<th.options.length;i++){
+       if(th.options[i].value===saved){th.value=saved;break}}}
+ }catch(e){}
+ th.addEventListener("change",function(){
+  document.documentElement.setAttribute("data-theme",th.value);
+  try{localStorage.setItem("lotto-theme",th.value)}catch(e){}
+  msg("Theme applied.");
+ });
+}
 var rb=document.getElementById("refresh");
 if(rb)rb.addEventListener("click",function(){
  rb.disabled=true;rb.textContent="Refreshing...";
@@ -581,7 +753,10 @@ def render(model, token):
     """
     built = model.get("built")
     building = bool(model.get("building"))
-    head = f"<title>{TITLE}</title><style>{CSS}</style>"
+    head = (
+        f"<title>{TITLE}</title><style>{CSS}</style>"
+        f"<script>{THEME_BOOT}</script>"
+    )
     if building and not built:
         # LOTTO-0019 §4.4. The half-minute estimate is KEPT and qualified, not
         # dropped: a retrying build (LOTTO-0012) overshoots it, and an estimate

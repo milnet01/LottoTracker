@@ -1994,6 +1994,132 @@ def numbers_chosen_and_drawn():
             page._boards_cell = real_boards
 
 
+# WCAG 2.x relative luminance and contrast ratio. Written out rather than
+# imported because this project has no third-party dependency for it and the
+# formula is four lines; the constants are the specification's own.
+def _luminance(hexcolour):
+    h = hexcolour.lstrip("#")
+    parts = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    parts = [v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+             for v in parts]
+    return 0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2]
+
+
+def _contrast(a, b):
+    la, lb = _luminance(a), _luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def theme_is_dark_and_readable():
+    """INV-62/INV-63 - the page paints dark before any script, and every theme
+    it offers is readable.
+
+    Renderer-only, like every other case in this file: it reads page.THEMES and
+    one pure render, and touches no socket.
+
+    The three assertions are not interchangeable. Completeness is what stops a
+    theme falling back to the browser's own white. The luminance test is what
+    makes DARK the no-JavaScript default rather than a preference someone has to
+    set. The contrast floors are what stop a palette being adopted for its looks
+    and leaving text unreadable - which for this page's owner is the whole
+    point of the feature.
+    """
+    real_default = page.DEFAULT_THEME
+    real_base = page.BASE_CSS
+    real_css = page.CSS
+    real_themes = page.THEMES
+    try:
+        if broken("theme_default_light"):
+            page.DEFAULT_THEME = "light"
+            page.CSS = page._themes_css() + page.BASE_CSS
+        if broken("ball_without_colour"):
+            # The sharpest break for ball legibility: keep the disc, drop the
+            # number's own colour, so it inherits the theme foreground and goes
+            # invisible on whichever theme happens to match.
+            page.BASE_CSS = page.BASE_CSS.replace(
+                "background:#4a5568;color:#fff;", "background:#4a5568;", 1)
+            page.CSS = page._themes_css() + page.BASE_CSS
+        if broken("theme_unreadable_palette"):
+            page.THEMES = [
+                (tid, label, dict(c, dim=c["bg"]) if tid == "nord" else c)
+                for tid, label, c in page.THEMES
+            ]
+
+        # 1. Every theme fills every role.
+        for tid, _label, colours in page.THEMES:
+            missing = [r for r in page.THEME_ROLES if not colours.get(r)]
+            need(not missing,
+                 f"theme {tid!r} leaves {missing} unset — those surfaces fall "
+                 "back to the browser default, which is white")
+
+        # 2. The default is dark, and it is on :root rather than behind an
+        #    attribute, so a page that runs no script is still dark.
+        palette = dict((t, c) for t, _l, c in page.THEMES)[page.DEFAULT_THEME]
+        need(_luminance(palette["bg"]) < 0.15,
+             f"the default theme {page.DEFAULT_THEME!r} has background "
+             f"{palette['bg']} — that is not a dark page")
+        root = re.search(r":root\{([^}]*)\}", page.CSS)
+        need(root is not None, "the stylesheet defines no :root palette")
+        need(f"--bg:{palette['bg']};" in root.group(1),
+             ":root does not carry the default theme's background — the first "
+             "paint would use whatever the browser chooses")
+
+        # 3. Text stays readable in every theme. `bad` is a border colour and
+        #    takes the non-text floor; the other three are read as words.
+        for tid, _label, colours in page.THEMES:
+            for role, floor in (("fg", 4.5), ("dim", 4.5),
+                                ("warn", 4.5), ("bad", 3.0)):
+                got = _contrast(colours["bg"], colours[role])
+                need(got >= floor,
+                     f"theme {tid!r}: --{role} {colours[role]} on "
+                     f"{colours['bg']} is {got:.2f}:1, below {floor}:1")
+
+        # 4. Every ball states its own colours, so no theme decides whether a
+        #    number is visible.
+        base = re.search(r"\.ball\{([^}]*)\}", page.BASE_CSS)
+        need(base is not None, "there is no .ball rule at all")
+        need("color:" in base.group(1) and "background:" in base.group(1),
+             "the .ball rule does not state BOTH a background and a colour — "
+             "the number takes the theme's foreground and can match its disc")
+        for bg in sorted(set(re.findall(r"background:(#[0-9a-f]{6})",
+                                        page.BASE_CSS))):
+            got = _contrast(bg, "#ffffff")
+            need(got >= 4.5,
+                 f"a ball background {bg} is {got:.2f}:1 against its white "
+                 "number, below 4.5:1")
+
+        # 5. The control offers exactly the themes that exist, and the stored
+        #    choice is applied before the body — not after, which is the flash
+        #    of the default this feature exists to remove.
+        html = render_pure(fixture_model())
+        need('<select id="theme">' in html, "the page offers no theme control")
+        # Scoped to the theme control's own markup. Scraping <option> from the
+        # whole page also collects the game, pool and period filters, whose
+        # values are ticket data - so a wide match both fails wrongly and would
+        # put ticket data in this assertion's failure message.
+        picker = html.split('<select id="theme">', 1)[1].split("</select>", 1)[0]
+        offered = re.findall(r'<option value="([a-z0-9-]+)"', picker)
+        need(offered == [t for t, _l, _c in page.THEMES],
+             f"the dropdown offers {offered}, not the themes that exist")
+        need(html.index("lotto-theme") < html.index("<body>"),
+             "the stored theme is applied after <body> — the page paints the "
+             "default first and then jumps")
+
+        # 6. INV-63: the theme writes one browser key and nothing else. No URL
+        #    is touched, and no ticket data is stored anywhere.
+        need(html.count("setItem(") == 1 and 'setItem("lotto-theme"' in html,
+             "something other than the theme name is written to browser storage")
+        for forbidden in ("pushState", "replaceState", "location.hash",
+                          "location.search", "location.href"):
+            need(forbidden not in html,
+                 f"the page contains {forbidden!r} — a theme must not reach the URL")
+    finally:
+        page.DEFAULT_THEME = real_default
+        page.BASE_CSS = real_base
+        page.CSS = real_css
+        page.THEMES = real_themes
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -2013,6 +2139,7 @@ CASES = [
     ("no_comparison_is_not_no_wins", "INV-29", no_comparison_is_not_no_wins),
     ("notification_carries_no_ticket_data", "INV-30", notification_carries_no_ticket_data),
     ("numbers_chosen_and_drawn", "INV-48", numbers_chosen_and_drawn),
+    ("theme_is_dark_and_readable", "INV-62", theme_is_dark_and_readable),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -2050,6 +2177,9 @@ BREAKS = {
     "found_on_first_build": "no_comparison_is_not_no_wins",
     "null_found_reads_as_zero": "no_comparison_is_not_no_wins",
     "summary_names_a_ticket": "notification_carries_no_ticket_data",
+    "theme_default_light": "theme_is_dark_and_readable",
+    "ball_without_colour": "theme_is_dark_and_readable",
+    "theme_unreadable_palette": "theme_is_dark_and_readable",
 }
 
 

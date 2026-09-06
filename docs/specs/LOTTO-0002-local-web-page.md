@@ -832,11 +832,40 @@ rule is still stated there rather than here: everything in `serve.py` that binds
 sits behind `if __name__ == "__main__":` (LOTTO-0013 §4.4, which is what makes
 its INV-19 observable).
 
+### 4.9 Colour themes — LOTTO-0076
+
+The page opened white, which its owner reads as glare rather than as a style.
+So **dark is the default in the stylesheet itself** — the `:root` palette, not
+a theme chosen by script. A page that never runs a line of JavaScript is
+already dark, and there is no default paint for a stored choice to flash past.
+
+Colour is stated once, as eleven named roles, and every rule reads a variable.
+A theme is therefore a row in `page.py::THEMES` rather than a second
+stylesheet, and **every theme must fill every role**: one left unset falls
+through to whatever the browser paints, which is the white this section exists
+to remove.
+
+**Balls are coloured by game and role, and their colours do not move with the
+theme.** Game and role is what the operator's own markup distinguishes — its
+archive rows carry `lotto ball`, `lotto bonus-ball`, `pb ball` and `powerball`,
+and no per-number colour — so it is the distinction that exists to follow.
+Holding them still is a legibility decision rather than an aesthetic one: a
+colour that moved with the theme would need its contrast re-checked against
+every theme, and each ball states its own background *and* its own foreground
+so that no theme can decide whether a number is visible.
+
+**The choice lives in the browser, not in `settings.json`.** Routing it through
+`POST /settings` would give that file a second writer for something the tray
+never reads, against §4.7's one-reader rule. It is stored as a theme *name*,
+applied in `<head>` before the body exists, and it reaches no URL — INV-21's
+rule, which a preference kept in a query string would breach.
+
 ## 5. Invariants
 
 This document holds **INV-15 to INV-18** — the honesty rules on the data the
 page renders — **INV-48**, added 2026-08-20 with LOTTO-0035 and the same kind
-of rule one column further right, and **INV-24**, which is an honesty rule
+of rule one column further right, **INV-62 and INV-63**, added 2026-09-06
+with LOTTO-0076, and **INV-24**, which is an honesty rule
 about the port the process binds rather than about the data, and lives here
 because §4.1's environment table and §6's failure mode are both this
 document's. LOTTO-0001
@@ -867,6 +896,34 @@ them unqualified.
   the assertion was being satisfied by a path the break did not touch. A break
   aimed one function too low proves nothing and looks identical to one that
   works.
+- **INV-62** — The page paints dark before any script runs, every theme it
+  offers fills every colour role, and every one of them is readable. Added
+  2026-09-06 (LOTTO-0076). The three clauses are not interchangeable:
+  completeness is what stops a theme falling back to the browser's own white,
+  the default living on `:root` is what makes dark the no-JavaScript state
+  rather than a preference someone has to set, and the contrast floors are what
+  stop a palette being adopted for its looks and leaving text unreadable. Body,
+  secondary and not-checkable text each clear 4.5:1 against their own
+  background; a ball clears 4.5:1 against its number; `--bad` is a border
+  colour and takes the 3:1 non-text floor.
+  *Test:* `tools/verify_page.py`, case `theme_is_dark_and_readable`.
+  Red-tested by `--break theme_default_light` (a light `:root`),
+  `--break ball_without_colour` (the disc keeps its background and the number
+  inherits the theme foreground) and `--break theme_unreadable_palette` (one
+  theme's secondary text set to its own background). **Writing the case found a
+  defect in the case rather than in the code**, the third time this flag has
+  done that: the option scrape was unscoped and collected the game, pool and
+  period filters as well as the themes — so it failed wrongly *and* would have
+  printed ticket data in its own failure message.
+- **INV-63** — Choosing a theme writes one browser key holding a theme name,
+  and touches nothing else. No query parameter, no fragment, no history entry,
+  no ticket data, and no second writer for `settings.json`. Added 2026-09-06
+  (LOTTO-0076). This is INV-21's rule reaching a control that did not exist
+  when INV-21 was written, and §4.7's one-reader rule reaching a preference
+  that had no reason to be shared with the tray.
+  *Test:* `tools/verify_page.py`, case `theme_is_dark_and_readable` — the
+  rendered page must carry exactly one `setItem(`, for the theme name, and none
+  of the URL-writing calls INV-21 already forbids.
 
 - **INV-15** — An entry nothing can score renders as "not checkable" with its
   reason, and never as a blank, a dash, a zero, or an omission; a ticket
@@ -1298,6 +1355,8 @@ LOTTO-0014 §8.)
 | INV-18 failed refresh keeps the model | `tools/verify_page.py::failed_refresh_keeps_model` |
 | INV-24 the port comes from `$PORT`, then `$LOTTO_PORT`, then 4322, and a bad non-empty value exits | `tools/verify_page.py::port_from_environment` — which also covers `supervise.py`'s matching precedence and its opposite policy on a bad value (LOTTO-0013 §4.5) |
 | INV-24's `$LOTTO_PORT` and bare-4322 legs reaching the **bind** | **nothing** — both are asserted at `resolve_port()` level only; the three children cover the `$PORT` leg, the rejected leg and the supervised one. A `main()` that resolved correctly and then bound `DEFAULT_PORT` on the `$LOTTO_PORT` path alone would pass |
+| INV-62 dark before any script; every theme complete and readable | `tools/verify_page.py::theme_is_dark_and_readable` — reads `page.THEMES` and one pure render; red-tested by `--break theme_default_light`, `--break ball_without_colour` and `--break theme_unreadable_palette` |
+| INV-63 the theme reaches no URL and writes one browser key | `tools/verify_page.py::theme_is_dark_and_readable` — the same case; it counts `setItem(` and re-checks INV-21's forbidden calls against the pure render |
 | INV-48 the numbers chosen beside the numbers drawn, absence said in words | `tools/verify_page.py::numbers_chosen_and_drawn` — two disjoint fixture sets, so a renderer echoing the chosen numbers into both columns fails; red-tested by `--break no_drawn_numbers` and `--break blank_numbers_cell` |
 | §4.1 the *resolved* port being what builds LOTTO-0014 §4.2's `Host` allowlist, not either variable read again | **nothing** — and the gap is structural rather than an omission: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because the question they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes both. The breach is loud to a *user* — every request fails — and invisible to the suite |
 | §4.1 `page.py` performing no I/O | `tools/verify_page.py` — **two** doubles for `all_draws`, swapped between phases: a *returning* one while the builder runs (INV-15 needs draws for one pool and `[]` for the other), then a *raising* one installed before `render()` is called. Only the second proves the renderer performs no I/O, and it must not be in place during the build or every case dies there. Absent the raising double the row would be false: with no `archive_results.json`, `history.all_draws()` falls straight through to `api_draws()`, which **succeeds** on a connected machine, so a renderer calling it would pass |

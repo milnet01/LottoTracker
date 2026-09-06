@@ -1447,6 +1447,48 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: release.
   Source: user-decision-2026-09-02.
 
+- ✅ [LOTTO-0076] **Dark by default, thirteen themes, and balls coloured by game.**
+  The user tested the page and reported the white background as blinding, and
+  asked for a dark theme, the coloured balls the operator uses, and several
+  themes applied instantly from a settings control.
+
+  Dark is the default IN THE STYLESHEET - the `:root` palette, not a theme
+  chosen by script - so a page that runs no JavaScript is already dark and
+  there is no white first paint to flash past. Colour is stated once as eleven
+  named roles and every rule reads a variable, so a theme is a row in
+  `page.py::THEMES` rather than a second stylesheet.
+
+  Thirteen themes: Dark, High contrast, Warm dark, Nord, Dracula, Gruvbox,
+  Tokyo Night, Catppuccin Mocha, Monokai, Solarized Dark, Light, Solarized
+  Light, Sepia. The named ones take their background, foreground and accent
+  hexes from the palettes they are named after; the two notice surfaces are
+  derived tints in every theme, because no palette publishes a warning
+  background and claiming provenance for an invented one would be false.
+
+  Balls are coloured by GAME and ROLE, which is the distinction the operator's
+  own archive markup makes - its rows carry `lotto ball`, `lotto bonus-ball`,
+  `pb ball` and `powerball`, and no per-number colour. Their colours are held
+  still across themes, and each ball states its own background and its own
+  foreground, so no theme can decide whether a number is visible.
+
+  The choice is stored in the browser as a theme NAME and applied in `head`
+  before the body exists. It is deliberately not routed through
+  `POST /settings`: that would give `settings.json` a second writer for
+  something the tray never reads. It reaches no URL, so INV-21 is untouched.
+
+  INV-62 and INV-63 are new, checked by `tools/verify_page.py`'s
+  `theme_is_dark_and_readable` and red-tested by three breaks. Writing the case
+  found a defect in the case rather than in the code for the third time: the
+  option scrape was unscoped and collected the game, pool and period filters
+  too, which are ticket data - so it both failed wrongly and would have printed
+  ticket data in its own failure message.
+
+  Two of the author's own palettes were caught below the readability floor by
+  the case's contrast assertions and were corrected before it went green.
+  **Layman:** The page opened white and was painful to look at; it now opens dark and you can pick from thirteen colour schemes
+  Kind: accessibility.
+  Source: user-request-2026-09-06.
+
 ## Hardening
 
 - ✅ [LOTTO-0025] **A pre-push gate, and the CI that mirrors it.**

@@ -8,6 +8,31 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A dark page by default, thirteen colour themes, and balls coloured by game** (LOTTO-0076)
+  You reported the white page as blinding. It now opens dark — and it is dark in
+  the stylesheet itself, not dark because a script got there in time, so there is
+  no white flash to catch before the theme arrives.
+
+  Thirteen themes in the Settings panel, applied the instant you pick one: Dark,
+  High contrast, Warm dark, Nord, Dracula, Gruvbox, Tokyo Night, Catppuccin
+  Mocha, Monokai, Solarized Dark, Light, Solarized Light and Sepia. The choice is
+  remembered by the browser and is in force before the page paints. It is stored
+  as a theme name and nothing else — it never reaches the address bar, and it
+  does not go near the file that holds your two tray switches.
+
+  The numbers are now coloured discs: red for Lotto, blue for PowerBall, green
+  for Daily Lotto, and a distinct colour for the bonus ball and the PowerBall
+  itself. That split is what the operator's own results pages distinguish — by
+  game and by the ball's role, never by the number. The ball colours stay the
+  same in every theme on purpose, so a number can never end up the colour of the
+  disc behind it.
+
+  Every theme is checked for readability rather than trusted: ordinary text,
+  secondary text and the "not checkable" wording each have to clear the standard
+  contrast floor against their own background, and so does a number against its
+  disc. Two of the palettes failed that check when it was first run and were
+  corrected before the check went green.
+
 - **The push gate now checks that it is actually installed** (LOTTO-0049)
   git does not track hooks, so core.hooksPath is set once per clone and nothing asserted it — a clone that skipped that one command had an entirely inert gate with no signal at all. The CI job also carries a timeout, ruff is pinned on the runner because its version decides the verdict, and the privacy check's output is withheld on the public lane, where printing it would publish the leak it just caught.
 

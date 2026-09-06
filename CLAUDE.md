@@ -81,11 +81,13 @@ python3 tools/verify_coverage.py  # INV-6: each entry scored over exactly its dr
 python3 tools/verify_privacy.py   # INV-4: no real SMS content is tracked by git
 python3 tools/verify_pools.py     # INV-7/11/22/26/31: prices resolve; partly-checkable
                                   # tickets are never written off whole
-python3 tools/verify_page.py      # INV-12..INV-21, INV-23..INV-25 and INV-27..INV-30:
-                                  # the page, its security boundary, the tray's
+python3 tools/verify_page.py      # the page, its security boundary, the tray's
                                   # spawn-and-reap lifecycle, what it reports after a
                                   # refresh, the port it binds, the managed (no-icon)
-                                  # run, and the results transport underneath them
+                                  # run, the colour themes, and the results transport
+                                  # underneath them. Its own CASES table names the
+                                  # invariant each case covers — read it there, not
+                                  # from a list here, which went stale twice
 python3 tools/verify_periods.py   # INV-57..INV-60: cost against winnings per
                                   # period. Money belongs to the period of the
                                   # DRAW, never of the purchase; both sides are
