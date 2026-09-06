@@ -1440,7 +1440,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: doc.
   Source: session-audit-2026-09-01 missing-documents sweep.
 
-- 📋 [LOTTO-0057] **A nested archive_cache/archive_cache/ exists and nothing in the code can produce it.**
+- ✅ [LOTTO-0057] **A nested archive_cache/archive_cache/ exists and nothing in the code can produce it.**
   Still present on 2026-09-01: `archive_cache/archive_cache/` holding 14
   `payout-lotto-5-max-*.html` files whose names also appear one level up.
 
@@ -1457,12 +1457,55 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   be read as authoritative cache and never expire. That is the concrete
   argument for LOTTO-0041's path-anchoring fix. Decide whether to delete
   the directory, and anchor the paths either way.
+  Resolved 2026-09-06, on the user's decision to delete it. Both halves of
+  this item turned out to be already-answered or answerable by measurement.
+
+  The path anchoring is ALREADY DONE and was when this item was written:
+  `backfill.py` derives its cache and archive paths from the module's own
+  directory, so no run of this code can create a nested copy whatever the
+  working directory is. LOTTO-0041 closed that. Nothing further was needed.
+
+  The directory itself was NOT what this item assumed. Its files were said to
+  be copies of files one level up; they are not - all fourteen differ from
+  their outer namesakes. Measured before deleting anything: the differences are
+  site chrome only - the advertising client id, the current jackpot banner and
+  its countdown - and the PAYOUT DIVISION TABLES, the only thing `check.py`
+  reads these pages for, are byte-identical across all fourteen pairs. So the
+  nested set was the same pages re-fetched on a later day.
+
+  That also dates it. The nested copies carry a promo for a draw about eleven
+  days after the one the outer copies carry, so whatever made them ran roughly
+  eleven days after the outer set was fetched, from a working directory inside
+  `archive_cache/`. Consistent with the ad-hoc `python3 -c` this item guessed
+  at, and it cannot recur now the paths are anchored.
+
+  Deleted. Nothing was lost: the outer copies remain and are what the code
+  reads. No refetch cost, because the deleted files were duplicates rather
+  than cache entries the code would go looking for.
   **Layman:** There is a duplicate cache folder inside the cache folder, and we do not know what made it
   Kind: investigate.
   Source: review-code-2026-09-01 lane results-sources open question.
 
-- 📋 [LOTTO-0060] **Nothing on disk says what v1.0.0 contains, so no session can work toward it.**
+- 🚧 [LOTTO-0060] **Nothing on disk says what v1.0.0 contains, so no session can work toward it.**
   Searched every tracked `.md` and `.py` on 2026-09-02 for a version scope,\nmilestone or release grouping: NO match anywhere, and the project carries no\nversion string at all. LOTTO-0015 is described as \"still why no release is\ncut\", which is a clue and not a definition.\n\nSo an instruction to \"work on what gets us to v1.0.0\" cannot be executed. A\nsession either stops and asks, or guesses - and a guessed release scope is\nthe kind of decision that is expensive to reverse once items have been\nworked in its order.\n\nWHAT THIS ITEM NEEDS FROM THE USER, not from a session: which of the open\nitems are v1.0.0 and which are later. A reasonable starting proposal, for\nthe user to accept or redraw rather than for a session to adopt: LOTTO-0015\n(packaging) is the obvious gate, since an unpackaged tool has no release to\ncut; the five signs of success in `README.md` are the project's own\ndefinition of working, so any sign still open is a candidate; and the\nreview-fix backlog is quality rather than scope, so it does not obviously\nbelong to any one version.\n\nOnce settled, record it where a session will find it without asking - a\nversion field on the items themselves, or a section per release - and give\nthe project a version string so `cut-release` has something to bump.\n\nSTANDING WORK ORDER, set by the user 2026-09-02 and recorded here because\nit governed no document before. In order:\n  1. outstanding fixes from any and all reviews, backlogged items included -\n     that is LOTTO-0007's open letters and LOTTO-0040..0049;\n  2. open roadmap items that get us to v1.0.0 - BLOCKED by this item;\n  3. open roadmap items toward the version after that - blocked for the same\n     reason.\nPriority 1 is startable today and is where a session should go while 2 and 3\nare undefined. This order is the user's current call, not a permanent rule;\ncheck with them before treating it as settled far in the future.
+  SETTLED by the user 2026-09-06, answering this item's one question.
+
+  **v1.0.0 is all five signs of success, packaging, and the review backlog.**
+  Everything currently open belongs to it. The user was shown four options -
+  sign 5 plus packaging, packaging alone, tagging today's state, or the whole
+  board - and chose the whole board.
+
+  Two consequences a session can act on immediately. The standing work order's
+  priorities 2 and 3 are no longer blocked and no longer distinct: every open
+  item is v1.0.0 work, so after priority 1 there is no scope question left to
+  ask. And nothing needs a per-item version field, because the partition is
+  "open" against "shipped", which the roadmap already carries.
+
+  What remains of THIS item is the smaller half: the project still carries no
+  version string anywhere, so `cut-release` has nothing to bump. That is why
+  this is in-progress rather than closed. It is not urgent - LOTTO-0015
+  (packaging) is in scope for the same release and is where a version string
+  naturally lands.
   **Layman:** We have never written down which jobs have to be finished before we can call this version 1.0
   Kind: release.
   Source: user-decision-2026-09-02.
@@ -3023,6 +3066,39 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   guessed - but a bank changing its sending number would then silently stop
   every import, which is the failure mode this project cares most about. Weigh
   that before building it.
+  Measured 2026-09-06, against the live dump, because the user asked how a
+  sender can be pinned when a third-party provider sends the messages. The
+  answer is in the data and it is not what either of us assumed.
+
+  Of the records that parse as a purchase or a payout, the older era used a
+  DIFFERENT NUMBER ALMOST EVERY MESSAGE - hundreds of distinct numeric senders
+  for a few hundred records, all sharing one short South African mobile prefix.
+  An exact-number allowlist could never have worked there. That era ends in
+  February 2025.
+
+  From September 2024 the bank switched to an alphanumeric sender ID, and
+  every record since is one of three spellings of a single name differing only
+  by a trailing space or newline. They all collapse to ONE token under
+  uppercase-and-strip-non-alphanumerics. So the current era needs a
+  one-entry allowlist, not a list of numbers.
+
+  The design that follows: NORMALISE, then match. Uppercase and strip
+  non-alphanumeric characters, accept the one known name, and for the legacy
+  era accept the numeric prefix rather than the number. Both rules are read off
+  the dump rather than guessed.
+
+  The thing that must NOT be built: a filter that drops an unrecognised sender
+  silently. The failure this project cares most about is imports stopping with
+  no signal. An unknown sender on a body that parses is ADMITTED and FLAGGED -
+  the user is told a payout arrived from a sender not seen before, and the name
+  is added once.
+
+  Stated plainly so nobody oversells this later: an SMS sender ID is not an
+  authentication boundary. Anyone able to deliver a message to the phone can
+  usually set the sender ID to any name. Pinning raises the bar and makes a
+  forgery visible; it does not make one impossible. The real containment is
+  still the existing rule that reconcile() never resolves a disagreement in the
+  message's favour.
   **Layman:** Anyone who can text the phone could add a fake winnings message to the ledger
   Kind: security.
   Source: in-session-2026-09-02, found while building LOTTO-0061's import filter.
