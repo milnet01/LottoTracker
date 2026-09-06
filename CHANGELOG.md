@@ -74,9 +74,11 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Two rules the page will not bend. A period nothing could score gets no row at
   all rather than a row reading R0.00 — so R0.00 there always means "checked,
-  won nothing". And the periods start in January 2025, where the results record
-  starts, which is about 38% of lifetime spend; the rest is not shown as zero,
-  it is not offered, and LOTTO-0006 is what would widen it.
+  won nothing". And the periods start where the results
+  record starts, not at your first ticket; a period nothing can score is not
+  shown as zero, it is not offered at all. LOTTO-0006, in this same release,
+  pushed that floor back to the year of the earliest ticket, so the periods
+  now cover almost all of lifetime spend.
 
   The selector changes nothing in the address bar — no query string, no
   fragment, no history entry — because ticket data must never reach a URL.

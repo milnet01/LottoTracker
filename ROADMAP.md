@@ -1423,6 +1423,19 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 
   Still open: docs/design.md, docs/decisions/, the pair list itself, and an
   audit config.
+  Progress 2026-09-06. `.claude/code-pairs.json` is DONE. Seven pairs, each
+  site verified to exist on the day it was written: the SMS admission filter
+  against LOTTO-0001's adb clause, `TIER_PRICES` against LOTTO-0009's table,
+  `DRAW_DAYS` against observed history, the four game-name tables that the
+  June 2026 rebrand desynchronised, the port precedence in `serve.py` and
+  `supervise.py`, the ball-colour selectors against `GAME_MAP`'s game strings
+  (new with LOTTO-0076), and each verifier's break names against the spec
+  clauses citing them. Four of the seven have a recorded failure behind them
+  rather than a guess.
+
+  Still open: `docs/design.md`, `docs/decisions/`, and an audit config. Each
+  is a separate decision, and the first two are authoring jobs that owe a
+  `review-contract` gate of their own.
   **Layman:** A few standard files are missing, including a licence on a public repository
   Kind: doc.
   Source: session-audit-2026-09-01 missing-documents sweep.
