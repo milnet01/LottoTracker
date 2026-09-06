@@ -3123,6 +3123,17 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   now refuse a page it previously shipped. CLAUDE.md rule 14 owes it a
   `review-contract` gate before anyone builds under it, and that is a cold read
   of the whole file rather than of this diff.
+  Progress 2026-09-06. This item's `review-contract` run on CLAUDE.md now
+  owes a SECOND change as well, and both want one cold read rather than two.
+
+  LOTTO-0065 moved the project's Python floor from 3.8+ to 3.9+ in CLAUDE.md.
+  That meets rule 14's trigger on its own terms - a conformer may now write 3.9
+  library calls the old floor forbade - so it owes a gate and did not get one.
+
+  So the run this item asks for should cover the whole file, not just the
+  cardinal-rule restatement: that restatement against LOTTO-0002 section 6's
+  three prohibitions, and the new Python floor. Neither is urgent; both are
+  recorded here so the obligation cannot be lost between two items.
   **Layman:** Two of our own documents describe the same safety rule differently, and the shorter one is the one that gets read
   Kind: doc-fix.
   Source: review-code-2026-09-01, split out of LOTTO-0054 on 2026-09-02.
@@ -3170,7 +3181,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: doc-fix.
   Source: in-session-2026-09-02, user decision on LOTTO-0054.
 
-- 📋 [LOTTO-0065] **The Python 3.8 floor is proven for syntax and not for library use.**
+- ✅ [LOTTO-0065] **The Python 3.8 floor is proven for syntax and not for library use.**
   Split out of LOTTO-0049, which asked why the runner proves 3.13 while the
   project claims 3.8+.
 
@@ -3192,6 +3203,28 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   would prove this half too but adds `uv` to the gate's dependencies. Or decide
   the floor is now 3.9 and change the claim in CLAUDE.md and README.md - which
   is a contract edit and owes rule 14's gate.
+  Resolved 2026-09-06 on the user's decision: the floor moves to 3.9+.
+
+  Of the two routes this item named, the user took the second. The first -
+  running the CI lane under a `uv`-fetched 3.8 - would have proven a claim
+  nobody needs and added `uv` to the gate's dependencies to do it.
+
+  Measured before changing anything, which is what makes the new claim safe: no
+  3.9-or-later library call or syntax construct appears anywhere in the project,
+  and every module compiles under CPython 3.9.25. So nothing was using 3.8's
+  extra reach and the move costs nothing. It also unblocks LOTTO-0066, which
+  needs `zoneinfo`.
+
+  Changed in CLAUDE.md, README.md, `ruff.toml` (target-version now py39, with
+  the reasoning), the CI workflow's comment, two inline code comments, and the
+  floor statements in LOTTO-0001, LOTTO-0009 and LOTTO-0002. Dated records -
+  CHANGELOG entries and loop-log rows - were left as written.
+
+  The gate this owes is NOT skipped and NOT run here. A conformer may now write
+  3.9 library calls the old floor forbade, so CLAUDE.md rule 14's trigger is
+  met. LOTTO-0063 already requires a `review-contract` run on CLAUDE.md for a
+  different conflict, and both changes want one cold read of that file rather
+  than two. Recorded on both items.
   **Layman:** We know the code parses on the oldest Python we claim to support, but not that every function it calls exists there
   Kind: test.
   Source: review-code-2026-09-01 lane shell-gate, narrowed by measurement 2026-09-02.
@@ -3215,6 +3248,14 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   settle first), or state the assumption and check it once at startup. The
   second is cheaper and matches how this project handles a hardcoded table
   elsewhere - DRAW_DAYS is checked against observed history rather than assumed.
+  Progress 2026-09-06. UNBLOCKED. This item said `zoneinfo` needs LOTTO-0065
+  to settle first; LOTTO-0065 shipped today and the floor is now 3.9+, so
+  `zoneinfo` is available.
+
+  That removes the reason to prefer the cheaper option. Both routes this item
+  names are now open, and the choice between pinning the timezone explicitly and
+  stating-plus-checking the assumption is a design decision rather than a
+  constraint. Still needs the user.
   **Layman:** On a machine set to the wrong timezone, a draw date could be read as the day before or after
   Kind: investigate.
   Source: review-code-2026-09-01 lane tray-calendar-tools, deferred out of LOTTO-0048.

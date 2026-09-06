@@ -287,6 +287,22 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The Python requirement is now 3.9 or newer, instead of 3.8** (LOTTO-0065)
+  The old claim could not be checked. Python 3.8 reached end of life, so no
+  automated runner offers it any more — which meant the project promised to work
+  on a version nothing could ever test it against. The promise was wider than
+  the evidence, permanently.
+
+  Nothing was actually using anything 3.8-specific. Before changing the claim,
+  every module was checked for a function or syntax newer than 3.8 and none was
+  found, and the whole project was compiled under 3.9 without error. So this
+  narrows a promise nobody could keep to one that is true and testable, and no
+  code changed.
+
+  The linter now enforces the new floor, so a feature from a newer Python is an
+  error on this machine and on the runner rather than something that quietly
+  slips through.
+
 - **Tests no longer talk to the lottery website when they have no need to** (LOTTO-0068)
   Five tests build their own fake tickets and were reaching the real site only to look up a date, so an outage failed them for a reason unconnected to the code. They now run with no network at all — verified with connections refused. The tests whose subject is real draw data still fetch it.
 
