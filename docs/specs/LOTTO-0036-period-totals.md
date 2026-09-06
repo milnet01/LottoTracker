@@ -390,8 +390,8 @@ would have gone stale the same day.
   implementation could fail.
 
   **This case lives in a NEW verifier, `tools/verify_periods.py`, and not in
-  `tools/verify_page.py`.** §7 owns the reasoning; the short form is that every
-  case in `verify_page.py` is renderer-only — `fixture_model()` is a
+  `tools/verify_page.py`.** §7 owns the reasoning; the short form is that no
+  case in `verify_page.py` invokes the builder — `fixture_model()` is a
   hand-authored dict and `render_pure()` installs an `all_draws` double that
   *raises* — so no case there can observe a defect that lives in the builder,
   and a builder-side break is exactly what this invariant names.

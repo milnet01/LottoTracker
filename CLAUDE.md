@@ -50,14 +50,17 @@ python3 tray.py                # the tray icon: starts serve.py, opens the page,
 runs everything below plus `ruff` and a syntax pass, and it is what
 `.github/workflows/ci.yml` invokes (as `./local-CI.sh --ci`), so the runner and
 this machine cannot drift apart — there is no second list of checks to forget.
-A documentation-only push (every changed file `.md`) skips the gate
-automatically; `--force` overrides.
+A documentation-only push (every changed file `.md`) still runs
+`verify_privacy.py` at full strength — prose is its subject — and skips the
+rest; it fails if that check fails. `--force` runs everything.
 
-**It decides that from `upstream..HEAD` — COMMITTED changes — so it is a push
-gate and not a pre-commit check.** Run it with uncommitted code sitting in the
-tree and it reads whatever is already committed: if that is documentation, it
-prints "documentation only" and skips, having tested none of your edits, and
-exits 0. **Use `--force` to gate work you have not committed yet.** The
+**It classifies the push from the refs being pushed (`$GATE_RANGES`, which
+`.githooks/pre-push` passes in), falling back to `upstream..HEAD` on a hand
+run. Either way the unit is COMMITTED changes, so it is a push gate and not a
+pre-commit check.** Run it by hand with uncommitted code in the tree and it
+reads whatever is already committed: if that is documentation, it skips the
+rest of the gate having tested none of your edits.
+**Use `--force` to gate work you have not committed yet.** The
 push hook is unaffected, because by then the work is committed — which is
 exactly why the gap is easy to miss.
 
@@ -68,8 +71,8 @@ does not track hooks and `core.hooksPath` is local config:
 git config core.hooksPath .githooks   # .githooks/pre-push then runs the gate
 ```
 
-The two lanes are **not** equal and must not be made so. Six verifiers need
-`lotto_sms_raw.txt` and the scraped archive, neither of which may reach a public
+The two lanes are **not** equal and must not be made so. Most verifiers need
+`lotto_sms_raw.txt` or the scraped archive, neither of which may reach a public
 runner, and `verify_privacy.py` drops to a weaker pattern-only mode without the
 dump — while still exiting 0. So a green tick on GitHub is weaker than a green
 `./local-CI.sh`, and the script asserts locally that the privacy check ran at
@@ -78,10 +81,12 @@ the reasoning.
 
 Verification — there is no test runner; these nine scripts *are* the test
 suite, and each maps to a numbered invariant in the specs. Run from the
-repository root, after `backfill.py`, with `lotto_sms_raw.txt` present
-(three of the nine need no dump and are therefore the CI lane: `verify_watch.py`, which
-needs no phone and no `dbus-python` either, `verify_page.py`, and
-`verify_privacy.py` in its weaker pattern-only mode):
+repository root, after `backfill.py`, with `lotto_sms_raw.txt` present. The CI
+lane is the verifiers needing **neither** the dump nor the archive:
+`verify_watch.py`, which needs no phone and no `dbus-python` either,
+`verify_page.py`, and `verify_privacy.py` in its weaker pattern-only mode.
+Needing no dump is not the test — `verify_sources.py` needs none and still
+reads the archive:
 
 ```bash
 python3 tools/verify_sources.py   # INV-3: the two results sources agree on overlap
@@ -151,8 +156,8 @@ phone ──watch_sms.py─────────┘   (two writers,        �
        (KDE Connect, new           ONE reader)            (a prize the bank paid)
         messages, no cable)
 
-results.py    (official API, 2026-06-01 on, has payouts) ──┐
-backfill.py   (scraped archive, FIRST_YEAR on, no payouts) ┴─ history.py ──┐
+results.py    (official API, 2026-06-01 on, has issue)  ──┐
+backfill.py   (scraped archive, FIRST_YEAR on, no issue) ┴─ history.py ──┐
                                                                            │
                       [Ticket] + history.py ─────────────────────────────> check.py::check()
                                                                                   │
@@ -243,11 +248,13 @@ backfill.py   (scraped archive, FIRST_YEAR on, no payouts) ┴─ history.py ─
   `serve.py` directly, so the fallback can never mislead one (LOTTO-0013 §4.5).
 - **`serve.py::period_buckets()`** owns the per-period figures (LOTTO-0036).
   It is a **pure function taking its two data sources as arguments**, which is
-  the only reason INV-57 to INV-60 are checkable at all: every case in
-  `tools/verify_page.py` is renderer-only — `fixture_model()` is a hand-authored
-  dict and `render_pure()` installs an `all_draws` double that *raises* — so
-  **nothing in that file calls `build_model()`**, and a builder-side defect
-  cannot be seen there. Do not move these cases into it. Money belongs to the
+  the only reason INV-57 to INV-60 are checkable at all: **no case in
+  `tools/verify_page.py` invokes `build_model()` for an assertion** — its model
+  is `fixture_model()`, a hand-authored dict, `render_pure()` installs an
+  `all_draws` double that *raises*, and the one case that spawns `serve.py`
+  sets `LOTTO_NO_BUILD` so no build runs. So a builder-side defect cannot be
+  seen there, and that file's own docstrings say so. Do not move these cases
+  into it. Money belongs to the
   period of the **draw**, never of the purchase (the user's call, 2026-08-27),
   and the key set is built from the spend side so a win can never conjure a
   bucket with no spend.
@@ -345,8 +352,8 @@ backfill.py   (scraped archive, FIRST_YEAR on, no payouts) ┴─ history.py ─
   warning does not need help. **Do not unify them** — same cardinal rule as
   `_money_cell()`, one layer out. Both boundaries are pinned and moving either
   shifts every date by one: `start` is inclusive, and a draw falling *today*
-  has not yet happened. `DRAW_DAYS` is the project's second hardcoded table
-  after `TIER_PRICES` and rots the same way, so INV-49 checks it against
+  has not yet happened. `DRAW_DAYS` is hardcoded like `TIER_PRICES` and rots
+  the same way, so INV-49 checks it against
   observed history in **both** directions — a one-directional check passes a
   *removed* draw day forever.
 - **`paying_combinations()` raises** rather than returning `{}` when a pool has
@@ -413,10 +420,20 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   pulled, and the large diff the next paragraph tells you to expect is exactly
   what hides it. **Never re-migrate to pick up a local hand edit.** The store
   cannot tell one from a pull, so migrating would launder into it precisely
-  what the rule above forbids; discard a hand edit by writing over it. And **commit
+  what the rule above forbids.
+  **Tell the two apart before deciding, in this order.** `roadmap_query
+  check_sync:true` reports `file_in_sync` — false means the file and the store
+  disagree at all. Then `git status --porcelain ROADMAP.md`: non-empty means an
+  uncommitted local edit, so discard that first (`git checkout -- ROADMAP.md`)
+  and re-check; clean means the difference arrived as a commit, so re-migrate.
+  Where both are true, discard the hand edit before migrating — that is the
+  combined case, and taking it in the other order launders the edit.
+  **A hand edit that was already committed is indistinguishable from a pull**;
+  there is no test for it, so do not commit one. And **commit
   the re-rendered `ROADMAP.md` with the work it records**: the render is the
   only copy that leaves this machine, an uncommitted one is a lost item, and
-  nothing catches it — a `.md`-only change skips the gate. A session with no
+  nothing catches it — the gate checks what a push contains, never what it
+  omits. A session with no
   Ants MCP cannot write at all, and leaves the file alone rather than
   hand-editing.
   **Two things that follow, and neither is optional.** Any write re-renders all
@@ -447,8 +464,7 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   1,233 paid entries across 558 tickets are scored, where 558 were before.
   Read `docs/specs/LOTTO-0009-entered-pools.md` before touching `GAME_MAP`,
   `TIER_PRICES`, `Ticket`, or anything that counts tickets — §4.2's price
-  table is the one hardcoded table in the project and the one most likely to
-  rot.
+  table is hardcoded, like `DRAW_DAYS`, and is the one most likely to rot.
 - **The page must never let "no data" read as "did not win"** — the cardinal
   rule, in its newest form. `page.py::_money_cell()` renders `won_cents: None`
   as "not checkable" and an integer `0` as `R0.00`, and they must not converge;

@@ -159,8 +159,8 @@ deferred rough edge (LOTTO-0007), not a licence to widen the catch.**
 
 The table is hardcoded because no feed publishes a draw schedule. That is the
 same position `tickets.py::TIER_PRICES` is in, and it carries the same risk —
-CLAUDE.md records that table as *"the one hardcoded table in the project and
-the one most likely to rot"*. The answer here is the answer there: a verifier
+CLAUDE.md names that table as the one most likely to rot. The answer here is
+the answer there: a verifier
 whose job is to make a change loud. INV-49 checks `DRAW_DAYS` against observed
 history in both directions, because a one-directional check passes a removed
 draw day silently.
