@@ -1321,7 +1321,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: doc.
   Source: review-code-2026-09-01 lane results-sources; verify-delivery follow-up.
 
-- 📋 [LOTTO-0054] **Two contract conflicts the review lanes surfaced and could not resolve.**
+- ✅ [LOTTO-0054] **Two contract conflicts the review lanes surfaced and could not resolve.**
   Both need a decision rather than an edit, so neither was fixed. Both
   want `review-contract`, not a code change.
 
@@ -1346,8 +1346,15 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   cardinal rule forbids. page.py and LOTTO-0036 s6 now say the same thing, and
   the gate that edit owes is LOTTO-0064.
 
-  Half 2 is split out as LOTTO-0062, because it needs a `review-contract` run on
-  CLAUDE.md and this session did not run one.
+  Half 2 is split out as LOTTO-0063, because it needs a `review-contract` run on
+  CLAUDE.md and this session did not run one. (This said LOTTO-0062, which is the
+  unrelated SMS-sender item; LOTTO-0063's own body names itself as this half.)
+  Resolved 2026-09-06. Both halves are now owned elsewhere, so this item
+  holds nothing of its own. Half 1 was settled by the user and built; the gate
+  that edit owes is LOTTO-0064. Half 2 is LOTTO-0063, which carries the same
+  conflict and the `review-contract` run it needs. Closing this rather than
+  leaving it open as a pointer to two live items: an open bullet whose whole
+  content is "see those two" reads as unstarted work.
   **Layman:** Two places where two of our own documents disagree and someone has to choose
   Kind: investigate.
   Source: review-code-2026-09-01 lanes page-renderer and build-and-periods.
