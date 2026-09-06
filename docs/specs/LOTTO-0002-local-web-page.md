@@ -1347,7 +1347,7 @@ LOTTO-0014 §8.)
   Nothing written to the repository, which `tools/verify_privacy.py` continues
   to assert.
 - **Dependencies:** none. `serve.py` and `page.py` are standard library, which
-  keeps the project's "Python 3.8+ stdlib" claim in README.md true for the
+  keeps the project's "Python 3.9+ stdlib" claim in README.md true for the
   headless path. PySide6 enters through LOTTO-0013's `tray.py` alone.
 
 ## 11. What checks this
@@ -1397,7 +1397,7 @@ error budget is the number of them a reader can see.
 - `README.md` — a new section for the page: how to start it, the optional
   autostart switch, and the port. Shared with LOTTO-0013, which writes the tray
   half of the same section and adds PySide6 as a tray-only requirement to the
-  "Needs Python 3.8+ and a Linux desktop" line.
+  "Needs Python 3.9+ and a Linux desktop" line.
 - `CLAUDE.md` — **done 2026-08-02**: the Commands block carries `python3
   serve.py`, the verification list carries `tools/verify_page.py`, and the
   architecture diagram carries the second consumer of `check.py` (and, since the

@@ -895,8 +895,10 @@ run.
 
 ## 10. Resource cost
 
-**Python 3.8+** — the walrus operator is the highest feature used; developed
-on 3.13. No `match`/`case` statement appears in any module
+**Python 3.9+** — the walrus operator is the highest feature used; developed
+on 3.13. The floor moved from 3.8 on 2026-09-06 (LOTTO-0065): 3.8 is past end
+of life, no CI runner offers it, so its library surface could never be proven.
+Nothing in the project uses a 3.9-or-later feature, so the move costs nothing. No `match`/`case` statement appears in any module
 (`grep -rn "^\s*match .*:" *.py` → nothing). No third-party packages — standard library only. The KDE
 Connect path additionally needs the distribution's `python3-dbus`, which is
 not a Python dependency this project declares or installs.

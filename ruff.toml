@@ -20,18 +20,20 @@
 # and fix what it reports in the same commit.
 
 # The floor the project claims, told to the linter so it is enforced rather
-# than asserted. CLAUDE.md and README.md both say "Python 3.8+", and the CI
+# than asserted. CLAUDE.md and README.md both say "Python 3.9+", and the CI
 # runner proves 3.13 only - so nothing stopped a 3.10 construct landing and
-# making the claim quietly false. With this set, ruff reports
-# "Cannot use `match` statement on Python 3.8" as a syntax error (verified
-# 2026-09-02 against ruff 0.16.4, which reports nothing for the same file
-# under py313).
+# making the claim quietly false. With this set, ruff reports a newer
+# construct as a syntax error rather than passing it silently.
 #
-# It bounds SYNTAX, not library use: `str.removeprefix` is 3.9 and no rule
-# selected here would catch it. Measured 2026-09-02 - every module in this
-# project compiles under CPython 3.8.20 and 3.9.25, so the claim is true
-# today and this is what keeps it true.
-target-version = "py38"
+# The floor moved from 3.8 to 3.9 on 2026-09-06 (LOTTO-0065), on the user's
+# decision. 3.8 is past end of life and setup-python no longer offers it on
+# ubuntu-latest, so no CI matrix could ever close the gap between the claim
+# and what was proven - and the gap was real: this bounds SYNTAX, not library
+# use, and `str.removeprefix`, `dict |` and `zoneinfo` are all 3.9 and would
+# have passed. Measured before the change: no 3.9-or-later library call or
+# syntax construct appears anywhere in the project, and every module compiles
+# under CPython 3.9.25 - so the new claim is true today and costs nothing.
+target-version = "py39"
 
 [lint]
 select = ["E4", "E7", "E9", "F"]

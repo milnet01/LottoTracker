@@ -64,7 +64,7 @@ def _post(path, body):
                 ConnectionError, json.JSONDecodeError,
                 socket.timeout, TimeoutError):
             # socket.timeout explicitly: it is only an ALIAS of TimeoutError
-            # from Python 3.10, and this project pins 3.8+. Without it the
+            # from Python 3.10, and this project pins 3.9+. Without it the
             # retry silently skips the commonest slow-network case.
             #
             # The rest were added 2026-09-01 because the retry did not cover

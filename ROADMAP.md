@@ -3127,7 +3127,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: doc-fix.
   Source: review-code-2026-09-01, split out of LOTTO-0054 on 2026-09-02.
 
-- 📋 [LOTTO-0064] **LOTTO-0036's empty-period row was changed by decision and owes its gate.**
+- ✅ [LOTTO-0064] **LOTTO-0036's empty-period row was changed by decision and owes its gate.**
   LOTTO-0036 s6's failure-mode row said the periods section renders "its caption
   and no table"; page.py rendered NEITHER. The user settled it on 2026-09-02: it
   renders the heading plus a sentence saying no period has a scored draw yet and
@@ -3142,6 +3142,30 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Run `review-contract docs/specs/LOTTO-0036-period-totals.md`. It caps at 2
   loops for a spec, and the implementation already exists, so the cold read is
   checking a contract against code rather than guarding code not yet written.
+  Resolved 2026-09-06. The gate ran: `review-contract` on
+  `docs/specs/LOTTO-0036-period-totals.md`, genre pinned spec, two loops of
+  three cold lanes, twelve verified findings all fixed, and a CALM cap. Rows 3
+  and 4 of that document's loop log carry the detail.
+
+  One thing this item did not anticipate. LOTTO-0036's previous run ended at a
+  VIOLENT cap, which under `review-contract` ends the review of the text it was
+  measured against and forbids re-running the gate on the document AS IT THEN
+  STOOD. That bar lapses with the text, and the 2026-09-02 edit to section 6's
+  first row is an authoring edit that changes what a conformer renders - so the
+  gate was legitimately re-armed and this run was owed rather than wasteful.
+  Worth recording because the two rules read as opposites until you notice which
+  text each is about.
+
+  The run's best finding came back from two lanes and the code had already
+  written it down: INV-60's WIN side could not be falsified. The assertion was in
+  the case, but no break reached it, so it had never been observed failing -
+  which the verifier's own comment said out loud. A sixth break now injects that
+  defect and was observed failing only its own case.
+
+  Two of the twelve findings fell inside the span that armed the gate. The other
+  ten were pre-existing, so this was mostly an audit of text nobody had re-read.
+  That is recorded rather than treated as a problem: the audit found a real hole
+  in the test suite.
   **Layman:** A spec was corrected to match what the page now does, and the usual review of that spec has not been run
   Kind: doc-fix.
   Source: in-session-2026-09-02, user decision on LOTTO-0054.

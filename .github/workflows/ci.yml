@@ -54,14 +54,19 @@ jobs:
 
       # actions/setup-python v7.0.0, pinned for checkout's reason.
       #
-      # 3.13 is the runtime this proves, and the project claims 3.8+. Those
-      # are not the same statement and no matrix closes the gap: 3.8 is past
-      # end of life and setup-python no longer offers it here. The floor is
-      # held two other ways instead - ruff.toml sets target-version = "py38",
-      # so newer SYNTAX is a lint error on both machines, and the claim was
-      # measured directly on 2026-09-02 by compiling every module under
-      # CPython 3.8.20 and 3.9.25 (22 files, no failures). What remains
-      # unproven is 3.8 LIBRARY use, which is LOTTO-0065.
+      # 3.13 is the runtime this proves, and the project claims 3.9+. Those
+      # are still not the same statement, but the gap is now one a runner
+      # could close if anyone wanted it: setup-python offers 3.9, where it no
+      # longer offers 3.8. The floor is held two other ways meanwhile -
+      # ruff.toml sets target-version = "py39", so newer SYNTAX is a lint
+      # error on both machines, and library use was measured directly on
+      # 2026-09-06: no 3.9-or-later call or construct appears anywhere in the
+      # project, and every module compiles under CPython 3.9.25.
+      #
+      # The floor was 3.8 until 2026-09-06 (LOTTO-0065). It moved because 3.8
+      # is past end of life and no runner offers it, so its LIBRARY surface
+      # could never be proven here - the claim was strictly wider than the
+      # evidence, and nothing in the project needed the extra reach.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'

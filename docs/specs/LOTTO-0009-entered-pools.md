@@ -615,7 +615,7 @@ and each produced the stated result.
 
 ## 10. Resource cost
 
-No new dependency; standard library only, Python 3.8+, consistent with
+No new dependency; standard library only, Python 3.9+, consistent with
 LOTTO-0001 §10.
 
 Scoring roughly 2.2× the entries costs more prize-division lookups, but not

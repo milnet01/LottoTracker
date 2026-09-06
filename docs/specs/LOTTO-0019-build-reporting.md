@@ -147,7 +147,7 @@ def _post(path, body):
         except (urllib.error.URLError, socket.timeout, TimeoutError):
             # socket.timeout explicitly: it is only an ALIAS of TimeoutError
             # from Python 3.10, and CLAUDE.md and README.md both pin this
-            # project at 3.8+. Without it the retry silently skips the
+            # project at 3.9+. Without it the retry silently skips the
             # commonest slow-network case on the stated floor.
             if attempt == ATTEMPTS - 1:
                 raise          # the ORIGINAL error, unwrapped

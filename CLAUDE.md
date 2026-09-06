@@ -22,7 +22,7 @@ the least built after LOTTO-0034 built it.
 The claim-deadline material is still true and still useful, but it is not the
 headline.
 
-Pure Python 3.8+ standard library
+Pure Python 3.9+ standard library
 plus `dbus-python` (`find_lotto_sms.py`, `watch_sms.py`) and PySide6 (`tray.py`,
 and the one `verify_page.py` case that starts it in a subprocess). No package
 manager, no virtualenv, no test framework, no build step — everything runs as

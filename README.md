@@ -103,7 +103,7 @@ This matters enough to be explicit, because the repository is public:
 
 ## Setup
 
-Needs Python 3.8+ and a Linux desktop. Everything below is free software from
+Needs Python 3.9+ and a Linux desktop. Everything below is free software from
 your distribution's repositories. The tray icon additionally needs PySide6 —
 that is the *only* thing that does, so the page still works headless without
 it.
