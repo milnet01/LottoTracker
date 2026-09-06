@@ -259,6 +259,7 @@ BREAKS = {
     "period_spend_is_lifetime": "periods_over_checkable",
     "period_won_unfiltered": "periods_over_checkable",
     "zero_bucket_for_empty_period": "empty_period_is_absent",
+    "conjure_bucket_from_win": "empty_period_is_absent",
 }
 
 
@@ -275,6 +276,30 @@ def _apply_break(name):
     def patched(all_tickets, wins, entry_draws, incs):
         if ACTIVE_CASE != BREAKS[name]:
             return real(all_tickets, wins, entry_draws, incs)
+
+        if name == "conjure_bucket_from_win":
+            # INV-60's WIN side. period_buckets() takes its key set from the
+            # spend side and drops a win whose period carries none; this is
+            # what keying the win side with setdefault would do instead, and
+            # it conjures a period the ledger never charged for, rendered as
+            # R0.00 spent against a real win. The case has asserted against
+            # this since it was written and had never been observed failing,
+            # because no break reached it - which is the state §7 forbids.
+            out = real(all_tickets, wins, entry_draws, incs)
+            refs = {t.ref for t in all_tickets if t.resolved}
+            have = {(b["kind"], b["key"]) for b in out["buckets"]}
+            for w in wins:
+                if w["ref"] not in refs:
+                    continue
+                cents = round(w["amount"] * 100)
+                for kind, key in (("year", w["date"][:4]),
+                                  ("month", w["date"][:7])):
+                    if (kind, key) not in have:
+                        out["buckets"].append(
+                            {"key": key, "kind": kind, "label": key,
+                             "spend_cents": 0, "won_cents": cents})
+                        have.add((kind, key))
+            return out
 
         if name == "attribute_by_purchase":
             # Every draw filed under the ticket's purchase month.

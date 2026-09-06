@@ -628,6 +628,11 @@ board price, in cents:
 entry_cost_cents = tier_increments(game, era)[plus_flag] * paid_lines * ndraws
 ```
 
+**`docs/specs/LOTTO-0036-period-totals.md` §4.1 decomposes this same formula**
+to the share belonging to one draw, by removing the `ndraws` factor. The two are
+one statement, not two: change the expression here and that section is wrong,
+and it says so in its own text. Do not maintain them independently.
+
 **`paid_lines` is `len(Ticket.boards)`.** There is no `paid_lines` attribute —
 `tickets.py::entered_pools()` takes it as a parameter and `parse()` passes
 `len(boards)`, under the comment *"Multiplay is already expanded above, so one

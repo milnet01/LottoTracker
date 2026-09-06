@@ -1,11 +1,12 @@
 # LOTTO-0036 — Total cost against winnings over a period the user chooses
 
-**Status:** accepted (2026-08-27). Gated by `review-contract` (genre spec):
-two loops, three cold lanes each, 18 verified findings all fixed, 3 dismissed.
-Reached the 2-loop cap for a spec, which is the normal exit — implementation is
-the third reviewer. Loop 2 was a **violent** cap (5 of 9 findings landed on
-loop 1's own text), so this document's review ends here rather than looping
-again; see §12.
+**Status:** accepted (2026-08-27; re-gated 2026-09-06). Gated by
+`review-contract` (genre spec) twice. The first run took two loops and ended at
+a **violent** cap. The second was re-armed by the 2026-09-02 authoring edit to
+§6's first row — a violent cap ends the review of the text it was measured
+against, and that bar lapses when the text changes — and ended **calm** at the
+same 2-loop cap, which is a spec's normal exit: implementation is the third
+reviewer. See §12.
 **Kind:** feature.
 **Source:** ROADMAP LOTTO-0036 — sign of success 4 in `README.md` § How you
 would know it works, asked for by the user during discovery on 2026-08-20. The
@@ -285,7 +286,8 @@ displayed column reproduces INV-16's failure one section further down.
 `spend_cents` and `won_cents` are **always integers, never `None`.** That is not
 a shortcut past `page.py::_money_cell()`'s three-valued rule — it is that rule
 satisfied at the source. A bucket exists only where at least one draw of a
-scorable entry fell in it (§4.6), so every bucket has been scored, and `R0.00`
+scorable entry **of a resolved ticket** fell in it (§4.3, §4.6), so every
+bucket has been scored, and `R0.00`
 in one always means *checked, won nothing*. INV-60 is what stops a future change
 introducing an unscored bucket by the back door.
 
@@ -339,8 +341,10 @@ an implementer who added `ytd` and `mtd` as separate keys would ship two figures
 that are by construction equal to two others, and the first divergence between
 them would be a bug nobody could explain.
 
-A month with no scored draw produces no bucket, and a year with none produces no
-year bucket either. The dropdown is built from `buckets`, so it can only offer
+A month with no scored draw **of a resolved ticket** produces no bucket, and a
+year with none produces no year bucket either. Both words are load-bearing and
+INV-60 owns why: `scorable()` alone would let a month whose only draws belong to
+an unresolved ticket render R0.00 against R0.00, an R0.00 meaning *excluded*. The dropdown is built from `buckets`, so it can only offer
 what exists.
 
 ### 4.7 The control, and why it is not a query parameter
@@ -360,8 +364,12 @@ gets no new invariant — LOTTO-0014 INV-21 owns it, and
 for `pushState`, `location.search`, `href="?`, `href="#` and `<form>`, so a
 period control that reached for any of them fails an existing case.
 
-The section carries one caption line naming the span it covers and why it starts
-there, so a user does not read the absence of 2023 as a claim about 2023.
+The section carries one caption line saying the periods start where the results
+record does, so a user does not read the absence of an early year as a claim
+about that year. **It names no date.** §4.3 and §10 both credit that absence:
+worded against the results rather than against a date, the caption survived
+LOTTO-0006 moving the floor without an edit, and a span written out in dates
+would have gone stale the same day.
 
 ## 5. Invariants
 
@@ -425,12 +433,25 @@ there, so a user does not read the absence of 2023 as a claim about 2023.
 - **INV-60** — A bucket exists only where at least one draw of a scorable entry
   **of a resolved ticket** fell in it. The page shows no period whose figures are unknown, so `R0.00` in
   a bucket always means *checked, won nothing*.
-  *Test:* `tools/verify_periods.py::empty_period_is_absent`, and its
-  `--break zero_bucket_for_empty_period`.
-  *Breaks when:* the builder enumerates every month between the first and last
-  scored draw rather than only the months that carry one, so a gap month renders
-  as R0.00 spent and R0.00 won — the cardinal rule breached one section below
-  where INV-15 catches it.
+  *Test:* `tools/verify_periods.py::empty_period_is_absent`, and its two
+  breaks, `--break zero_bucket_for_empty_period` and
+  `--break conjure_bucket_from_win`.
+  *Breaks when:* on the SPEND side, the builder enumerates every month between
+  the first and last scored draw rather than only the months that carry one, so
+  a gap month renders as R0.00 spent and R0.00 won — the cardinal rule breached
+  one section below where INV-15 catches it. On the WIN side, the builder keys
+  a bucket on `w["date"]` with `setdefault` instead of only adding into keys
+  the spend side made, conjuring a period the ledger never charged for and
+  rendering R0.00 spent against a real win. **The two sides fail independently
+  and the case must assert both, under a break each** — the same shape INV-59
+  carries, and for the same reason.
+
+  **The win-side break was missing until 2026-09-06, and the assertion it
+  proves had been in the case since the case was written.** So that half was
+  believed on nobody's evidence: §7 requires every case to be observed failing
+  under its own break, and replacing both of `period_buckets()`'s
+  `if … in months/years` guards with `setdefault` left all four cases green.
+  An assertion no break reaches is indistinguishable from one that works.
 
   **The population clause is load-bearing and was nearly dropped here.** Keying
   bucket existence on `scorable()` alone satisfies the first sentence while
@@ -444,7 +465,7 @@ there, so a user does not read the absence of 2023 as a claim about 2023.
 
 | Assumption | When it breaks | What happens |
 |---|---|---|
-| `history.covered()` returns dated draws | the merged record is empty (no `archive_results.json` and the API refused) | `scorable()` rejects every entry, `buckets` is empty, `no_result_cents` is 0. The section renders its heading and a sentence saying no period has a scored draw yet, and states that this is not a total of zero. Heading, not §4.7's caption: that caption describes a span, and there is none. It must not render an empty table with a dropdown that offers nothing, a bare caption, or nothing at all — the first two invite "so I won nothing" and the third reads as a fault. Settled by the user 2026-09-02; this row previously said caption and no table, and the code rendered neither. |
+| `history.covered()` returns dated draws | the merged record is empty (no `archive_results.json` and the API refused) | `scorable()` rejects every entry, `buckets` is empty, `no_result_cents` is 0. The section renders its heading and a sentence saying no period has a scored draw yet, and states that this is not a total of zero. Heading, not §4.7's caption: that caption describes where the periods start, and there are none. It must not render an empty table with a dropdown that offers nothing, a bare caption, or nothing at all — the first two invite "so I won nothing" and the third reads as a fault. Settled by the user 2026-09-02; this row previously said caption and no table, and the code rendered neither. |
 | Every win sits on a covered draw | a future change scores an entry `scorable()` rejects | a win would have no bucket to land in. The builder sums winnings by iterating the buckets it built from spend, so such a win is silently dropped. INV-57 does not catch it — it checks the spend side. Named here rather than papered over. The guard is `check.py::check()`'s `if not scorable(...): continue`, and it is **unasserted** — LOTTO-0009 INV-11 does not hold it, being an assertion about `check.py::uncheckable_report()` at entry granularity whose *Breaks when* is the report being written per ticket. Removing `check()`'s `continue` would leave INV-11 green. |
 | The dump exists | it does not | `build_model()` returns `{"no_dump": True, ...}` before any of this runs, and `_periods_section()` is never called. Unchanged behaviour. |
 | A ticket is resolved | a price matches no known tier | it is excluded from every bucket, exactly as it is excluded from `spend.compared_cents` today, and its cost is already reported by the existing `unresolved_cents` row. It is **not** added to `no_result_cents`, which would give one ticket two explanations. |
@@ -481,18 +502,22 @@ scripts from eight to nine. That is the ordinary shape for this project:
 | `periods_reconcile` | INV-57 | recomputes the expected buckets from `tickets.py::TIER_PRICES` and `history.covered()` — never by calling `serve.py`'s own `tier_increments()`, which is the code under test — and asserts month buckets + `no_result_cents`, and year buckets + `no_result_cents`, both equal to `spend.compared_cents` |
 | `periods_by_draw_date` | INV-58 | a ticket bought in the last days of a month whose ten draws run into the next, **winning on a draw in the second month**; asserts two buckets, the spend split falling where the draw dates fall, and the win landing in the second bucket |
 | `periods_over_checkable` | INV-59 | asserts the bucket spend equals the recomputed scorable-and-resolved figure and is strictly less than the lifetime figure (so the fixture cannot be degenerate), **and** that a bucket's `won_cents` excludes the winnings of an unresolved ticket the fixture carries for that purpose |
-| `empty_period_is_absent` | INV-60 | a fixture whose scored draws skip a month; asserts no bucket for that month, and that a month reachable only through an unresolved ticket produces no bucket either. It asserts nothing about the row or the `<option>` and does not need to: `_periods_section()` builds both from `buckets` in one loop, so a period with no bucket has neither by construction |
+| `empty_period_is_absent` | INV-60 | a fixture whose scored draws skip a month; asserts no bucket for that month, that a month reachable only through an unresolved ticket produces no bucket either, and that a win dated in a month carrying no spend conjures no bucket. It asserts nothing about the row or the `<option>` and does not need to: `_periods_section()` builds both from `buckets` in one loop, so a period with no bucket has neither by construction |
 
 **The rendering side stays in `tools/verify_page.py`**, where it belongs: the
 period control is scanned by the existing `nothing_in_the_url` case (§10), which
-needs `fixture_model()` to carry a `periods` key or there is no control in the
-bytes it scans. Adding that key is part of this item.
+needs `fixture_model()` to carry at least one `periods` **bucket** — a year and
+a month — or there is no control in the bytes it scans. An empty `buckets` list
+is not enough: `_periods_section()` then renders the notice and no `<select>` at
+all, and §10's row becomes the empty cover it warns about. Wiring that fixture
+is part of this item.
 
 **Every case must be observed failing under its own break before it is
 believed.** These are greenfield, so there is no pre-fix code to red-test
 against — the `--break` flag is what makes "observed failing" reproducible, and
 `docs/specs/LOTTO-0034-ticket-expiry-warning.md` records the same reasoning for
-`tools/verify_expiry.py`. Five breaks for four cases, INV-59 carrying two.
+`tools/verify_expiry.py`. Six breaks for four cases, INV-59 and INV-60
+carrying two each.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -602,6 +627,7 @@ against — the `--break` flag is what makes "observed failing" reproducible, an
 | 1 | 2026-08-27 | 3, cold — genre pinned `spec` | 2 | 3 | 1 | 3 | **Nine verified, nine fixed; two dismissed.** **All three lanes independently found the same defect**, the run's strongest signal: §4.5 said the win side needed "no extra filtering" because `check()` skips unscorable entries, while INV-59 scopes every bucket to *resolved* tickets and `build_model()` already writes `won_cmp` with an explicit `w["ref"] in resolved_refs`. `check()` gates on `scorable()` alone, so an implementer following §4.5 literally puts an unresolved ticket's winnings in a bucket whose cost was excluded — LOTTO-0002 §4.6's unearned surplus, per period. Invisible today at 0 unresolved tickets, which is why it had to be written down. **Two lanes each found four more.** `covered()` filters the merged RECORD, not the calendar, so the residue was mislabelled "not yet drawn" and "month to date" was unqualified — while §4.2 cites LOTTO-0034 §4.3, the section that exists to keep `draws_remaining` and `draws_left` apart; renamed `no_result_cents` and both claims qualified. INV-57's case as specified recomputed from the live dump, which would have taken `verify_page.py` out of the three-verifier CI lane `CLAUDE.md` puts it in, or passed on the runner asserting nothing. INV-60's fixture was a hand-authored model while its break lives in the builder — LOTTO-0002 INV-15 pins the real-builder pattern for exactly this. And INV-57 named no `--break` where its three siblings each do, against a registry whose own comment says breaks are named in the *Test:* clauses. **Two single-lane findings were wrong-owner claims:** §6 and §10 credited LOTTO-0009 INV-11 with holding `check()`'s `scorable()` gate — INV-11 is an assertion about `uncheckable_report()` and would stay green if that `continue` were deleted, so §10 now reads **nothing**; and §10 claimed `nothing_in_the_url` "already covers" the new control, when it renders `fixture_model()` and covers it only once that fixture carries buckets. **Dismissed:** all three lanes noticed §4.1 quoted a measurement of `(x*n)//n == x` — an integer identity that cannot fail on any data — and all three correctly declined to file it since the conclusion holds and nothing built changes; corrected in passing to state the algebra instead. Also dismissed: one lane read INV-15's forbidden-strings list as page-wide and therefore unsatisfiable against a bucket rendering R0.00; it is per-cell on unscorable *entry* rows and in fact requires R0.00 for a scored-but-lost entry, so the design is safe — but the clause was vacuous for the period table and was dropped. Three lane open questions resolved clean and are not counted: the 145 wins do occupy the same 20 month buckets as the spend side (verified as an identical set, not an equal count), §2's grep negative re-ran true, and LOTTO-0032 does own the per-period payout surface. |
 | 2 | 2026-08-27 | 3, cold — identical brief, packet rebuilt from disk | 3 | 4 | 0 | 2 | **Nine verified, nine fixed; one dismissed. Cap reached (2 for a spec); the run ships.** **A VIOLENT cap: 5 of the 9 findings landed on text loop 1 wrote** — each anchor checked against loop 1's ledger, not recalled — so the run was repairing itself rather than converging, and this document's review ends here rather than buying a third loop. **The run's most consequential finding is the one two lanes got RIGHT and then both prescribed the wrong fix for.** Loop 1 sent the implementer to `spend_over_checkable` as the real-builder pattern; it is renderer-only (`fixture_model()` + `render_pure()`). Both lanes caught that and both pointed instead at INV-15's `uncheckable_not_a_loss` — which is renderer-only too. Opening the file settled it: **no case in `verify_page.py` calls `serve.build_model()` at all**, `render_pure()` installs an `all_draws` double that *raises*, and LOTTO-0002 INV-15's own prose ("built by running the real builder over them") is false about its shipped case — filed against LOTTO-0007, not fixed here. So all four invariants moved to a NEW data-dependent verifier `tools/verify_periods.py`, which is what LOTTO-0034 did with `verify_expiry.py`, leaving the CI lane at three. **Two lanes each found three more.** INV-60 governed bucket existence by `scorable()` alone while INV-59 scopes the population to *resolved* tickets — so a month reachable only through an unresolved ticket would render R0.00/R0.00, an R0.00 meaning *excluded*, which INV-60's own second sentence forbids. §4.5 keyed winnings on `w["date"]` (which CREATES a bucket) while §6 described iterating spend-built buckets (which DROPS the win) — two algorithms, one of which breaches INV-60; the spend side now owns the key set. And §7's row for `periods_over_checkable` described the spend assertion only, against INV-59's own "the case must assert both". **Two Q1s were mine from loop 1**: `won_cmp` was called the *lifetime* figure when it is `won.compared_cents` (the lifetime key is the UNFILTERED `won_life`, and LOTTO-0002 §4.6 says so outright — an implementer reaching for it ships exactly the failure INV-59 names), and §2's "exactly three money figures" undercounted six. **Two Q4s closed unfalsifiable clauses**: INV-58's "and a win" half had no assertion at all, and INV-59's win side had no break and no fixture — its fixture must now carry an unresolved ticket that WINS, since the live dump holds 0 unresolved and supplies no such case. **Dismissed:** two lanes called §10's "builds its page from `fixture_model()`" false because they could not see `Stub`; `Stub()` with no argument returns `fixture_model()`, so the claim was true and both prescribed remedies were wrong — the sentence was sharpened to name the path rather than corrected. Three lane open questions resolved clean and are not counted. |
 | 3 | 2026-09-06 | 3, cold — genre pinned `spec`, packet rebuilt from disk | 3 | 2 | 1 | 1 | **Seven verified, seven fixed; the stale-count cluster dismissed. Loop 1 of a NEW run, re-armed by the 2026-09-02 authoring edit to §6 row 1** — the violent cap at loop 2 ended the review of the text as it then stood, and that bar lapses with the text it was measured against. **All three lanes independently found the same Q3, and it is the run's most consequential: the document names no builder seam at all.** §4.5 said only "`build_model()` gains one key" and §13 prescribed accumulating the buckets inside `build_model()`'s existing loop — while INV-59 requires a fixture carrying an unresolved ticket that WINS and INV-60 one whose only draws belong to an unresolved ticket, neither of which the live dump supplies. Inlined, those two invariants have no drivable entry point, and §7's whole argument for a separate verifier collapses. The shipped code had to invent `serve.period_buckets(all_tickets, wins, entry_draws, increments)`; the words `period_buckets`, *pure function* and *inject* appeared nowhere in this document. §4.5 now states the seam and why it is load-bearing, and §13's "no additional pass" is corrected — it is one more pass than `build_model()` made before. **All three lanes also found INV-59's renderer clause unfalsifiable**: every case it names is builder-side and `tools/verify_periods.py` never imports `page`, so a `_periods_section()` that summed the spend column would leave all four cases green. §4.5 already carried the rule, so the clause was DELETED from the invariant rather than reconciled, and §10 gains a row recording it as code review only — the honest state, where claiming coverage was not. **Two lanes found §7 crediting `empty_period_is_absent` with row and `<option>` assertions it never makes and cannot** — that file renders nothing; the cell now says so and explains why they are not needed, since `_periods_section()` builds rows and options from `buckets` in one loop. **Two lanes found §3.2 stating the pre-LOTTO-0006 floor** ("begin in January 2025") as the current user-visible consequence, which §11 pushes into `README.md`; §4.3 now owns that floor alone. **Two Q1s were collateral of an edit made earlier the SAME DAY**, six hours before this gate ran: §11 quoted `CLAUDE.md` as saying "`--list` shows the thirty-one breaks" (it carries no count, and restoring one is the thing that file now warns against) and called its `verify_page.py` invariant range unchanged (the range was replaced by a pointer to that file's `CASES` table). **The Q2 that armed this gate was itself wrong:** §6 row 1 said the empty section renders its *caption*, where §4.7 and §10 define caption as the span line the empty branch does not carry — the code renders the heading, and two implementers would have built differently. **Collateral fixed in `CHANGELOG.md`:** the LOTTO-0036 entry still said the periods start in January 2025 at about 38% of lifetime spend, and LOTTO-0006 sits in the same unreleased section having moved that floor — one release's notes contradicting themselves. **Dismissed as immaterial, recorded rather than fixed:** §4.5's "the same 20 the spend side occupies", §6's "22 buckets today", §8's "all 22 buckets" and §13's "22 rows" are all pre-LOTTO-0006 snapshots; no line is built differently from any of them, and re-measuring is a debt sweep rather than this gate's. **Checked and not a finding:** `docs/specs/LOTTO-0013-tray-and-supervisor.md` cites the same removed `CLAUDE.md` range twice, but as dated impact records predicting it would go stale — which is what happened. Doc grew 596 -> 615 lines. |
+| 4 | 2026-09-06 | 3, cold — identical brief, packet rebuilt from disk | 1 | 3 | 0 | 1 | **Five verified, five fixed; the dated-count cluster dismissed. Cap reached (2 for a spec); the run ships. A CALM cap — one of the five landed on text loop 3 wrote**, against the previous run's five of nine, so the document held more defects than the cap held loops rather than the run repairing itself. **Two lanes independently found the run's best finding, and the code had already written it down: INV-60's WIN side was unfalsifiable.** The invariant names one break, covering the spend side only, while §4.5 assigns the win side to it explicitly — and `tools/verify_periods.py` carried a comment saying that replacing both of `period_buckets()`' `if … in months/years` guards with `setdefault` left all four cases green. So the assertion existed, had been in the case since it was written, and had never been observed failing: §7 requires every case to be observed red under its own break, and no break reached this one. Fixed on both sides — a sixth break, `conjure_bucket_from_win`, now injects exactly that defect and was observed failing only `empty_period_is_absent`; INV-60 gains the win-side *Breaks when*, §7's row gains the assertion, and its count goes to six breaks for four cases with INV-59 and INV-60 carrying two each. **One lane found §4.5 and §4.6 stating bucket existence over `scorable()` alone** where INV-60 requires a scorable entry *of a resolved ticket* — INV-60's own next paragraph says that gap renders R0.00 against R0.00 meaning *excluded*, so an implementer copying §4.5 builds the cardinal-rule breach the invariant exists to stop. Both sentences now carry the condition. **One lane found §4.7 promising a caption naming the span it covers**, while §4.3 and §10 both credit that caption for naming NO date — which is why it survived LOTTO-0006 moving the floor without an edit. The shipped caption carries no date; §4.7 now says so, and loop 3's own §6 wording, which had inherited the word *span*, is corrected with it. That is this loop's one piece of self-collateral. **One lane found §7 asking `fixture_model()` for a `periods` KEY where §10 asks for buckets** — an empty `buckets` list renders the notice and no `<select>` at all, so the fixture would satisfy §7 and leave §10's row the empty cover it warns about. **And one found §11's row for LOTTO-0002 §4.6 unapplied**: every other §11 row was live on disk, and that section carried no cross-reference to §4.1 here, leaving one formula independently maintained in two documents. Landed in LOTTO-0002 §4.6. **Dismissed, recorded not fixed:** all three lanes independently reached the same verdict on the pre-LOTTO-0006 bucket counts in §4.5, §6, §8 and §13 — no line is built differently at 51 buckets than at 22, so re-measuring is a debt sweep rather than this gate's. **On the second share § At the cap asks for:** across both loops of this run, two of twelve findings fell inside the span the gate was armed on, so this run was mostly an audit of text nobody had re-read rather than a gate on the change that triggered it. Doc grew 618 -> 644 lines. |
 
 ## 13. Resource cost
 
