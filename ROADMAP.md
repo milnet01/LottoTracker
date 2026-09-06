@@ -3134,6 +3134,17 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   cardinal-rule restatement: that restatement against LOTTO-0002 section 6's
   three prohibitions, and the new Python floor. Neither is urgent; both are
   recorded here so the obligation cannot be lost between two items.
+  Progress 2026-09-06, second note. The `review-contract` run this item owns
+  now covers a THIRD change to CLAUDE.md, made the same day: § Commands gained
+  the fact that `./local-CI.sh` decides its documentation-only skip from
+  `upstream..HEAD`, so it is a push gate rather than a pre-commit check and
+  reports a clean skip over uncommitted code. A conformer now reaches for
+  `--force` when gating work not yet committed, which is rule 14's trigger.
+
+  So one cold read of CLAUDE.md is owed for three things, not one: the
+  cardinal-rule restatement against LOTTO-0002 section 6, the Python floor
+  moving to 3.9+, and this. Listing them here rather than filing a third item,
+  because they want the same single run.
   **Layman:** Two of our own documents describe the same safety rule differently, and the shorter one is the one that gets read
   Kind: doc-fix.
   Source: review-code-2026-09-01, split out of LOTTO-0054 on 2026-09-02.

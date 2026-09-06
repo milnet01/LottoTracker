@@ -53,6 +53,14 @@ this machine cannot drift apart — there is no second list of checks to forget.
 A documentation-only push (every changed file `.md`) skips the gate
 automatically; `--force` overrides.
 
+**It decides that from `upstream..HEAD` — COMMITTED changes — so it is a push
+gate and not a pre-commit check.** Run it with uncommitted code sitting in the
+tree and it reads whatever is already committed: if that is documentation, it
+prints "documentation only" and skips, having tested none of your edits, and
+exits 0. **Use `--force` to gate work you have not committed yet.** The
+push hook is unaffected, because by then the work is committed — which is
+exactly why the gap is easy to miss.
+
 Make it structural rather than remembered — **once per clone**, because git
 does not track hooks and `core.hooksPath` is local config:
 
