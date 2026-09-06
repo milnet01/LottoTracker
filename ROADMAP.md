@@ -1943,6 +1943,21 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   runs in `local-CI.sh`, so nothing is gated on any of it today. The
   decision is per tool: declare a contract, or record that the tool is
   not this project's and stop re-triaging it every sweep.
+  (v) Three CODE comments restate wording the 2026-09-06 `review-contract` gate
+  on CLAUDE.md corrected, and were deliberately left alone because a docs gate
+  never edits code. `expiry.py` (above `DRAW_DAYS`) and `serve.py`
+  (`period_buckets`'s docstring) both quote CLAUDE.md's retired phrasings — "the
+  one hardcoded table in the project" and "renderer-only by design". The third
+  matters more: `tools/verify_page.py`'s comment above the `LOTTO_TOKEN` child
+  says "LOTTO_NO_BUILD keeps it off the network", and `_child_on`'s docstring
+  says the same. It does not — that flag gates only the OPENING build
+  (`serve.py::main()` binds it as a local; the `/refresh` route is handed the
+  real `build_model`). What keeps that child off the network is that the case
+  drives `/settings`, never `/refresh`. The same false claim was live in
+  LOTTO-0014 section 4.3 and was fixed there in the same run. A maintainer
+  trusting the surviving comments could reintroduce a real build against the live
+  dump and the operator's API. Fixing these is an edit to three comments and
+  changes no behaviour.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
