@@ -92,9 +92,10 @@ This matters enough to be explicit, because the repository is public:
   mentioning the lottery would come across too, so glance at the dump before
   sharing it.
 - `.gitignore` excludes the SMS dump and the results cache. Verify with
-  `python3 tools/verify_privacy.py`, which compares every tracked file
-  against the dump itself rather than against a guessed pattern — it catches
-  a real message pasted into a doc as an "example", not just a stray file.
+  `python3 tools/verify_privacy.py`. It compares every tracked file against the
+  dump's own text, and also runs identifying patterns — so it catches a real
+  message pasted into a doc as an "example", not just a stray file. Without the
+  dump only the pattern half runs.
 - Nothing is uploaded anywhere. The only outbound requests are to public
   lottery results pages.
 - Sample ticket references in this repo are deliberately fake

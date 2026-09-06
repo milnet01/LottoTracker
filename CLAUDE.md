@@ -47,7 +47,9 @@ python3 tray.py                # the tray icon: starts serve.py, opens the page,
 ```
 
 **`./local-CI.sh` is the pre-push gate — run it before every `git push`.** It
-runs everything below plus `ruff` and a syntax pass, and it is what
+runs the verifiers below plus `ruff` and a syntax pass — but none of the
+`python3 -c` invariant commands at the end of this section, which stay
+hand-run. It is what
 `.github/workflows/ci.yml` invokes (as `./local-CI.sh --ci`), so the runner and
 this machine cannot drift apart — there is no second list of checks to forget.
 A documentation-only push (every changed file `.md`) still runs
@@ -82,11 +84,13 @@ the reasoning.
 Verification — there is no test runner; these nine scripts *are* the test
 suite, and each maps to a numbered invariant in the specs. Run from the
 repository root, after `backfill.py`, with `lotto_sms_raw.txt` present. The CI
-lane is the verifiers needing **neither** the dump nor the archive:
-`verify_watch.py`, which needs no phone and no `dbus-python` either,
-`verify_page.py`, and `verify_privacy.py` in its weaker pattern-only mode.
-Needing no dump is not the test — `verify_sources.py` needs none and still
-reads the archive:
+lane is the verifiers that still run honestly on a fresh clone; the rest FAIL
+there on missing input, and that failure is what puts a verifier on the local
+lane. `verify_page.py` needs neither input; `verify_watch.py` needs no phone
+and no `dbus-python` either, and reads the dump only if it is there;
+`verify_privacy.py` drops to its weaker pattern-only mode. So
+`verify_sources.py` is on the local lane despite needing no dump — it reads the
+archive:
 
 ```bash
 python3 tools/verify_sources.py   # INV-3: the two results sources agree on overlap
@@ -250,11 +254,13 @@ backfill.py   (scraped archive, FIRST_YEAR on, no issue) ┴─ history.py ─�
   It is a **pure function taking its two data sources as arguments**, which is
   the only reason INV-57 to INV-60 are checkable at all: **no case in
   `tools/verify_page.py` invokes `build_model()` for an assertion** — its model
-  is `fixture_model()`, a hand-authored dict, `render_pure()` installs an
-  `all_draws` double that *raises*, and the one case that spawns `serve.py`
-  sets `LOTTO_NO_BUILD` so no build runs. So a builder-side defect cannot be
-  seen there, and that file's own docstrings say so. Do not move these cases
-  into it. Money belongs to the
+  is `fixture_model()`, a hand-authored dict, and `render_pure()` installs an
+  `all_draws` double that *raises*. The cases that spawn `serve.py` set
+  `LOTTO_NO_BUILD` and drive `/status` or `/settings`, never `/refresh` —
+  **`LOTTO_NO_BUILD` gates only the OPENING build**, so a refresh in that child
+  would start a real one against live data and the operator's API. So a
+  builder-side defect cannot be seen there, and that file's own docstrings say
+  so. Do not move these cases into it. Money belongs to the
   period of the **draw**, never of the purchase (the user's call, 2026-08-27),
   and the key set is built from the spend side so a win can never conjure a
   bucket with no spend.
@@ -381,17 +387,22 @@ review loop. Sample references must be the sentinel `VAS00000000000` — **the o
 not a family of them.** Every reference-shaped string that is not exactly that
 is a leak, invented or not, and a test fixture needing a second distinct
 reference uses a name that is not reference-shaped at all (`tools/verify_payouts.py`
-does this). **One bounded exception, and it is bounded on purpose (LOTTO-0034 §3.3).** The
-re-buy notice names the game, the final draw date and the number of draws left
-— three fields, and INV-54 is what holds that line. The user was shown the
-trade and chose usefulness: with two tickets running, a notice that will not
-name the game cannot say what to go and buy. The rule stands **unchanged** for
-`new_ticket_notice()` and `refresh_message()`, whose "no ticket data in any
-branch" is absolute; do not read the exception as licence to widen those, and
-do not read their rule as licence to narrow this one. Run
+does this).
+
+**A desktop notification carries no ticket data, in any branch — every
+notification path, including one added later.** The reason is not the pasting
+rule above: a notification may be logged and synced off the machine. It holds
+absolutely for `new_ticket_notice()` and `refresh_message()`.
+**One bounded exception, bounded on purpose (LOTTO-0034 §3.3):** the re-buy
+notice names the game, the final draw date and the number of draws left, and
+INV-54 is what holds that line. The user was shown the trade and chose
+usefulness — with two tickets running, a notice that will not name the game
+cannot say what to go and buy. It is the exception, not the pattern: a new
+notification takes the rule, not the exception. Run
 `python3 tools/verify_privacy.py` before any commit that touches prose or
-examples; it compares tracked files against the dump itself, not a guessed
-pattern.
+examples. It runs two halves: tracked files compared against the dump's own
+text, and identifying patterns, which are what catch an INVENTED reference the
+dump never held. Without the dump only the pattern half runs.
 **It only reads TRACKED files, and that is the trap.** A NEW file passes every
 local run — including a full `./local-CI.sh` — right up until `git add` makes
 it tracked, and then fails at the push. LOTTO-0029's verifier did exactly this:
@@ -460,8 +471,9 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   invariants (INV-n), failure modes, and a cold-eyes loop log. Code comments
   reference those invariants — when changing behaviour, update the spec's
   invariant and its "what checks this" row in the same change.
-- **Count in entries, not tickets.** `LOTTO-0009` shipped 2026-08-01: all
-  1,233 paid entries across 558 tickets are scored, where 558 were before.
+- **Count in entries, not tickets.** `LOTTO-0009` shipped 2026-08-01: every
+  paid entry is scored, where before a ticket counted once however many pools
+  its price had paid for.
   Read `docs/specs/LOTTO-0009-entered-pools.md` before touching `GAME_MAP`,
   `TIER_PRICES`, `Ticket`, or anything that counts tickets — §4.2's price
   table is hardcoded, like `DRAW_DAYS`, and is the one most likely to rot.
