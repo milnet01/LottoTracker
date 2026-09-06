@@ -442,10 +442,15 @@ CHANGELOG.md and sibling specs cite them unqualified.
   first and the case passes without the token check existing at all.
   The same case spawns a child with `LOTTO_TOKEN` in its environment and
   asserts that token is accepted — the §4.3 channel the tray depends on, which
-  would otherwise be the one link in the chain nothing exercises. **The child is POSTed at
-  `/refresh`**, which under `LOTTO_NO_BUILD` answers **202 and rebuilds
-  nothing** — the flag suppresses every build, not merely the opening one, or
-  this case would trigger the real builder through the very request it is making.
+  would otherwise be the one link in the chain nothing exercises. **The child is
+  POSTed at `/settings`, never `/refresh`.** `LOTTO_NO_BUILD` gates only the
+  OPENING build — `serve.py::main()` reads it to skip the first `refresh()`,
+  while `make_server` is handed the real `build_model` regardless — so a
+  `/refresh` here would trigger the real builder through the very request the
+  case is making. It did: this said the flag suppressed every build until
+  2026-09-06, and `tools/verify_page.py` records having caught the live build
+  it licensed. `/settings` proves the same thing — the child accepts the token
+  it was spawned with — and starts nothing.
   **The child is spawned with `LOTTO_NO_BUILD` set, its own free `LOTTO_PORT`,
   and `cwd` at the repository root**, and all three are load-bearing: a plain
   `python3 serve.py` runs the *real* builder, which is 27 requests against a

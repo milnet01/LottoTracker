@@ -22,8 +22,10 @@ the least built after LOTTO-0034 built it.
 The claim-deadline material is still true and still useful, but it is not the
 headline.
 
-Pure Python 3.9+ standard library
-plus `dbus-python` (`find_lotto_sms.py`, `watch_sms.py`) and PySide6 (`tray.py`,
+Pure Python 3.9+ standard library. **`ruff.toml`'s `py39` target holds the
+SYNTAX floor; nothing checks library use** — CI runs a much newer Python — so
+check a new stdlib call's version by hand.
+Plus `dbus-python` (`find_lotto_sms.py`, `watch_sms.py`) and PySide6 (`tray.py`,
 and the one `verify_page.py` case that starts it in a subprocess). No package
 manager, no virtualenv, no test framework, no build step — everything runs as
 `python3 <file>` from the repository root.
@@ -52,9 +54,11 @@ runs the verifiers below plus `ruff` and a syntax pass — but none of the
 hand-run. It is what
 `.github/workflows/ci.yml` invokes (as `./local-CI.sh --ci`), so the runner and
 this machine cannot drift apart — there is no second list of checks to forget.
-A documentation-only push (every changed file `.md`) still runs
+On a local run, a documentation-only push (every changed file `.md`) still runs
 `verify_privacy.py` at full strength — prose is its subject — and skips the
-rest; it fails if that check fails. `--force` runs everything.
+rest; it fails if that check fails. `--force` runs everything. **Under `--ci`
+that branch is skipped entirely**, and `ci.yml` carries no `paths-ignore`, so
+the whole CI lane runs on a docs push too.
 
 **It classifies the push from the refs being pushed (`$GATE_RANGES`, which
 `.githooks/pre-push` passes in), falling back to `upstream..HEAD` on a hand
@@ -399,8 +403,9 @@ INV-54 is what holds that line. The user was shown the trade and chose
 usefulness — with two tickets running, a notice that will not name the game
 cannot say what to go and buy. It is the exception, not the pattern: a new
 notification takes the rule, not the exception. Run
-`python3 tools/verify_privacy.py` before any commit that touches prose or
-examples. It runs two halves: tracked files compared against the dump's own
+`python3 tools/verify_privacy.py --require-content` before any commit that
+touches prose or examples — **without that flag a missing dump exits 0** and
+the content half never ran. It runs two halves: tracked files compared against the dump's own
 text, and identifying patterns, which are what catch an INVENTED reference the
 dump never held. Without the dump only the pattern half runs.
 **It only reads TRACKED files, and that is the trap.** A NEW file passes every
@@ -435,10 +440,12 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   **Tell the two apart before deciding, in this order.** `roadmap_query
   check_sync:true` reports `file_in_sync` — false means the file and the store
   disagree at all. Then `git status --porcelain ROADMAP.md`: non-empty means an
-  uncommitted local edit, so discard that first (`git checkout -- ROADMAP.md`)
-  and re-check; clean means the difference arrived as a commit, so re-migrate.
-  Where both are true, discard the hand edit before migrating — that is the
-  combined case, and taking it in the other order launders the edit.
+  uncommitted edit — **and your own un-committed render of a `roadmap_log`
+  write looks exactly the same, so COMMIT that rather than discarding it.**
+  Discard (`git checkout -- ROADMAP.md`) only an edit made BY HAND, then
+  re-check; clean means the difference arrived as a commit, so re-migrate.
+  Where a hand edit and a pull are both present, discard the hand edit before
+  migrating — taking it in the other order launders the edit.
   **A hand edit that was already committed is indistinguishable from a pull**;
   there is no test for it, so do not commit one. And **commit
   the re-rendered `ROADMAP.md` with the work it records**: the render is the
@@ -489,7 +496,10 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   nothing scored, which would put the two states back together. An empty
   page is correct only when it carries a notice naming *why* (the dump is
   missing, the first build failed, or `LOTTO_NO_BUILD` is set) — three states,
-  one rule. `tools/verify_page.py::uncheckable_not_a_loss` is what catches a
+  one rule — **and never a ticket table, a zero total or an empty wins list
+  beneath that notice**, all three of which read as "you have won nothing".
+  `LOTTO-0002` §6 owns the prohibition; the notice is necessary, not
+  sufficient. `tools/verify_page.py::uncheckable_not_a_loss` is what catches a
   breach, and its forbidden-strings list includes the empty string.
 - Known deferred rough edges hang off `LOTTO-0007` as a lettered list in its
   body; `roadmap_query` it by id before reporting one as new — an id fetch
