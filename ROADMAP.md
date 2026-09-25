@@ -1,4 +1,5 @@
 <!-- ants-roadmap-format: 1 -->
+<!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
 
 # ROADMAP — LottoTracker
 
@@ -609,7 +610,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   lists six and §11 says "four of the six"; pre-existing, code-side, one
   word, and not this run's to edit under a docs gate.
 
-  **Layman:** An external manager can now put the page on whatever port it likes, and start it without an icon appearing next to the clock
+  **Layman:** An external manager can now put the page on whatever port it likes, and start it without an icon appearing next to the clock.
   Kind: feature.
   Source: user-request-2026-08-03.
 
@@ -634,7 +635,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   LOTTO-0019's comparison baseline is the other constraint: it lives in
   the server process and is reset by a restart, so a scheduled refresh is
   also what would make that baseline long-lived enough to be worth having.
-  **Layman:** The tray checks for new draws on its own, instead of only when you ask it to
+  **Layman:** The tray checks for new draws on its own, instead of only when you ask it to.
   Kind: feature.
   Source: in-session-2026-08-05 (split out while speccing LOTTO-0019).
 
@@ -979,7 +980,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   red build. It also means the *next* wording change will be silent again
   until someone re-pulls, which is an argument for LOTTO-0003 (automatic
   ingest) beyond convenience: a stale dump hides parser rot.
-  **Layman:** A ticket bought on 8 August was quietly ignored because the bank's text now calls the game "Lotto 5 Max" and the code only knew the old name — now fixed, and the ticket is scored
+  **Layman:** A ticket bought on 8 August was quietly ignored because the bank's text now calls the game "Lotto 5 Max" and the code only knew the old name — now fixed, and the ticket is scored.
   Kind: fix.
   Source: in-session-2026-08-13 (surfaced by LOTTO-0030's first re-pull).
 
@@ -1098,7 +1099,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   edge cases nobody can hold in their head), so this is specced before
   any code.
   Resolved (2026-08-22): shipped. `expiry.py` holds the draw calendar and two pure functions importing nothing of the project's (INV-50); `supervise.py` gained `expiry_notice()`, `expiry_notices()` and `expiry_state_path()`, so the wording, the selection and the state file are all checkable from a headless script; `tray.py` gained a date guard in `sync()` and five lines that decide nothing. `tools/verify_expiry.py` holds INV-49 to INV-56 - eight cases, all passing, each observed failing under its own `--break` (nine breaks). It joins local-CI.sh's data-dependent lane, taking that group from four to five and the test suite from seven scripts to eight. The spec's predicted figures came back unchanged from the verifier: the calendar matches history 170/171, 171/171 and 597/597, and matches real finished tickets 257/260 exactly with 3 off by one. Walked forward against the live dump, the first notice fires 2026-09-02 for the PowerBall ticket and 2026-09-03 for the Lotto one, each said exactly once - verbatim the specimen sentence §4.7 predicted. The lower bound proved load-bearing rather than theoretical: `--break no_lower_bound` produces 559 notices against the real 561-ticket dump.
-  **Layman:** The app tells you your ticket is nearly used up so you can buy the next one, instead of you having to remember
+  **Layman:** The app tells you your ticket is nearly used up so you can buy the next one, instead of you having to remember.
   Kind: feature.
   Source: user-discovery-2026-08-20.
 
@@ -1131,7 +1132,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   assertion was being satisfied by a path the break did not touch, which is
   indistinguishable from a working red test until you look.
   `./local-CI.sh --force`: PASS, all eleven checks, privacy at full strength.
-  **Layman:** The page shows the numbers on your ticket next to the numbers that actually came up
+  **Layman:** The page shows the numbers on your ticket next to the numbers that actually came up.
   Kind: feature.
   Source: user-discovery-2026-08-20.
 
@@ -1166,7 +1167,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   LOTTO-0006 is the unlock, and earlier periods are absent rather than shown as
   R0.00. And the cases went in a NEW verifier rather than `tools/verify_page.py`,
   because nothing in that file calls `build_model()` at all; see LOTTO-0007 (o).
-  **Layman:** See what you spent and won in any month or year, not just over all time
+  **Layman:** See what you spent and won in any month or year, not just over all time.
   Kind: feature.
   Source: user-discovery-2026-08-20.
 
@@ -1199,7 +1200,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   two more cases for the pricing question LOTTO-0033 owns.
   Re-measure before starting: `python3 check.py` prints the census, and the
   archive era is now priced from real payout pages rather than being skipped.
-  **Layman:** Work out why the app's figures disagree with what the bank actually paid, so nothing is left unexplained
+  **Layman:** Work out why the app's figures disagree with what the bank actually paid, so nothing is left unexplained.
   Kind: investigate.
   Source: user-discovery-2026-08-20.
 
@@ -1231,7 +1232,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   `docs/reviews/CLAUDE-md-review-2026-08-20.md`. The gate reached a VIOLENT cap:
   4 of loop 3's 6 findings landed on text the run itself wrote, so the document's
   review is closed rather than continued.
-  **Layman:** The roadmap now lives in a database and the file is generated from it, so every project follows one format
+  **Layman:** The roadmap now lives in a database and the file is generated from it, so every project follows one format.
   Kind: chore.
   Source: user-request-2026-08-20.
 
@@ -1257,7 +1258,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   weighing: label the current period "2026 so far" / "September 2026 so
   far", and decide whether a current month with nothing scored yet should
   appear with a reason rather than not appear.
-  **Layman:** The page cannot show you this month so far, and last year sits next to a part-year labelled as if it were whole
+  **Layman:** The page cannot show you this month so far, and last year sits next to a part-year labelled as if it were whole.
   Kind: fix.
   Source: verify-delivery-2026-09-01 sign 4.
 
@@ -1285,7 +1286,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   LOTTO-0006 records in CHANGELOG.md, ROADMAP.md and the LOTTO-0029 spec are
   left as written; the spec carries a new dated note saying the two figures are
   not comparable.
-  **Layman:** The number quoted for what we cannot explain is out of date, and the way it is calculated overstates it
+  **Layman:** The number quoted for what we cannot explain is out of date, and the way it is calculated overstates it.
   Kind: doc-fix.
   Source: verify-delivery-2026-09-01 sign 5.
 
@@ -1317,7 +1318,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 
   CLAUDE.md rule 14: checked. The edit describes behaviour the code already
   has, so no conformer builds anything different from it; no gate run.
-  **Layman:** The spec lists one way the results scraper can go wrong; there are now two
+  **Layman:** The spec lists one way the results scraper can go wrong; there are now two.
   Kind: doc.
   Source: review-code-2026-09-01 lane results-sources; verify-delivery follow-up.
 
@@ -1355,7 +1356,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   conflict and the `review-contract` run it needs. Closing this rather than
   leaving it open as a pointer to two live items: an open bullet whose whole
   content is "see those two" reads as unstarted work.
-  **Layman:** Two places where two of our own documents disagree and someone has to choose
+  **Layman:** Two places where two of our own documents disagree and someone has to choose.
   Kind: investigate.
   Source: review-code-2026-09-01 lanes page-renderer and build-and-periods.
 
@@ -1382,7 +1383,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   LOTTO-0067 to LOTTO-0075, all now closed. The item stayed open only
   because nothing flipped it when the audit landed; corrected here rather
   than left as a false open.
-  **Layman:** The tests that check everything else have never themselves been checked
+  **Layman:** The tests that check everything else have never themselves been checked.
   Kind: test.
   Source: review-code-2026-09-01 coverage gap.
 
@@ -1436,7 +1437,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Still open: `docs/design.md`, `docs/decisions/`, and an audit config. Each
   is a separate decision, and the first two are authoring jobs that owe a
   `review-contract` gate of their own.
-  **Layman:** A few standard files are missing, including a licence on a public repository
+  **Layman:** A few standard files are missing, including a licence on a public repository.
   Kind: doc.
   Source: session-audit-2026-09-01 missing-documents sweep.
 
@@ -1482,7 +1483,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Deleted. Nothing was lost: the outer copies remain and are what the code
   reads. No refetch cost, because the deleted files were duplicates rather
   than cache entries the code would go looking for.
-  **Layman:** There is a duplicate cache folder inside the cache folder, and we do not know what made it
+  **Layman:** There is a duplicate cache folder inside the cache folder, and we do not know what made it.
   Kind: investigate.
   Source: review-code-2026-09-01 lane results-sources open question.
 
@@ -1506,7 +1507,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   this is in-progress rather than closed. It is not urgent - LOTTO-0015
   (packaging) is in scope for the same release and is where a version string
   naturally lands.
-  **Layman:** We have never written down which jobs have to be finished before we can call this version 1.0
+  **Layman:** We have never written down which jobs have to be finished before we can call this version 1.0.
   Kind: release.
   Source: user-decision-2026-09-02.
 
@@ -1548,7 +1549,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 
   Two of the author's own palettes were caught below the readability floor by
   the case's contrast assertions and were corrected before it went green.
-  **Layman:** The page opened white and was painful to look at; it now opens dark and you can pick from thirteen colour schemes
+  **Layman:** The page opened white and was painful to look at; it now opens dark and you can pick from thirteen colour schemes.
   Kind: accessibility.
   Source: user-request-2026-09-06.
 
@@ -1604,7 +1605,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   and the version pair printed in the gate header is what makes any residual
   difference visible. Revisit if a release ever diverges *within* the selected
   rule families.
-  **Layman:** One command now checks everything before your work leaves the machine, and GitHub runs the half it is allowed to see
+  **Layman:** One command now checks everything before your work leaves the machine, and GitHub runs the half it is allowed to see.
   Kind: chore.
   Source: user-request-2026-08-03.
 
@@ -2378,7 +2379,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   two remaining are the guarded `int(raw)` false positive), `vulture` on
   `watch_sms.py` 2 to 0, and `./local-CI.sh` green across all twelve
   checks with both lanes running and the privacy check at full strength.
-  **Layman:** The automated check on GitHub now runs with the least power it needs, and against exactly the code that was reviewed
+  **Layman:** The automated check on GitHub now runs with the least power it needs, and against exactly the code that was reviewed.
   Kind: security.
   Source: check-code-tree-2026-08-31.
 
@@ -2421,7 +2422,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Carried to the test audit: the old date format is read DD/MM/YYYY, correct for
   ZA, but the only fixture is 01/01/2020, which cannot tell DD/MM from MM/DD. It
   needs a test written, not an edit here.
-  **Layman:** Smaller robustness fixes in the code that reads ticket messages
+  **Layman:** Smaller robustness fixes in the code that reads ticket messages.
   Kind: review-fix.
   Source: review-code-2026-09-01 lane sms-parsing.
 
@@ -2475,7 +2476,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 
   Collateral, fixed in the same pass: supervise.py's comment on cwd=HERE listed
   three cwd-relative paths, two of which are now anchored.
-  **Layman:** Smaller robustness fixes in the code that fetches draw results
+  **Layman:** Smaller robustness fixes in the code that fetches draw results.
   Kind: review-fix.
   Source: review-code-2026-09-01 lane results-sources.
 
@@ -2511,7 +2512,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   the terminal goes through tickets.terminal_safe(). Collateral, fixed in the
   same pass: verify_pools.py's draws double carried no winPoolName, so it was
   not a feed row.
-  **Layman:** The terminal report can fold "nothing could be checked" into a money total
+  **Layman:** The terminal report can fold "nothing could be checked" into a money total.
   Kind: review-fix.
   Source: review-code-2026-09-01 lane scoring-and-pricing.
 
@@ -2558,7 +2559,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   (`today`); the other read is State.finish()'s timestamp, which is a different
   quantity and has to be taken when the build ends. Not reproducible in current
   source.
-  **Layman:** A missing price-table row can crash the whole page build
+  **Layman:** A missing price-table row can crash the whole page build.
   Kind: review-fix.
   Source: review-code-2026-09-01 lane build-and-periods.
 
@@ -2603,7 +2604,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Corrected - the ball glyphs were cited at 12.75px, which assumed rem tracks
   body's 15px. `rem` is root-relative and only body is set, so they were 13.6px.
   Raised to 1rem either way; the concern was right and the figure was not.
-  **Layman:** Smaller display and accessibility fixes on the local page
+  **Layman:** Smaller display and accessibility fixes on the local page.
   Kind: review-fix.
   Source: review-code-2026-09-01 lane page-renderer.
 
@@ -2653,7 +2654,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   INV-14 to admit Connection: close would loosen the assertion that catches a
   reflected header, for politeness. A well-behaved client sees a reset in that
   one rejection case, which is harmless.
-  **Layman:** Smaller robustness fixes on the local web server
+  **Layman:** Smaller robustness fixes on the local web server.
   Kind: review-fix.
   Source: review-code-2026-09-01 lane http-security.
 
@@ -2705,7 +2706,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Residual, stated rather than closed: a malformed record the reader drops is
   still left on disk. It is invisible to every reader, and spotting it here
   would need a second reader of that file, which s4.5 forbids.
-  **Layman:** Smaller robustness fixes in the code that runs the server and watcher
+  **Layman:** Smaller robustness fixes in the code that runs the server and watcher.
   Kind: review-fix.
   Source: review-code-2026-09-01 lane supervisor-lifecycle.
 
@@ -2757,7 +2758,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   The append comment is corrected. It claimed a torn record is dropped by the
   reader; rows() matches `body=(.*)` under re.S, so a truncated tail parses as a
   COMPLETE record with a mutilated body and is scored like any other.
-  **Layman:** Smaller robustness fixes in the cable-free message collector
+  **Layman:** Smaller robustness fixes in the cable-free message collector.
   Kind: review-fix.
   Source: review-code-2026-09-01 lane sms-watcher.
 
@@ -2818,7 +2819,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   measurement is recorded at the call site, including the condition it rests on.
 
   Deferred: the timezone question, as LOTTO-0066. It is a design decision.
-  **Layman:** Smaller fixes in the tray icon and the message-finding tool
+  **Layman:** Smaller fixes in the tray icon and the message-finding tool.
   Kind: review-fix.
   Source: review-code-2026-09-01 lane tray-calendar-tools.
 
@@ -2879,7 +2880,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   is the length operator and is legal on an empty array; the only `${FAILED[*]}`
   expansion sits after an early return that fires when the array is empty. Not
   reproducible as stated, and this project is Linux-only.
-  **Layman:** Smaller fixes to the checks that run before a push
+  **Layman:** Smaller fixes to the checks that run before a push.
   Kind: review-fix.
   Source: review-code-2026-09-01 lane shell-gate.
 
@@ -2955,7 +2956,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   mirrors the local docs-only skip - were left as written, because they are
   dated records of what was true when made; the new CHANGELOG entry says so
   instead.
-  **Layman:** A ten-lane independent review found three serious faults and fifteen more; all are fixed
+  **Layman:** A ten-lane independent review found three serious faults and fifteen more; all are fixed.
   Kind: review-fix.
   Source: review-code-2026-09-01.
 
@@ -2983,7 +2984,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 
   Whichever way it goes, §11's row is updated in the same change so it stops
   saying nothing tracks the gap.
-  **Layman:** The app works out when a prize can no longer be claimed, and no test checks that date is right
+  **Layman:** The app works out when a prize can no longer be claimed, and no test checks that date is right.
   Kind: test.
   Source: session-audit-2026-09-02 backlog tally.
   Lanes: check.py, tools.
@@ -3012,7 +3013,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Then decide whether a record file is owed by every sweep from now on, and
   write that down wherever the answer belongs - the gap recurs otherwise, and
   this item only closes the one instance.
-  **Layman:** The biggest code review this project has run left no report - only to-do items - so nobody can check what it actually found
+  **Layman:** The biggest code review this project has run left no report - only to-do items - so nobody can check what it actually found.
   Kind: doc.
   Source: session-audit-2026-09-02 backlog tally.
   Lanes: docs.
@@ -3053,7 +3054,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   parse_payout() searches a whole body - so the sentence still parses as a
   payout of the record it sits in. That is not this tool's hole and is filed
   separately.
-  **Layman:** Importing messages over the USB cable trusts the phone's output completely, unlike the wireless path
+  **Layman:** Importing messages over the USB cable trusts the phone's output completely, unlike the wireless path.
   Kind: security.
   Source: review-code-2026-09-01 lane sms-parsing, deferred out of LOTTO-0040.
 
@@ -3114,7 +3115,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   forgery visible; it does not make one impossible. The real containment is
   still the existing rule that reconcile() never resolves a disagreement in the
   message's favour.
-  **Layman:** Anyone who can text the phone could add a fake winnings message to the ledger
+  **Layman:** Anyone who can text the phone could add a fake winnings message to the ledger.
   Kind: security.
   Source: in-session-2026-09-02, found while building LOTTO-0061's import filter.
 
@@ -3188,7 +3189,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Two code-side copies surfaced and deliberately not fixed, a docs gate never
   editing code: expiry.py, serve.py and verify_page.py's own comment restate
   wording this run corrected.
-  **Layman:** Two of our own documents describe the same safety rule differently, and the shorter one is the one that gets read
+  **Layman:** Two of our own documents describe the same safety rule differently, and the shorter one is the one that gets read.
   Kind: doc-fix.
   Source: review-code-2026-09-01, split out of LOTTO-0054 on 2026-09-02.
 
@@ -3231,7 +3232,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   ten were pre-existing, so this was mostly an audit of text nobody had re-read.
   That is recorded rather than treated as a problem: the audit found a real hole
   in the test suite.
-  **Layman:** A spec was corrected to match what the page now does, and the usual review of that spec has not been run
+  **Layman:** A spec was corrected to match what the page now does, and the usual review of that spec has not been run.
   Kind: doc-fix.
   Source: in-session-2026-09-02, user decision on LOTTO-0054.
 
@@ -3279,7 +3280,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   met. LOTTO-0063 already requires a `review-contract` run on CLAUDE.md for a
   different conflict, and both changes want one cold read of that file rather
   than two. Recorded on both items.
-  **Layman:** We know the code parses on the oldest Python we claim to support, but not that every function it calls exists there
+  **Layman:** We know the code parses on the oldest Python we claim to support, but not that every function it calls exists there.
   Kind: test.
   Source: review-code-2026-09-01 lane shell-gate, narrowed by measurement 2026-09-02.
 
@@ -3310,7 +3311,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   names are now open, and the choice between pinning the timezone explicitly and
   stating-plus-checking the assumption is a design decision rather than a
   constraint. Still needs the user.
-  **Layman:** On a machine set to the wrong timezone, a draw date could be read as the day before or after
+  **Layman:** On a machine set to the wrong timezone, a draw date could be read as the day before or after.
   Kind: investigate.
   Source: review-code-2026-09-01 lane tray-calendar-tools, deferred out of LOTTO-0048.
 
@@ -3373,7 +3374,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   subprocess runs, several of them over the real dump, on every push. The sweep
   is reproducible by hand and was run twice today; whether it belongs in the gate
   is a cost question rather than a correctness one.
-  **Layman:** The checks that prove our tests can actually catch a bug are themselves not being run
+  **Layman:** The checks that prove our tests can actually catch a bug are themselves not being run.
   Kind: test.
   Source: review-tests-2026-09-02, cross-cutting: lanes 1, 3 and 5 independently.
 
@@ -3429,7 +3430,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   reconciliation case, verify_payouts' census and verify_expiry's calendar cases
   all genuinely compare against real draw data. Removing that would need the
   cached-feed option the user considered and did not take.
-  **Layman:** Our tests talk to the real lottery website, so if that site is down we cannot push code
+  **Layman:** Our tests talk to the real lottery website, so if that site is down we cannot push code.
   Kind: test.
   Source: review-tests-2026-09-02, cross-cutting: lanes 3, 4 and 5 independently.
 
@@ -3492,7 +3493,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   convention keeps the two identical at the moment it matters. A check firing on
   every uncommitted edit would train the user to ignore it, which costs more than
   it buys.
-  **Layman:** The check that stops real message data reaching the public repo can pass without checking anything
+  **Layman:** The check that stops real message data reaching the public repo can pass without checking anything.
   Kind: test.
   Source: review-tests-2026-09-02 lane 2.
 
@@ -3559,7 +3560,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   current implementation, because uncheckable_report builds partly and wholly as
   complementary comprehensions over one list. Kept, with a comment saying so, so
   it is not mistaken for cover.
-  **Layman:** The check that each ticket was scored against the right draws only compares dates, and every game's pools share dates
+  **Layman:** The check that each ticket was scored against the right draws only compares dates, and every game's pools share dates.
   Kind: test.
   Source: review-tests-2026-09-02 lane 4.
 
@@ -3628,7 +3629,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   `wins` now carries a conservation assertion - the same wins filed by month and
   by year must total the same - so the call that makes it the slowest verifier in
   the suite is load-bearing rather than computed and discarded.
-  **Layman:** Our tests check that "could not be scored" is not zero, but never that zero is not "could not be scored"
+  **Layman:** Our tests check that "could not be scored" is not zero, but never that zero is not "could not be scored".
   Kind: test.
   Source: review-tests-2026-09-02 lane 3.
 
@@ -3719,7 +3720,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   falsifiable - a pool exempted as carried by no source fails if one starts
   carrying it - the winNumList read is guarded the way history.py guards it, and
   the feed is fetched once per GAME rather than once per pool: 7 POSTs to 3.
-  **Layman:** The test guarding what the re-buy reminder may reveal checks five exact strings rather than the rule itself
+  **Layman:** The test guarding what the re-buy reminder may reveal checks five exact strings rather than the rule itself.
   Kind: test.
   Source: review-tests-2026-09-02 lane 5.
 
@@ -3785,7 +3786,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   match `Date DD/MM/YYYY`, so a real SMS carrying 01/01/2020 would have made the
   privacy gate report this file as a leak and block every push. The price in the
   same fixture was made impossible for that reason; the dates were not.
-  **Layman:** The test for two collectors writing at once may never actually make them collide
+  **Layman:** The test for two collectors writing at once may never actually make them collide.
   Kind: test.
   Source: review-tests-2026-09-02 lane 2.
 
@@ -3862,7 +3863,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   compared figure goes in the compared row. Closing the rest needs build_model's
   apportionment extracted as a pure function the way period_buckets already was,
   which is a change to the code under test and a different scope.
-  **Layman:** The page test says it never touches the network or real data, and in one place it does both
+  **Layman:** The page test says it never touches the network or real data, and in one place it does both.
   Kind: test.
   Source: review-tests-2026-09-02 lane 1.
 
@@ -3887,6 +3888,6 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   The numbers are dropped rather than re-taken - documentation.md s2.3's rule,
   and these two had gone stale once already. The docstring now says "one case per
   invariant" and "every case", and CLAUDE.md says "--list shows the breaks".
-  **Layman:** Two places state how many test cases and deliberate defects there are, and both numbers are out of date
+  **Layman:** Two places state how many test cases and deliberate defects there are, and both numbers are out of date.
   Kind: doc-fix.
   Source: review-tests-2026-09-02 lane 1, confirmed by measurement.
