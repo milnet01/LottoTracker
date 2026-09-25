@@ -64,7 +64,7 @@ REFRESH_MESSAGE = {
 }
 
 
-def refresh_message(outcome, found=None):
+def refresh_message(outcome: str, found=None) -> str:
     """The sentence for an outcome. Only REFRESH_DONE consults `found`.
 
     LOTTO-0019 §4.5, INV-29/INV-30. Three distinct DONE sentences, and the
@@ -88,9 +88,9 @@ def refresh_message(outcome, found=None):
     that keeps ticket data out of the URL (LOTTO-0014 INV-21) applies here
     with more force.
     """
-    line = REFRESH_MESSAGE.get(outcome, outcome)
     if outcome != REFRESH_DONE:
-        return line
+        return REFRESH_MESSAGE.get(outcome, outcome)
+    line = REFRESH_MESSAGE[REFRESH_DONE]
     if found is None:
         # DONE with nothing to compare means exactly one thing: the first
         # successful build in this process. A failed build sets `stale` and is

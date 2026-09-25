@@ -34,7 +34,7 @@ POOL_NAMES = {
     ("daily", 1): "DAILY LOTTO PLUS",  # no source carries it; always empty
 }
 
-_cache = {}
+_cache: dict = {}
 
 
 def all_draws(game, plus_flag):

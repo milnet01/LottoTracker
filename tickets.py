@@ -36,7 +36,7 @@ from itertools import combinations
 import clock
 
 
-MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+MONTHS: "tuple[str, ...]" = tuple("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())
 
 # SMS game name -> (API game key, plusFlag, winPoolId)
 GAME_MAP = {

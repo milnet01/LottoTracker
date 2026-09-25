@@ -451,7 +451,7 @@ def run(once=False, path=DUMP, threads_path=THREADS):
     """Catch up, then listen. Returns the number of messages written."""
     import dbus
     import dbus.mainloop.glib
-    from gi.repository import GLib
+    from gi.repository import GLib  # pyright: ignore[reportAttributeAccessIssue]  (generated at runtime)
 
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     watch = Watch(path, threads_path)

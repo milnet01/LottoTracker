@@ -27,7 +27,7 @@ HEADERS = {
 GAMES = {"lotto": 11101, "powerball": 11201, "daily": 11001}
 
 
-ATTEMPTS = 3    # >= 1; at 0 the loop body never runs and `payload` is unbound
+ATTEMPTS = 3    # >= 1; at 0 the loop body never runs and _post() raises unsent
 BACKOFF = 1.0   # seconds; doubled per retry, so 1 s then 2 s
 
 # Every HTTP attempt this module makes, for GET /status to read out
@@ -49,6 +49,7 @@ def _post(path, body):
     req = urllib.request.Request(
         API + path, json.dumps(body).encode(), HEADERS, method="POST"
     )
+    payload = None  # always rebound or re-raised below; set for the reader
     for attempt in range(ATTEMPTS):
         requests_made += 1
         try:

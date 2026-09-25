@@ -73,6 +73,7 @@ def run_headless(sup=None):
     # manager's to restart, and the only alternative here would be to stop it.
     if not sup.is_ready():
         print("the server has not answered yet; still waiting", flush=True)
+    assert sup.child is not None  # start() spawned it or raised
     return sup.child.wait()
 
 
@@ -331,7 +332,9 @@ class LottoTray(QSystemTrayIcon):
         self.sup.stop()
         if self.watch is not None:
             self.watch.stop()
-        QApplication.instance().quit()
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
 
 
 def main():

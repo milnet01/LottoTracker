@@ -280,7 +280,7 @@ def watcher_lifecycle():
         bad += 1
     child = alive.child
     alive.stop()
-    if alive.is_running() or child.poll() is None:
+    if alive.is_running() or child is None or child.poll() is None:
         print("  LIFECYCLE: stop() did not reap the child")
         bad += 1
 

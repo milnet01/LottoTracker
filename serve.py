@@ -616,6 +616,8 @@ def make_server(build_model_fn, token, port):
         def _read_body(self):
             self._body_read = True
             raw = self.headers.get("Content-Length")
+            if raw is None:
+                return None, 400
             try:
                 n = int(raw)
             except (TypeError, ValueError):

@@ -139,7 +139,7 @@ def parse_page(html, slug=None):
         # SHAPE is keyed on the PAGE slug, which is why parse_page takes one.
         # The argument was accepted and never used, so nothing checked that a
         # row looked like the game it was filed under.
-        want = SHAPE.get(slug)
+        want = SHAPE.get(slug) if slug is not None else None
         if want is not None:
             n_main, want_special = want
             if len(main) != n_main or (special is not None) != want_special:

@@ -1,3 +1,4 @@
+---
 name: CI
 
 # The runner executes ./local-CI.sh --ci, and nothing else. The list of checks

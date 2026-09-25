@@ -39,6 +39,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -209,11 +210,15 @@ def serve_on(builder, token="tok"):
 
     port = supervise.free_port()
     srv, state = serve.make_server(builder, token, port)
+    # The breaks below swap methods on the handler CLASS at runtime; typed as
+    # Any so a type checker does not read it as the callable make_server
+    # declares.
+    handler: Any = srv.RequestHandlerClass
     if broken("host_endswith"):
         # RED-TEST for INV-12: the weaker comparison §4.2's table pairs with
         # evil.example.127.0.0.1:<port>.
         allow = f"127.0.0.1:{port}"
-        srv.RequestHandlerClass._host_ok = lambda self: (
+        handler._host_ok = lambda self: (
             (self.headers.get("Host") or "").lower().endswith(allow)
         )
     if broken("no_security_headers"):
@@ -221,14 +226,14 @@ def serve_on(builder, token="tok"):
     if broken("token_exempt_refresh"):
         # RED-TEST for INV-13: the likeliest breach — exempt the one route the
         # tray uses, leaving /settings guarded.
-        real = srv.RequestHandlerClass._token_ok
-        srv.RequestHandlerClass._token_ok = lambda self: (
+        real = handler._token_ok
+        handler._token_ok = lambda self: (
             True if self.path.split("?")[0] == "/refresh" else real(self)
         )
     if broken("reflect_path"):
         # RED-TEST for INV-14: reflect self.path RAW. No X-Injected header
         # results, which is why the case asserts the whole header name set.
-        real_send = srv.RequestHandlerClass._send
+        real_send = handler._send
 
         def leaky(self, code, body=b"", ctype=None):
             self.send_response(code)
@@ -242,7 +247,7 @@ def serve_on(builder, token="tok"):
             if body:
                 self.wfile.write(body)
 
-        srv.RequestHandlerClass._send = leaky
+        handler._send = leaky
         del real_send
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
@@ -561,7 +566,8 @@ def uncheckable_not_a_loss():
     # the entries table (§4.5), so scope the per-cell assertions to the entries
     # table; the presence assertions below cover the other section separately.
     table = re.search(r'<table id="entries">.*?</table>', html, re.S)
-    need(table is not None, "the entries table is missing entirely")
+    if table is None:
+        raise Fail("the entries table is missing entirely")
     rows = [r for r in re.findall(r"<tr[^>]*>(.*?)</tr>", table.group(0), re.S)
             if "<td" in r]
     need(len(rows) == 3, f"expected 3 entry rows, found {len(rows)}")
@@ -711,7 +717,8 @@ def spend_over_checkable():
     import re
 
     row = re.search(r"Spent on entries that could be scored.*?>([R0-9,.]+)<", html, re.S)
-    need(row is not None, "could not find the compared-spend figure on the page")
+    if row is None:
+        raise Fail("could not find the compared-spend figure on the page")
     need(
         row.group(1) == want,
         f"compared spend is {row.group(1)}, recomputed {want} from TIER_PRICES",
@@ -783,8 +790,8 @@ def failed_refresh_keeps_model():
         need(built_before, "no successful build was recorded")
 
         bad = Stub(raises=True)
+        real_fail = serve.State.fail
         if broken("clear_model_on_failure"):
-            real_fail = serve.State.fail
 
             def wipe(self, exc, pools=()):
                 self.model = None          # RED-TEST: lose the previous model
@@ -909,6 +916,8 @@ def no_orphan_server():
         # that dies instantly on an import error satisfies both closing
         # assertions — it has certainly exited, and the port is certainly free.
         need(sup.is_ready(15), "the child never answered on its port")
+        if sup.child is None:
+            raise Fail("start() left no child to observe")
         pid = sup.child.pid
         sup.stop()
 
@@ -927,8 +936,9 @@ def no_orphan_server():
                 gone = True
                 break
         need(gone, f"pid {pid} is still in the process table after stop()")
+        after = sup.child
         need(
-            sup.child.returncode is not None,
+            after is not None and after.returncode is not None,
             "the child's exit status was never collected — it was not reaped",
         )
         bound = False
@@ -1294,9 +1304,10 @@ def port_from_environment():
                 # Named, or the notification cannot say what was ignored - and a
                 # fallback nobody can act on is the silent substitution again.
                 name, value = next(iter(env.items()))
+                said = sup.port_fallback or ""  # truthy: checked just above
                 need(
-                    f"{name}={value}" in sup.port_fallback
-                    or f"{name}={value!r}" in sup.port_fallback,
+                    f"{name}={value}" in said
+                    or f"{name}={value!r}" in said,
                     f"the fallback message does not name {name}={value}: "
                     f"{sup.port_fallback}",
                 )
@@ -1586,7 +1597,8 @@ def post_retries_transport_failure():
 
     def always_404(*a, **k):
         http_calls.append(1)
-        raise real_http("http://x/", 404, "Not Found", {}, io.BytesIO(b""))
+        raise real_http("http://x/", 404, "Not Found", http.client.HTTPMessage(),
+                        io.BytesIO(b""))
 
     urllib.request.urlopen = always_404
     try:
@@ -1782,10 +1794,10 @@ def no_comparison_is_not_no_wins():
     seq = iter(models)
     state = serve.State()
 
+    real_compare = serve._compare
     if broken("found_on_first_build"):
         # RED-TEST: compare against an empty model rather than declining to
         # compare — the first build then reports every existing win as new.
-        real_compare = serve._compare
         serve._compare = lambda prev, cur: real_compare(prev or {}, cur)
 
     try:
@@ -1815,10 +1827,10 @@ def no_comparison_is_not_no_wins():
             serve._compare = real_compare
 
     # The three sentences must be three sentences.
+    real_msg = supervise.refresh_message
     if broken("null_found_reads_as_zero"):
         # RED-TEST: the cardinal rule in notification form — "could not
         # compare" rendered exactly like "compared, found nothing".
-        real_msg = supervise.refresh_message
         supervise.refresh_message = lambda outcome, found=None: real_msg(
             outcome, found if found is not None else {"new_wins": 0, "new_cents": 0}
         )
@@ -1856,9 +1868,9 @@ NOTE_SHAPE = re.compile(
 def notification_carries_no_ticket_data():
     """INV-30 — the success notification is composed from found's two integers,
     or from nothing when found is null. No ticket data can reach it."""
+    real_msg = supervise.refresh_message
     if broken("summary_names_a_ticket"):
         # RED-TEST: the well-meant version — name the ticket and the draw.
-        real_msg = supervise.refresh_message
 
         def chatty(outcome, found=None):
             line = real_msg(outcome, found)
@@ -1908,12 +1920,13 @@ def numbers_chosen_and_drawn():
     temp_home()
     import re
 
+    real_cell = page._numbers_cell
+    real_boards = page._boards_cell
     if broken("no_drawn_numbers"):
         # Show what the user picked and not what came up. The likeliest real
         # regression: the chosen half is easy and the drawn half needs the
         # model to carry per-win draw detail, so the drawn half is what a
         # half-finished change drops.
-        real_cell = page._numbers_cell
         page._numbers_cell = lambda nums, special=None: (
             "<td></td>" if nums == DRAWN_MAIN else real_cell(nums, special)
         )
@@ -1924,7 +1937,6 @@ def numbers_chosen_and_drawn():
         # the cardinal-rule clause, and patching _balls misses entirely because
         # _boards_cell answers the empty case itself without calling it. The
         # break has to sit on the function that actually decides absence.
-        real_boards = page._boards_cell
         page._boards_cell = lambda boards: (
             '<td class="nums"></td>' if not boards else real_boards(boards)
         )
@@ -1984,7 +1996,8 @@ def numbers_chosen_and_drawn():
         # 4. The chosen and drawn sets must not be conflated: they differ here,
         #    so rendering one twice would pass every assertion above.
         wins_tbl = re.search(r"<h2>Claimable now</h2>.*?</table>", html, re.S)
-        need(wins_tbl is not None, "the wins table is missing entirely")
+        if wins_tbl is None:
+            raise Fail("the wins table is missing entirely")
         cells = re.findall(r'<td class="nums">(.*?)</td>', wins_tbl.group(0), re.S)
         need(len(cells) >= 2,
              f"expected two numbers cells on the win row, found {len(cells)}")
@@ -2062,7 +2075,8 @@ def theme_is_dark_and_readable():
              f"the default theme {page.DEFAULT_THEME!r} has background "
              f"{palette['bg']} — that is not a dark page")
         root = re.search(r":root\{([^}]*)\}", page.CSS)
-        need(root is not None, "the stylesheet defines no :root palette")
+        if root is None:
+            raise Fail("the stylesheet defines no :root palette")
         need(f"--bg:{palette['bg']};" in root.group(1),
              ":root does not carry the default theme's background — the first "
              "paint would use whatever the browser chooses")
@@ -2080,7 +2094,8 @@ def theme_is_dark_and_readable():
         # 4. Every ball states its own colours, so no theme decides whether a
         #    number is visible.
         base = re.search(r"\.ball\{([^}]*)\}", page.BASE_CSS)
-        need(base is not None, "there is no .ball rule at all")
+        if base is None:
+            raise Fail("there is no .ball rule at all")
         need("color:" in base.group(1) and "background:" in base.group(1),
              "the .ball rule does not state BOTH a background and a colour — "
              "the number takes the theme's foreground and can match its disc")

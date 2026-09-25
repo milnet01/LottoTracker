@@ -1,0 +1,9 @@
+# typos settings (LOTTO-0007 u). Every entry is a word that is correct here.
+[default.extend-words]
+# The bank's reference prefix, e.g. the sentinel VAS00000000000.
+vas = "vas"
+# Hyphen halves: "mis-scored", "pre-empted".
+mis = "mis"
+empted = "empted"
+# A valid spelling, used in code, messages and specs alike.
+unparseable = "unparseable"

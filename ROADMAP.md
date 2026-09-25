@@ -1972,6 +1972,17 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   /status, never /refresh, keep the children offline. (t) fixed
   2026-09-25 (dc20bee): the counts are gone from ci.yml, local-CI.sh and
   CLAUDE.md; local-CI.sh names the set.
+  (u) fixed 2026-09-25 at the user's request ("please resolve"): all
+  four tools now report zero, and each has a contract. yamllint:
+  .yamllint (bare `on:` key allowed) plus the missing `---` markers.
+  typos: _typos.toml (VAS, mis-, pre-empted, unparseable). pyright and
+  mypy: pyrightconfig.json and mypy.ini at the 3.9 floor. The 40 type
+  findings were read, none was a bug, and each was resolved without
+  changing behaviour: explicit raises where need() hid a None check,
+  saved references lifted out of their `if broken(...)`, an Any alias
+  for the handler class the breaks patch, and three narrow guards. None
+  of the four tools is in local-CI.sh yet, so nothing stops them
+  drifting.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
