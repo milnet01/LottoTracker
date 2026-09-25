@@ -303,6 +303,11 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Every other win reads as paid, never 'still claimable'. Whether large
   prizes must be claimed in person is unverified and not assumed. This
   unblocks LOTTO-0058: the boundary survives, for unpaid wins.
+  When this ships: re-shoot docs/screenshots/page-top.png (python3
+  tools/demo_page.py, headless Chrome at 1280x800) and send it to the
+  ants-projects-hub-website session, which is waiting to swap it in at
+  antsprojectshub.co.za/p/lotto-tracker.html. The current picture shows
+  the retiring "Claimable now" heading.
   Source: user-correction-2026-08-02.
 
 - ✅ [LOTTO-0003] **Pick up new tickets automatically as the SMS arrives.**
