@@ -153,7 +153,8 @@ def period_buckets(all_tickets, wins, entry_draws, increments):
     score it; `increments(game, era)` gives that era's {plus_flag: per-board,
     per-draw cents}. Both are injected so tools/verify_periods.py can drive the
     rules over synthetic tickets with no results file (INV-57..INV-60) --
-    tools/verify_page.py cannot, being renderer-only by design.
+    tools/verify_page.py cannot: no case there calls build_model() for an
+    assertion, since its model is the hand-authored fixture_model().
 
     Money belongs to the period of the DRAW, never of the purchase (§3.1),
     over INV-16's population: the scorable entries of RESOLVED tickets, BOTH

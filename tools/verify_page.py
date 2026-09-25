@@ -406,7 +406,9 @@ def token_required():
         shutil.rmtree(home, ignore_errors=True)
 
     # The channel the tray depends on: a child spawned with LOTTO_TOKEN in its
-    # environment accepts that token. LOTTO_NO_BUILD keeps it off the network.
+    # environment accepts that token. LOTTO_NO_BUILD skips only the OPENING
+    # build; what keeps this child off the network is that the case drives
+    # /settings and never /refresh (see below).
     child_port = supervise.free_port()
     # A contained $HOME, because the route below WRITES settings. Without it
     # the child would write into whatever $HOME this process last set.
@@ -1144,8 +1146,9 @@ def _serve_child(env_extra, **kw):
 def _child_on(env_extra, port, timeout=15.0):
     """True once a `python3 serve.py` spawned with these variables answers on
     `port`. The seam is the PROCESS, not resolve_port(): the question this half
-    of INV-24 asks is what main() actually binds. LOTTO_NO_BUILD keeps it off
-    the network."""
+    of INV-24 asks is what main() actually binds. LOTTO_NO_BUILD skips only
+    the opening build; this stays off the network because it polls /status
+    and never POSTs /refresh, which would start a real build."""
     child = _serve_child(env_extra)
     try:
         deadline = time.monotonic() + timeout

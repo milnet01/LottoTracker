@@ -38,9 +38,8 @@ import datetime
 # Weekday numbers as datetime.date.weekday() reports them: Monday is 0.
 #
 # Hardcoded because no feed publishes a draw schedule. That is the position
-# tickets.py::TIER_PRICES is in and it carries the same risk - CLAUDE.md calls
-# that one "the one hardcoded table in the project and the one most likely to
-# rot" - so the answer here is the answer there: tools/verify_expiry.py checks
+# tickets.py::TIER_PRICES is in, and CLAUDE.md records that both rot the same
+# way - so the answer here is the answer there: tools/verify_expiry.py checks
 # it against observed history in BOTH directions (INV-49), because a check that
 # only asks "do the draws land on listed days" passes a REMOVED day forever.
 DRAW_DAYS = {
