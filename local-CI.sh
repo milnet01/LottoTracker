@@ -13,13 +13,13 @@
 #
 # WHY THERE ARE TWO LANES, AND WHY THEY CANNOT BE ONE
 #
-# Six of the nine verifiers read data that is deliberately not in the repo:
+# Most verifiers read data that is deliberately not in the repo:
 # lotto_sms_raw.txt is real SMS content and archive_results.json/archive_cache/
 # are a scraped archive that is large and not ours to redistribute (.gitignore
 # says both). A fresh clone - which is exactly what a runner gets - therefore
 # fails verify_sources, verify_coverage, verify_pools, verify_payouts,
 # verify_expiry and verify_periods on missing input, and no amount of YAML fixes
-# without publishing the private data. The remaining three - verify_page,
+# without publishing the private data. The rest - verify_page,
 # verify_watch and verify_privacy - are the CI lane.
 #
 # This paragraph said "three of the five" until 2026-08-20, and had said it

@@ -85,7 +85,7 @@ dump — while still exiting 0. So a green tick on GitHub is weaker than a green
 full strength rather than trusting its exit code. `local-CI.sh`'s header holds
 the reasoning.
 
-Verification — there is no test runner; these nine scripts *are* the test
+Verification — there is no test runner; these scripts *are* the test
 suite, and each maps to a numbered invariant in the specs. Run from the
 repository root, after `backfill.py`, with `lotto_sms_raw.txt` present. The CI
 lane is the verifiers that still run honestly on a fresh clone; the rest FAIL

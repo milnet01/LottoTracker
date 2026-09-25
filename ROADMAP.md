@@ -298,6 +298,11 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Do not simply delete the expiry logic: an unpaid large prize is exactly the
   case where a deadline would matter, and that is the case this project exists
   to catch.
+  Decided by the user 2026-09-25: surface the 365-day claim deadline
+  ONLY for a win with no matching bank payout (LOTTO-0029's reconcile).
+  Every other win reads as paid, never 'still claimable'. Whether large
+  prizes must be claimed in person is unverified and not assumed. This
+  unblocks LOTTO-0058: the boundary survives, for unpaid wins.
   Source: user-correction-2026-08-02.
 
 - ✅ [LOTTO-0003] **Pick up new tickets automatically as the SMS arrives.**
@@ -1959,6 +1964,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   trusting the surviving comments could reintroduce a real build against the live
   dump and the operator's API. Fixing these is an edit to three comments and
   changes no behaviour.
+  (t) decided by the user 2026-09-25: remove the verifier counts from
+  ci.yml and CLAUDE.md and point both at local-CI.sh, which keeps the
+  explanation. No file carries a count.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
@@ -2984,6 +2992,8 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 
   Whichever way it goes, §11's row is updated in the same change so it stops
   saying nothing tracks the gap.
+  Unblocked 2026-09-25: LOTTO-0011 keeps the deadline for unpaid wins,
+  so the boundary test is owed. Write it with or after LOTTO-0011.
   **Layman:** The app works out when a prize can no longer be claimed, and no test checks that date is right.
   Kind: test.
   Source: session-audit-2026-09-02 backlog tally.
@@ -3189,6 +3199,8 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Two code-side copies surfaced and deliberately not fixed, a docs gate never
   editing code: expiry.py, serve.py and verify_page.py's own comment restate
   wording this run corrected.
+  Confirmed by the user 2026-09-25: keep the applied CLAUDE.md edit; the
+  premise was a misreading and needs no further action.
   **Layman:** Two of our own documents describe the same safety rule differently, and the shorter one is the one that gets read.
   Kind: doc-fix.
   Source: review-code-2026-09-01, split out of LOTTO-0054 on 2026-09-02.
@@ -3311,6 +3323,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   names are now open, and the choice between pinning the timezone explicitly and
   stating-plus-checking the assumption is a design decision rather than a
   constraint. Still needs the user.
+  Decided by the user 2026-09-25: pin South African time as a fixed
+  UTC+2 offset (datetime.timezone), not zoneinfo. SAST has no daylight
+  saving, so a fixed offset is exact and needs no tz database. Every
+  place that reads today's date or converts an SMS timestamp uses it.
   **Layman:** On a machine set to the wrong timezone, a draw date could be read as the day before or after.
   Kind: investigate.
   Source: review-code-2026-09-01 lane tray-calendar-tools, deferred out of LOTTO-0048.
