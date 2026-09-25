@@ -12,10 +12,10 @@ ConversationMessage struct order comes from KDE Connect's own definition:
 
 import sys
 import time
-from datetime import datetime
 
 import dbus
 
+import clock
 from tickets import terminal_safe
 
 # A cold KDE Connect daemon fills its conversation list over minutes. Both
@@ -134,7 +134,7 @@ def show(msg):
     # escape drives the emulator rather than being read (CWE-150).
     # watch_sms.py's header says "Nothing here prints a message body"; this is
     # the one path in the project that does, on purpose.
-    when = datetime.fromtimestamp(int(msg[DATE]) / 1000).strftime("%Y-%m-%d %H:%M")
+    when = clock.from_ms(int(msg[DATE])).strftime("%Y-%m-%d %H:%M")
     sender = terminal_safe(", ".join(str(a[0]) for a in msg[ADDRS]))
     print(f"\n[{when}] from {sender}  (thread {int(msg[THREAD])})")
     print(f"  {terminal_safe(msg[BODY])}")

@@ -10,6 +10,7 @@ Both are cached, so a re-run is cheap.
 
 from datetime import datetime, timedelta
 
+import clock
 from backfill import payouts
 from history import POOL_NAMES, all_draws, covered, scorable
 from results import divisions, draws
@@ -243,7 +244,7 @@ def check(tickets=None, today=None):
     prize pool. Scoring only the top tier checked 558 of 1,233 paid entries.
     """
     tickets = tickets if tickets is not None else load()
-    today = today or datetime.now()
+    today = today or clock.now()
     wins = []
     for t in tickets:
         for plus_flag, pool_id in t.pools:

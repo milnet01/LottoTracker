@@ -1967,6 +1967,11 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   (t) decided by the user 2026-09-25: remove the verifier counts from
   ci.yml and CLAUDE.md and point both at local-CI.sh, which keeps the
   explanation. No file carries a count.
+  (v) fixed 2026-09-25 (9f57ed4): the three comments now say
+  LOTTO_NO_BUILD skips only the opening build, and that /settings and
+  /status, never /refresh, keep the children offline. (t) fixed
+  2026-09-25 (dc20bee): the counts are gone from ci.yml, local-CI.sh and
+  CLAUDE.md; local-CI.sh names the set.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
@@ -3296,7 +3301,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: test.
   Source: review-code-2026-09-01 lane shell-gate, narrowed by measurement 2026-09-02.
 
-- 📋 [LOTTO-0066] **No timezone is pinned anywhere against a South African draw calendar.**
+- ✅ [LOTTO-0066] **No timezone is pinned anywhere against a South African draw calendar.**
   Deferred out of LOTTO-0048 because it is a design question, not an edit.
 
   Every date in this project is a naive local one. `tickets.load()` reads the
@@ -3327,6 +3332,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   UTC+2 offset (datetime.timezone), not zoneinfo. SAST has no daylight
   saving, so a fixed offset is exact and needs no tz database. Every
   place that reads today's date or converts an SMS timestamp uses it.
+  Resolved 2026-09-25: clock.py pins SAST as a fixed UTC+2 and returns
+  naive values; tickets.py, check.py, tray.py, serve.py, backfill.py,
+  find_lotto_sms.py and verify_pools.py read through it. INV-64 in
+  LOTTO-0034, checked by tools/verify_expiry.py::clock_is_sast_anywhere
+  under Etc/GMT+12 and Pacific/Kiritimati. Each half (from_ms, today)
+  was broken alone and went red; an unknown $TZ is caught too.
   **Layman:** On a machine set to the wrong timezone, a draw date could be read as the day before or after.
   Kind: investigate.
   Source: review-code-2026-09-01 lane tray-calendar-tools, deferred out of LOTTO-0048.

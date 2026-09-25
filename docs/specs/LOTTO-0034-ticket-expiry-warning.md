@@ -383,7 +383,7 @@ No new timer. `TrayIcon.sync()` already runs at `POLL_MS`; it gains a
 date-guarded call:
 
 ```python
-today = datetime.date.today()
+today = clock.today()
 if today != self.expiry_checked_on:
     self.expiry_checked_on = today
     for body in supervise.expiry_notices(today):
@@ -436,6 +436,9 @@ said `supervise.py  stdlib only` until 2026-08-22** — deliberately, and §11 c
 amendment that document needs. `expiry.py` still imports nothing but
 `datetime` (INV-50), and **`tray.py` gains `datetime` and nothing else** — no
 project import and no decision, which is the point the accounting is making.
+Amended 2026-09-25 (LOTTO-0066): `tray.py` now imports `clock` in place of
+`datetime`, so today is the SAST date whatever the machine's zone (INV-64).
+`clock` holds no decision either, and imports nothing of the project's.
 Corrected 2026-08-31: this said `tray.py` gained no import at all, while §4.6's
 own snippet calls `datetime.date.today()` and cannot be written without one.
 Confirmed against the commit that shipped this item — `tray.py` had no
@@ -600,6 +603,18 @@ cannot score is LOTTO-0031's failure exactly. INV-53 and INV-56 both say so.
   that exact flip left all eight then-existing cases green, because the one
   fixture whose draw fell on `TODAY` interpolated the value into a message
   and never asserted it.
+
+- **INV-64** — `clock.from_ms()` and `clock.today()` return South African
+  wall-clock time whatever `$TZ` says: an SMS sent at 2026-06-01 00:30 SAST
+  reads as that moment and lands in the new era, and today is the SAST date.
+  *Test:* `tools/verify_expiry.py`, case `clock_is_sast_anywhere`, under
+  `Etc/GMT+12` and `Pacific/Kiritimati` — the zone range's two ends, so at
+  every hour one of them is on a different date from SAST. It asserts each
+  zone took before asserting anything else, because an unknown `$TZ` falls
+  back to UTC in silence.
+  *Breaks when:* either helper reads the machine's own zone (`--break
+  clock_reads_local_zone`; each half was also broken alone and went red).
+  LOTTO-0066: every date was the machine's local one until 2026-09-25.
 
 ## 6. Failure modes
 
@@ -793,6 +808,7 @@ would silently destroy the feature it exists to check, before every push.
 | INV-55 | `tools/verify_expiry.py::state_file_is_pruned` |
 | INV-56 | `tools/verify_expiry.py::unknown_game_is_loud` |
 | INV-61 | `tools/verify_expiry.py::draws_left_today_boundary` |
+| INV-64 | `tools/verify_expiry.py::clock_is_sast_anywhere` |
 | §4.6's date guard firing once a day — INV-53's `sync()` half | **nothing** — it lives in `tray.py::sync()`, which needs a `QSystemTrayIcon`; the project has no Qt-constructing test. The wording, the selection and the state file are all checkable because §4.7 puts them in `supervise.py`; the call site is not. Same exposure LOTTO-0003 INV-37 records. |
 | A draw day changing in the real world | **nothing in production** — INV-49 catches it only when the verifier is run. Accepted, as for `TIER_PRICES`. |
 | §4.5's write-before-notice ORDERING | **nothing** — inside `expiry_notices()` both orderings look identical to two successive calls, so INV-53 catches the write being removed and not its being moved. Observing it needs the process to die between the two statements. Held by the paragraph in §4.5. |

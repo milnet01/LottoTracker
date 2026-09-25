@@ -119,12 +119,14 @@ python3 tools/verify_periods.py   # INV-57..INV-60: cost against winnings per
 python3 tools/verify_payouts.py   # INV-40..INV-47: the bank's own payout SMSes,
                                   # reconciled per VAS reference against every
                                   # computed win; --break/--list like verify_page
-python3 tools/verify_expiry.py    # INV-49..INV-56, INV-61: the re-buy warning - the draw
-                                  # calendar against real history in BOTH
-                                  # directions, that an EXPIRED ticket is never
-                                  # warned about, and that a notice is said once
-                                  # and names nothing but game, date and count;
-                                  # --break/--list like verify_page
+python3 tools/verify_expiry.py    # INV-49..INV-56, INV-61, INV-64: the re-buy
+                                  # warning - the draw calendar against real
+                                  # history in BOTH directions, that an EXPIRED
+                                  # ticket is never warned about, that a notice
+                                  # is said once and names nothing but game,
+                                  # date and count, and that dates are SAST
+                                  # whatever $TZ says; --break/--list like
+                                  # verify_page
 python3 tools/verify_watch.py     # INV-32..INV-39: the cable-free SMS path writes
                                   # what adb would, never twice, and its child is
                                   # spawned, observed and reaped; two watchers
@@ -366,6 +368,13 @@ backfill.py   (scraped archive, FIRST_YEAR on, no issue) ┴─ history.py ─�
   the same way, so INV-49 checks it against
   observed history in **both** directions — a one-directional check passes a
   *removed* draw day forever.
+- **Every date is South African time, read through `clock.py`** (LOTTO-0066,
+  INV-64): a fixed UTC+2, because SAST has no daylight saving, returned naive
+  because `HANDOVER` and every draw date are naive. **Never call
+  `date.today()`, `datetime.now()` or `fromtimestamp()` directly** — each
+  reads the machine's own zone, which put a draw on the wrong day on any
+  machine not set to SAST. `expiry.py` still takes `today` from its caller
+  (INV-50); the caller gets it from `clock.today()`.
 - **`paying_combinations()` raises** rather than returning `{}` when a pool has
   no recent draw. An empty set would score the whole pool as losses with no
   diagnostic.

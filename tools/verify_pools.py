@@ -36,6 +36,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import check  # noqa: E402
+import clock  # noqa: E402
 from check import uncheckable_report  # noqa: E402
 from history import all_draws  # noqa: E402
 from tickets import GAME_MAP, load  # noqa: E402
@@ -94,7 +95,7 @@ def dump_facts():
         )
         ref = re.search(r"Ref:(VAS\d+)", body)
         if head and ref:
-            bought = datetime.fromtimestamp(int(m.group(2)) / 1000)
+            bought = clock.from_ms(int(m.group(2)))
             out[ref.group(1)] = (head.group(1).strip().lower(), bought)
     return out
 

@@ -226,12 +226,14 @@ epoch**, and currently discards it — so `load()` passes it to `parse()` and
 `Ticket` gains `bought`:
 
 ```text
-bought = datetime.fromtimestamp(int(ms) / 1000)
+bought = clock.from_ms(int(ms))
 ```
 
-**Local time on both sides of the comparison.** `fromtimestamp()` yields local
-time (SAST, UTC+2) and `HANDOVER` is a naive local `datetime`, so the two are in
-the same frame. Using `utcfromtimestamp()` instead would put a ticket bought
+**SAST on both sides of the comparison.** `clock.from_ms()` yields naive SAST
+(UTC+2) and `HANDOVER` is a naive SAST `datetime`, so the two are in the same
+frame. Amended 2026-09-25 (LOTTO-0066): this read `datetime.fromtimestamp()`,
+which yields the MACHINE's zone and was right only while the machine was on
+SAST; LOTTO-0034 INV-64 now checks it under foreign zones. Using `utcfromtimestamp()` instead would put a ticket bought
 between 00:00 and 02:00 SAST on 2026-06-01 in the wrong era — the single case
 this field exists to get right. On the current dump both readings agree exactly
 (558 resolved either way, 0 tickets where the two eras differ), so this is a

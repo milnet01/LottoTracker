@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""LOTTO-0034 INV-49..INV-56, LOTTO-0007(r) INV-61: the re-buy warning, from
-the calendar alone.
+"""LOTTO-0034 INV-49..INV-56, LOTTO-0007(r) INV-61, LOTTO-0066 INV-64: the
+re-buy warning, from the calendar alone, in South African time.
 
-    python3 tools/verify_expiry.py                       # all nine
+    python3 tools/verify_expiry.py                       # every case
     python3 tools/verify_expiry.py --list
     python3 tools/verify_expiry.py --break no_lower_bound   # RED-TEST: must FAIL
 
@@ -10,8 +10,8 @@ This item is greenfield, so there was no pre-fix code to red-test against.
 `--break` is what makes "every case observed failing" reproducible rather than
 a one-off hand edit, exactly as CLAUDE.md records for verify_page.py.
 
-IT GOES IN local-CI.sh's DATA-DEPENDENT LANE, and it has no weak mode. Three of
-the nine cases need real data and not the same data:
+IT GOES IN local-CI.sh's DATA-DEPENDENT LANE, and it has no weak mode. Three
+cases need real data and not the same data:
 
     calendar_matches_history    the merged draw record, via history.all_draws()
     calendar_matches_real_draws the merged draw record AND lotto_sms_raw.txt
@@ -47,13 +47,15 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import clock  # noqa: E402
 import expiry  # noqa: E402
 import supervise  # noqa: E402
 from history import all_draws, covered  # noqa: E402
-from tickets import Ticket, load  # noqa: E402
+from tickets import HANDOVER, Ticket, load  # noqa: E402
 
 SENTINEL = "VAS00000000000"
 SECOND_REF = "second-ticket"  # deliberately NOT reference-shaped (CLAUDE.md)
@@ -421,6 +423,65 @@ def draws_left_today_boundary():
     return f"1 on the final draw day, 0 the day after, across {', '.join(GAMES)}"
 
 
+# 2026-06-01 00:30 SAST is 2026-05-31 22:30 UTC: the first half-hour of the new
+# era, and still the old era's date anywhere west of UTC+2.
+HANDOVER_PLUS_30_MS = 1780266600000
+# The two extremes of the zone range, with their UTC offsets in seconds. SAST
+# is 14 hours ahead of the first and 12 behind the second, so at EVERY hour of
+# the day at least one of them is on a different date from SAST - which is
+# what lets the "today" half fail whenever the case runs. Zones nearer SAST
+# (measured: New York, UTC, Tokyo at 12:09 UTC) share its date for most of the
+# day and left a local-zone today() green.
+FOREIGN_ZONES = (("Etc/GMT+12", -12 * 3600), ("Pacific/Kiritimati", 14 * 3600))
+
+
+def clock_is_sast_anywhere():
+    """INV-64: SMS timestamps and "today" are South African whatever $TZ says.
+
+    LOTTO-0066. Every date used to be the machine's local one, so the calendar
+    was right exactly while the machine was on SAST. The case sets $TZ to zones
+    either side of SAST and one on it, and asserts the same wall-clock answer
+    each time: a ticket bought half an hour into handover day is in the new
+    era, and today is the SAST date. FOREIGN_ZONES says why those two zones.
+
+    Each zone is confirmed to have TAKEN before anything is asserted: an
+    unknown $TZ name falls back to UTC in silence, and a case running in the
+    wrong zone proves nothing while reading as a pass.
+    """
+    saved = os.environ.get("TZ")
+    try:
+        for zone, offset in FOREIGN_ZONES:
+            os.environ["TZ"] = zone
+            time.tzset()
+            assert time.localtime().tm_gmtoff == offset, (
+                f"TZ={zone} did not take (offset {time.localtime().tm_gmtoff}s); "
+                f"is the tz database installed?"
+            )
+            bought = clock.from_ms(HANDOVER_PLUS_30_MS)
+            assert bought == datetime.datetime(2026, 6, 1, 0, 30), (
+                f"TZ={zone}: a handover-day SMS reads as {bought}, not 00:30 SAST"
+            )
+            assert bought >= HANDOVER, f"TZ={zone}: handover-day ticket in the old era"
+            want = (datetime.datetime.now(datetime.timezone.utc)
+                    + datetime.timedelta(hours=2)).date()
+            got = clock.today()
+            # A run straddling SAST midnight can see the day change between the
+            # two reads; re-read once before calling it a failure.
+            if got != want:
+                want = (datetime.datetime.now(datetime.timezone.utc)
+                        + datetime.timedelta(hours=2)).date()
+                got = clock.today()
+            assert got == want, f"TZ={zone}: today is {got}, the SAST date is {want}"
+    finally:
+        if saved is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = saved
+        time.tzset()
+    return ("handover-day SMS and today both SAST under "
+            + ", ".join(z for z, _ in FOREIGN_ZONES))
+
+
 CASES = [
     ("calendar_matches_history", "INV-49", calendar_matches_history),
     ("expiry_is_pure", "INV-50", expiry_is_pure),
@@ -431,6 +492,7 @@ CASES = [
     ("state_file_is_pruned", "INV-55", state_file_is_pruned),
     ("unknown_game_is_loud", "INV-56", unknown_game_is_loud),
     ("draws_left_today_boundary", "INV-61", draws_left_today_boundary),
+    ("clock_is_sast_anywhere", "INV-64", clock_is_sast_anywhere),
 ]
 
 BREAKS = {
@@ -444,6 +506,7 @@ BREAKS = {
     "swallow_unknown_game": "unknown_game_is_loud",
     "notice_per_unknown_ticket": "unknown_game_is_loud",
     "today_boundary_off_by_one": "draws_left_today_boundary",
+    "clock_reads_local_zone": "clock_is_sast_anywhere",
 }
 
 
@@ -521,6 +584,10 @@ def _apply_break(name):
         # exact mutation LOTTO-0007(r) was filed against.
         expiry.draws_left = lambda g, s, n, t: sum(
             1 for d in real(g, s, n) if d > expiry._as_date(t))
+    elif name == "clock_reads_local_zone":
+        # The pre-LOTTO-0066 behaviour: the machine's own zone, whatever it is.
+        clock.from_ms = lambda ms: datetime.datetime.fromtimestamp(ms / 1000)
+        clock.today = datetime.date.today
     elif name == "notice_per_unknown_ticket":
         real = supervise.expiry_notices
 

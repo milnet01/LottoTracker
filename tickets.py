@@ -33,6 +33,8 @@ import re
 from datetime import datetime
 from itertools import combinations
 
+import clock
+
 
 MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
 
@@ -316,17 +318,18 @@ def load(path="lotto_sms_raw.txt"):
     with open(path, errors="replace") as fh:
         raw = fh.read()
     for _address, date_ms, body in rows(raw):
-        # Android's SMS timestamp, in milliseconds since the epoch. Local
-        # time on both sides of the era comparison: HANDOVER is a naive
-        # local datetime, and reading this as UTC would put a ticket bought
-        # between 00:00 and 02:00 SAST on handover day in the wrong era -
-        # the one case this field exists to get right.
+        # Android's SMS timestamp, in milliseconds since the epoch. SAST on
+        # both sides of the era comparison: HANDOVER is a naive SAST
+        # datetime, and reading this as UTC - or as the machine's own zone,
+        # which is what fromtimestamp() alone did - would put a ticket bought
+        # between 00:00 and 02:00 SAST on handover day in the wrong era, the
+        # one case this field exists to get right (clock.py, INV-64).
         # `date=(\d+)` is unbounded, so a skewed phone clock or a shifted
-        # KDE Connect struct can carry a value fromtimestamp() cannot
+        # KDE Connect struct can carry a value clock.from_ms() cannot
         # represent. Skipping the record keeps the other 557 tickets; letting
         # it raise loses all of them.
         try:
-            bought = datetime.fromtimestamp(date_ms / 1000)
+            bought = clock.from_ms(date_ms)
         except (ValueError, OverflowError, OSError):
             continue
         if t := parse(body, bought):
@@ -346,7 +349,7 @@ def load_payouts(path="lotto_sms_raw.txt"):
         raw = fh.read()
     for _address, date_ms, body in rows(raw):
         try:  # load()'s reason, same unbounded date field
-            paid = datetime.fromtimestamp(date_ms / 1000)
+            paid = clock.from_ms(date_ms)
         except (ValueError, OverflowError, OSError):
             continue
         if p := parse_payout(body, paid):

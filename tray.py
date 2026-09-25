@@ -13,7 +13,6 @@ Four details are copied from the user's existing stats tray
 rather than stylistic - see the comments at their sites.
 """
 
-import datetime
 import os
 import webbrowser
 
@@ -21,6 +20,7 @@ from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
+import clock
 import supervise
 import watch_sms  # for the dump's path only; nothing here imports dbus
 
@@ -223,7 +223,7 @@ class LottoTray(QSystemTrayIcon):
         This supplies today and displays strings, and holds nothing else. That
         split is what makes INV-52 to INV-56 reachable from a headless script.
         """
-        today = datetime.date.today()
+        today = clock.today()
         if today == self.expiry_checked_on:
             return
         self.expiry_checked_on = today

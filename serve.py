@@ -23,6 +23,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import clock
 import page
 
 # Module scope, not lazy inside refresh()'s work(): GET /status reads
@@ -240,7 +241,7 @@ def build_model():
         )
     wins = check.check(all_tickets)
     _lines, counts = check.uncheckable_report(all_tickets)
-    today = datetime.date.today()
+    today = clock.today()
 
     entries, spend_life, spend_cmp, unresolved_cents, unresolved_n = [], 0, 0, 0, 0
     won_by_entry = {}
@@ -455,7 +456,7 @@ class State:
             # BEFORE rebinding self.model - the diff is against the outgoing one.
             self.found = _compare(self.model, model)
             self.model = model
-            self.built = datetime.datetime.now().isoformat(timespec="seconds")
+            self.built = clock.now().isoformat(timespec="seconds")
             self.stale = False
             self.error = None
             self.building = False

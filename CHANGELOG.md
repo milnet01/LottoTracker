@@ -523,6 +523,14 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Dates are South African time whatever the computer's clock is set to** (LOTTO-0066)
+  Every date was the machine's local one, so on a machine set to another
+  zone a draw could read as the day before or after, and a ticket bought
+  just after midnight on handover day could land in the wrong era. The
+  new `clock.py` reads SMS timestamps and "today" as a fixed UTC+2 (South
+  Africa has no daylight saving). `tools/verify_expiry.py` checks it under
+  the two zones furthest from SAST (INV-64).
+
 - **Smaller test-suite fixes** (LOTTO-0074)
   The page tests no longer start a real results fetch in a child process, no longer leave thirteen temporary directories behind per run, and fail rather than pass silently when they cannot observe what they are measuring. The results-source check now distinguishes a stale archive from a renamed game, and fetches once per game instead of once per pool.
 

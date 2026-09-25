@@ -1178,7 +1178,7 @@ failure, whatever produced it.
   failure returns 500 — bodiless, per LOTTO-0014 §4.1 — and leaves the switch
   showing its true state, not the requested one.
 - **A prize expires while the page is open.** Expiry is computed against
-  `datetime.date.today()` at model-build time — day granularity, which is what
+  `clock.today()` (the SAST date, LOTTO-0066) at model-build time — day granularity, which is what
   makes "anything expiring today" coherent — so an open page can show a prize that
   has since lapsed — observed during this session, where the claimable line
   count and total both moved between two runs a few hours apart as a win

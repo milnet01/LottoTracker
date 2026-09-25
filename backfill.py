@@ -15,13 +15,14 @@ Ball roles come from the CSS class, not position:
     class="... powerball"   PowerBall
 """
 
-import datetime
 import json
 import os
 import re
 import time
 import urllib.error
 import urllib.request
+
+import clock
 
 BASE = "https://za.national-lottery.com"
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36"
@@ -100,7 +101,7 @@ def fetch(slug, year):
     # CURRENT year's is still growing, and every reader here treats a cached
     # page as authoritative for all time - so caching it freezes the archive at
     # whatever day it was first fetched, with nothing saying so.
-    if os.path.exists(path) and year < datetime.date.today().year:
+    if os.path.exists(path) and year < clock.today().year:
         with open(path, encoding="utf-8", errors="replace") as fh:
             return fh.read()
     req = urllib.request.Request(
@@ -163,7 +164,7 @@ FIRST_YEAR = 2022
 
 def build(years=None):
     if years is None:
-        years = range(FIRST_YEAR, datetime.date.today().year + 1)
+        years = range(FIRST_YEAR, clock.today().year + 1)
     archive, failed = {}, []
     for slug, (game, plus) in SLUGS.items():
         rows = {}
