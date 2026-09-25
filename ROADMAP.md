@@ -1983,6 +1983,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   for the handler class the breaks patch, and three narrow guards. None
   of the four tools is in local-CI.sh yet, so nothing stops them
   drifting.
+  (w) Seen 2026-09-25 while rendering demo screenshots: the page does
+  not pluralise. The uncheckable banner says "1 are in a pool no results
+  source carries" and the outstanding section says "Not checkable (1
+  entries)". And the per-period table's Spent and Won headers sit left
+  while their figures are right-aligned, so each figure lands under the
+  next column's heading. Presentation only; no figure is wrong.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
