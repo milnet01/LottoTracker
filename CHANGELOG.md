@@ -364,163 +364,6 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   §4.1 no longer claims "only lottery messages ever cross to the PC", which
   was never quite true and is now measurably not.
 
-### Security
-
-- **A documentation-only push ran no privacy check anywhere** (LOTTO-0050)
-  The gate skips itself when every changed file is documentation, and the
-  GitHub workflow ignored `.md` pushes to match. Between them, the one
-  kind of push whose subject IS prose ran no privacy check at all — in a
-  repository intended to be public that holds real message content, where
-  the rule is never to paste that content into code, docs or commit
-  messages, and where two leaks have already got past weaker checks.
-
-  A documentation-only push now runs the privacy check, at full strength,
-  before skipping the rest. The workflow's `paths-ignore` is gone, so the
-  runner simply runs its lane — forty seconds, and Linux minutes are free
-  on a public repository. (This supersedes the two earlier entries saying
-  `paths-ignore` mirrors the local skip; they describe what was true when
-  they were written.)
-
-  Separately, the git hook that runs the gate threw away the information
-  git hands it about what is actually being pushed, and the gate fell back
-  to asking about the current branch's upstream instead — a different
-  question with a different answer. Pushing one branch while standing on
-  another could skip the gate entirely. The hook now passes the real
-  ranges through.
-
-- **A hostile web page could have read your tickets through the local server** (LOTTO-0050)
-  The page runs on your own machine and refuses any request that does not
-  come from your own machine — that check is the entire defence. It could
-  be walked past.
-
-  Every refusal answered without reading the rest of the request. Under
-  the keep-alive rules the server speaks, whatever was left unread got
-  read as the START OF THE NEXT REQUEST on the same connection. So a
-  malicious page in your browser could send a refused request whose
-  leftover text spelled out a second request claiming to come from your
-  machine — and the server would answer that one in full: the whole page,
-  your tickets, and the token that authorises changes.
-
-  The server now hangs up whenever it answers without reading the
-  request. Reproduced end to end first, then confirmed closed.
-
-  Two related holes went with it. A request using any method other than
-  GET or POST skipped the origin check completely and got a reply from
-  Python's own error handler carrying none of the security headers — and
-  HEAD is something any web page can send. And the read timeout meant to
-  stop a client tying up the server forever was set on the wrong object
-  and did nothing at all; the comment beside it described the exact attack
-  it was not preventing.
-
-- **The CI workflow runs against reviewed code, with the least token it needs** (LOTTO-0039)
-  Three hardening fixes to `.github/workflows/ci.yml`, from a whole-tree
-  `check-code` sweep.
-
-  The two GitHub actions were pinned to `@v7`. A tag is mutable: whoever
-  publishes it can point it at different code after the line was read and
-  approved, and the workflow would pick that up silently on the next run.
-  Both now name the exact commit `v7` resolved to on 2026-08-31 —
-  `actions/checkout` v7.0.1 and `actions/setup-python` v7.0.0 — with the
-  version kept beside each as a comment, so the readable half is still
-  there and moves with the pin.
-
-  The job declared no permissions, so the token GitHub hands it took the
-  repository-wide default. It is now `contents: read`. The gate reads the
-  repository, runs the tests and stops; it pushes no commit, opens no
-  issue and uploads nothing, so nothing wider was ever used. Saying so
-  explicitly also stops a job added later inheriting more by accident.
-
-  And checkout leaves its credentials in `.git/config` unless told not
-  to, which is the thing that turns a later artifact upload into a
-  credential leak. Nothing after that step needs the token, so
-  `persist-credentials: false`.
-
-  None of this changes what the gate checks or what a green tick means.
-  `./local-CI.sh` is green across all twelve checks, both lanes, with the
-  privacy check at full strength.
-
-- ****A PyQt import into the server could pass the "no Qt" check** (LOTTO-0017)**
-  INV-19 says `serve.py` and `supervise.py` pull in no Qt at all — that is what
-  keeps the page servable with no desktop. Its check looked for the name
-  `PySide`, or a top-level package spelled exactly `Qt`, and `PyQt6.QtCore` is
-  neither: an import of it passed a check whose invariant reads "no Qt". PyQt6
-  is installed on this machine (6.10.2), so the wrong binding was one habit away.
-  The predicate now carries a third arm, `Qt|PyQt\d*` on the top-level package.
-  Observed failing before it was fixed, as the project requires: the new
-  `--break pyqt_import` appends a real `import PyQt6.QtCore` to `serve.py`, and
-  the case reported PASS before the widening and FAIL after. Thirty-one breaks
-  now, all red; 17/17 cases green.
-
-- **The local page's HTTP surface and security boundary** (LOTTO-0014)
-  Four routes and nothing else. An exact, lowercased `Host` allowlist answering
-  421 otherwise — a `127.0.0.1` bind stops the network but not the user's own
-  browser being aimed at the port by a hostile page, which is CVE-2026-46611
-  (Glances) exactly. A per-run token in an `X-Lotto-Token` header on both write
-  routes, compared with `secrets.compare_digest`, reaching the tray through the
-  child's environment rather than argv, which `ps` exposes. `X-Frame-Options:
-  DENY` and `frame-ancestors 'none'` on every response including the 421s,
-  without which the token guards a forged request but not a real one clicked
-  through an invisible overlay. No `Access-Control-Allow-*` header ever, on any
-  route. Nothing request-derived reaches a response header or a written file:
-  header values come from a fixed table, the access log is silenced because it
-  writes the request line to stderr, and the `Server` header is overridden
-  because the default names both the server and the interpreter version.
-  Bounded body reads (4 KiB, then 413) and a socket timeout, because reading
-  exactly `Content-Length` bytes hangs just as completely when a client declares
-  4000 and sends 1.
-
-- **`tools/verify_page.py` — ten cases, INV-12 to INV-21** (LOTTO-0002/0013/0014)
-  Joins the four existing checks; exit code is the signal. It needs no network
-  and no real data: every case runs with both `$HOME` and `$XDG_CONFIG_HOME`
-  redirected and tickets built from the `VAS00000000000` sentinel.
-  Every case was observed **failing** before its invariant was accepted. These
-  items are greenfield, so there was no pre-fix code to red-test against; the
-  script carries a `--break <name>` flag that applies one deliberate defect and
-  asserts the named case goes red. Thirteen breaks, all thirteen red.
-  One of them caught a defect in a *case* rather than in the code, which is the
-  whole argument for the practice: rendering an unscorable entry's amount as an
-  em-dash did **not** turn INV-15 red, because the assertion compared raw markup
-  (so `&mdash;` never equalled `—`) and had explicitly excluded the empty string
-  from its forbidden set. Both are exactly the renderings the cardinal rule
-  forbids, and the check could not see either. Fixed, then re-verified red.
-
-- **Read lottery ticket SMSes off an Android phone** (LOTTO-0001)
-  Two routes: `adb` over USB for bulk history, filtering on the device so only
-  lottery messages are copied; and KDE Connect over Wi-Fi via
-  `find_lotto_sms.py` for new tickets.
-- **Parse Standard Bank ticket confirmations from both SMS eras** (LOTTO-0001)
-  The bank changed its wording when Sizekhaya replaced Ithuba as licence
-  holder on 2026-06-01. `tickets.py` reads both. 558 tickets parsed from
-  messages dating back to 2022-11-09.
-- **Fetch draw results from the operator's own public feed** (LOTTO-0001)
-  `results.py` calls the endpoints the official results page itself uses. No
-  API key, no registration, no cost.
-- **Backfill results from before the operator handover** (LOTTO-0001)
-  The official feed starts at 2026-06-01. `backfill.py` scrapes earlier draws
-  and per-draw payout tables, cached so re-runs are free.
-- **Score every ticket and price each win** (LOTTO-0001)
-  `check.py` reports what is still claimable and when each prize expires,
-  reading prize divisions from the source rather than hardcoding them. A
-  ticket that nothing can score — one predating all draw data, or in a pool no
-  source publishes — is reported as uncheckable, never scored against another
-  game's draws and never counted as a loss.
-- **Three contract checks** (LOTTO-0001)
-  `tools/verify_sources.py` confirms the two results sources agree wherever
-  they overlap; `tools/verify_coverage.py` confirms every ticket is scored
-  over the right draws and that none were silently dropped in parsing;
-  `tools/verify_privacy.py` confirms no real message content is tracked,
-  comparing against the dump itself rather than a pattern.
-
-- **Record what each ticket cost** (LOTTO-0008)
-  `Ticket.cost` is the total the SMS charged for the whole ticket — every
-  board, every draw, every tier. The same figure is what derives the entered
-  pools, which is why the two were specified together.
-- **A fourth contract check** (LOTTO-0009)
-  `tools/verify_pools.py` asserts that every ticket's price resolves to real
-  tiers and that a ticket checkable in one pool is never reported as wholly
-  uncheckable. It transcribes the price table independently rather than
-  importing the derivation it is testing.
-
 ### Fixed
 
 - **Dates are South African time whatever the computer's clock is set to** (LOTTO-0066)
@@ -984,6 +827,160 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- **A documentation-only push ran no privacy check anywhere** (LOTTO-0050)
+  The gate skips itself when every changed file is documentation, and the
+  GitHub workflow ignored `.md` pushes to match. Between them, the one
+  kind of push whose subject IS prose ran no privacy check at all — in a
+  repository intended to be public that holds real message content, where
+  the rule is never to paste that content into code, docs or commit
+  messages, and where two leaks have already got past weaker checks.
+
+  A documentation-only push now runs the privacy check, at full strength,
+  before skipping the rest. The workflow's `paths-ignore` is gone, so the
+  runner simply runs its lane — forty seconds, and Linux minutes are free
+  on a public repository. (This supersedes the two earlier entries saying
+  `paths-ignore` mirrors the local skip; they describe what was true when
+  they were written.)
+
+  Separately, the git hook that runs the gate threw away the information
+  git hands it about what is actually being pushed, and the gate fell back
+  to asking about the current branch's upstream instead — a different
+  question with a different answer. Pushing one branch while standing on
+  another could skip the gate entirely. The hook now passes the real
+  ranges through.
+
+- **A hostile web page could have read your tickets through the local server** (LOTTO-0050)
+  The page runs on your own machine and refuses any request that does not
+  come from your own machine — that check is the entire defence. It could
+  be walked past.
+
+  Every refusal answered without reading the rest of the request. Under
+  the keep-alive rules the server speaks, whatever was left unread got
+  read as the START OF THE NEXT REQUEST on the same connection. So a
+  malicious page in your browser could send a refused request whose
+  leftover text spelled out a second request claiming to come from your
+  machine — and the server would answer that one in full: the whole page,
+  your tickets, and the token that authorises changes.
+
+  The server now hangs up whenever it answers without reading the
+  request. Reproduced end to end first, then confirmed closed.
+
+  Two related holes went with it. A request using any method other than
+  GET or POST skipped the origin check completely and got a reply from
+  Python's own error handler carrying none of the security headers — and
+  HEAD is something any web page can send. And the read timeout meant to
+  stop a client tying up the server forever was set on the wrong object
+  and did nothing at all; the comment beside it described the exact attack
+  it was not preventing.
+
+- **The CI workflow runs against reviewed code, with the least token it needs** (LOTTO-0039)
+  Three hardening fixes to `.github/workflows/ci.yml`, from a whole-tree
+  `check-code` sweep.
+
+  The two GitHub actions were pinned to `@v7`. A tag is mutable: whoever
+  publishes it can point it at different code after the line was read and
+  approved, and the workflow would pick that up silently on the next run.
+  Both now name the exact commit `v7` resolved to on 2026-08-31 —
+  `actions/checkout` v7.0.1 and `actions/setup-python` v7.0.0 — with the
+  version kept beside each as a comment, so the readable half is still
+  there and moves with the pin.
+
+  The job declared no permissions, so the token GitHub hands it took the
+  repository-wide default. It is now `contents: read`. The gate reads the
+  repository, runs the tests and stops; it pushes no commit, opens no
+  issue and uploads nothing, so nothing wider was ever used. Saying so
+  explicitly also stops a job added later inheriting more by accident.
+
+  And checkout leaves its credentials in `.git/config` unless told not
+  to, which is the thing that turns a later artifact upload into a
+  credential leak. Nothing after that step needs the token, so
+  `persist-credentials: false`.
+
+  None of this changes what the gate checks or what a green tick means.
+  `./local-CI.sh` is green across all twelve checks, both lanes, with the
+  privacy check at full strength.
+
+- ****A PyQt import into the server could pass the "no Qt" check** (LOTTO-0017)**
+  INV-19 says `serve.py` and `supervise.py` pull in no Qt at all — that is what
+  keeps the page servable with no desktop. Its check looked for the name
+  `PySide`, or a top-level package spelled exactly `Qt`, and `PyQt6.QtCore` is
+  neither: an import of it passed a check whose invariant reads "no Qt". PyQt6
+  is installed on this machine (6.10.2), so the wrong binding was one habit away.
+  The predicate now carries a third arm, `Qt|PyQt\d*` on the top-level package.
+  Observed failing before it was fixed, as the project requires: the new
+  `--break pyqt_import` appends a real `import PyQt6.QtCore` to `serve.py`, and
+  the case reported PASS before the widening and FAIL after. Thirty-one breaks
+  now, all red; 17/17 cases green.
+
+- **The local page's HTTP surface and security boundary** (LOTTO-0014)
+  Four routes and nothing else. An exact, lowercased `Host` allowlist answering
+  421 otherwise — a `127.0.0.1` bind stops the network but not the user's own
+  browser being aimed at the port by a hostile page, which is CVE-2026-46611
+  (Glances) exactly. A per-run token in an `X-Lotto-Token` header on both write
+  routes, compared with `secrets.compare_digest`, reaching the tray through the
+  child's environment rather than argv, which `ps` exposes. `X-Frame-Options:
+  DENY` and `frame-ancestors 'none'` on every response including the 421s,
+  without which the token guards a forged request but not a real one clicked
+  through an invisible overlay. No `Access-Control-Allow-*` header ever, on any
+  route. Nothing request-derived reaches a response header or a written file:
+  header values come from a fixed table, the access log is silenced because it
+  writes the request line to stderr, and the `Server` header is overridden
+  because the default names both the server and the interpreter version.
+  Bounded body reads (4 KiB, then 413) and a socket timeout, because reading
+  exactly `Content-Length` bytes hangs just as completely when a client declares
+  4000 and sends 1.
+
+- **`tools/verify_page.py` — ten cases, INV-12 to INV-21** (LOTTO-0002/0013/0014)
+  Joins the four existing checks; exit code is the signal. It needs no network
+  and no real data: every case runs with both `$HOME` and `$XDG_CONFIG_HOME`
+  redirected and tickets built from the `VAS00000000000` sentinel.
+  Every case was observed **failing** before its invariant was accepted. These
+  items are greenfield, so there was no pre-fix code to red-test against; the
+  script carries a `--break <name>` flag that applies one deliberate defect and
+  asserts the named case goes red. Thirteen breaks, all thirteen red.
+  One of them caught a defect in a *case* rather than in the code, which is the
+  whole argument for the practice: rendering an unscorable entry's amount as an
+  em-dash did **not** turn INV-15 red, because the assertion compared raw markup
+  (so `&mdash;` never equalled `—`) and had explicitly excluded the empty string
+  from its forbidden set. Both are exactly the renderings the cardinal rule
+  forbids, and the check could not see either. Fixed, then re-verified red.
+
+- **Read lottery ticket SMSes off an Android phone** (LOTTO-0001)
+  Two routes: `adb` over USB for bulk history, filtering on the device so only
+  lottery messages are copied; and KDE Connect over Wi-Fi via
+  `find_lotto_sms.py` for new tickets.
+- **Parse Standard Bank ticket confirmations from both SMS eras** (LOTTO-0001)
+  The bank changed its wording when Sizekhaya replaced Ithuba as licence
+  holder on 2026-06-01. `tickets.py` reads both. 558 tickets parsed from
+  messages dating back to 2022-11-09.
+- **Fetch draw results from the operator's own public feed** (LOTTO-0001)
+  `results.py` calls the endpoints the official results page itself uses. No
+  API key, no registration, no cost.
+- **Backfill results from before the operator handover** (LOTTO-0001)
+  The official feed starts at 2026-06-01. `backfill.py` scrapes earlier draws
+  and per-draw payout tables, cached so re-runs are free.
+- **Score every ticket and price each win** (LOTTO-0001)
+  `check.py` reports what is still claimable and when each prize expires,
+  reading prize divisions from the source rather than hardcoding them. A
+  ticket that nothing can score — one predating all draw data, or in a pool no
+  source publishes — is reported as uncheckable, never scored against another
+  game's draws and never counted as a loss.
+- **Three contract checks** (LOTTO-0001)
+  `tools/verify_sources.py` confirms the two results sources agree wherever
+  they overlap; `tools/verify_coverage.py` confirms every ticket is scored
+  over the right draws and that none were silently dropped in parsing;
+  `tools/verify_privacy.py` confirms no real message content is tracked,
+  comparing against the dump itself rather than a pattern.
+
+- **Record what each ticket cost** (LOTTO-0008)
+  `Ticket.cost` is the total the SMS charged for the whole ticket — every
+  board, every draw, every tier. The same figure is what derives the entered
+  pools, which is why the two were specified together.
+- **A fourth contract check** (LOTTO-0009)
+  `tools/verify_pools.py` asserts that every ticket's price resolves to real
+  tiers and that a ticket checkable in one pool is never reported as wholly
+  uncheckable. It transcribes the price table independently rather than
+  importing the derivation it is testing.
 - **Exclude all SMS content from version control** (LOTTO-0001)
   The repository is public. `.gitignore` covers the message dump and results
   cache; INV-4 asserts nothing matching them is ever tracked.

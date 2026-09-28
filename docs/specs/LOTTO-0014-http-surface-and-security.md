@@ -348,10 +348,13 @@ same string before and after every interaction with the page.
 
 ## 5. Invariants
 
-This document holds INV-12, INV-13, INV-14 and INV-21. LOTTO-0001 holds INV-1
-to INV-6, LOTTO-0009 INV-7 to INV-11, LOTTO-0002 INV-15 to INV-18, and
-LOTTO-0013 INV-19 and INV-20. The numbers did not move in either split —
-CHANGELOG.md and sibling specs cite them unqualified.
+This document holds INV-12, INV-13, INV-14 and INV-21. The splits left INV-15
+to INV-18 in LOTTO-0002 and moved INV-19 and INV-20 to LOTTO-0013. The numbers
+did not move in either split — CHANGELOG.md and sibling specs cite them
+unqualified. Every other invariant belongs to the spec that defines it: search
+`docs/specs/` for the line starting `- **INV-<n>**`. This paragraph used to
+map all of them and went stale with each new spec (LOTTO-0007 (g)), so it now
+names only what the splits moved.
 
 - **INV-12** — A request whose `Host` header is not exactly `127.0.0.1:<port>`
   or `localhost:<port>` (lowercased, whole-string) is answered 421 and served no

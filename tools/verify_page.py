@@ -618,6 +618,39 @@ def uncheckable_not_a_loss():
     need("R0.00" in scorable_rows[0], "a scored-but-lost entry should show R0.00")
 
 
+def counts_read_as_english():
+    """LOTTO-0007 (w): one entry is "1 entry", and money headings sit over money.
+
+    Presentation only - no figure was ever wrong - but the primary user is
+    partially sighted and scans labels, so "1 are" and a heading over the
+    wrong column both cost more here than usual.
+    """
+    temp_home()
+    reason = "no results source carries this pool"
+    one = {"ref": SENTINEL, "game": "daily", "plus_flag": 1, "pool_id": 101,
+           "cost_cents": 300, "scorable": False, "reason": reason,
+           "won_cents": None, "draws_covered": None, "draws_remaining": None}
+    for n, want in (
+        (1, ("1 of 1 entry cannot", "1 is in a pool", "1 ticket wholly",
+             "Not checkable (1 entry)")),
+        (2, ("2 of 2 entries cannot", "2 are in a pool", "2 tickets wholly",
+             "Not checkable (2 entries)")),
+    ):
+        html = render_pure(fixture_model(
+            entries=[one] * n, wins=[],
+            uncheckable={"entries": n, "uncheckable": n, "too_old": 0,
+                         "no_pool": n, "wholly": n, "partly": 0},
+        ))
+        for phrase in want:
+            need(phrase in html, f"with {n} unscorable, {phrase!r} is missing")
+    table = re.search(r'<table id="periods">.*?</thead>', html, re.S)
+    if table is None:
+        raise Fail("the periods table is missing")
+    for head in ("Spent", "Won"):
+        need(f'<th class="money">{head}</th>' in table.group(0),
+             f"the {head} heading is not right-aligned over its figures")
+
+
 def render_pure(model, token="tok"):
     """Render with all_draws replaced by a double that RAISES.
 
@@ -2158,6 +2191,7 @@ CASES = [
     ("notification_carries_no_ticket_data", "INV-30", notification_carries_no_ticket_data),
     ("numbers_chosen_and_drawn", "INV-48", numbers_chosen_and_drawn),
     ("theme_is_dark_and_readable", "INV-62", theme_is_dark_and_readable),
+    ("counts_read_as_english", "0007(w)", counts_read_as_english),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -2198,6 +2232,7 @@ BREAKS = {
     "theme_default_light": "theme_is_dark_and_readable",
     "ball_without_colour": "theme_is_dark_and_readable",
     "theme_unreadable_palette": "theme_is_dark_and_readable",
+    "plural_ignored": "counts_read_as_english",
 }
 
 
@@ -2222,6 +2257,8 @@ def apply_render_breaks():
             return real(m)
 
         page._entries_section = only_scorable
+    if broken("plural_ignored"):
+        page._count = lambda n, one, many: f"{n:,} {many}"
     if broken("url_pushstate"):
         page.JS = page.JS.replace(
             'if(%s)poll();', 'history.pushState({},"","?game=lotto");if(%s)poll();'

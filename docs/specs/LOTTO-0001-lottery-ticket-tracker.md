@@ -866,9 +866,11 @@ run.
 ## 8. Alternatives considered (and rejected)
 
 - **ResultsZA API** — R149/month for 300 calls. Rejected: the user requires
-  zero cost. A weekly check of the three games costs roughly 30 result
-  lookups a month, comfortably inside the free official feed and not worth
-  R1,788/year.
+  zero cost. Recomputed 2026-09-28 from §10's request model (LOTTO-0007 (e)):
+  a weekly check is four `check.py` runs a month, each costing §10's thirteen
+  structural requests plus one per distinct win lookup — over 50 a month, not
+  the ~30 this line first said. The rejection stands on cost alone: the
+  official feed is free, and ResultsZA would charge R1,788/year.
 - **Microsoft Phone Link** for SMS — Windows only, no Linux client.
 - **Scraping the official results page** rather than its JSON API — the site
   is a JavaScript app, so the page HTML contains no results.

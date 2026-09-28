@@ -933,11 +933,16 @@ them unqualified.
 - **INV-15** — An entry nothing can score renders as "not checkable" with its
   reason, and never as a blank, a dash, a zero, or an omission; a ticket
   checkable in one pool and not another shows both facts.
-  *Test:* `tools/verify_page.py`, case `uncheckable_not_a_loss` — renders a
-  fixture of **two** synthetic tickets — built by running the *real* builder
-  over them under a doubled `all_draws` (§7), not by handing a finished model to
-  the renderer: one two-pool ticket with one pool scorable and one not (*partly*
-  uncheckable), and one whose every pool is unscorable (*wholly* uncheckable).
+  *Test:* `tools/verify_page.py`, case `uncheckable_not_a_loss` — hands the
+  renderer a hand-authored model (`fixture_model()`, through `render_pure()`)
+  carrying three synthetic entries: a Daily Lotto ticket's two pools, one
+  scorable and one not (*partly* uncheckable), and a Lotto entry whose pool is
+  unscorable (*wholly* uncheckable). It does **not** run `serve.build_model()`:
+  no case in that file does, and `render_pure()` installs an `all_draws` double
+  that raises, to prove `page.py` does no I/O. So this case sees renderer
+  defects only; a builder that dropped an unscorable entry before the model
+  was made would pass it (LOTTO-0007 (o), corrected 2026-09-28 — this clause
+  had claimed the real builder ran).
   **Both are needed, and the second is the one that matters most.** With only
   the partly-uncheckable ticket, a renderer that iterates tickets which produced
   at least one scorable entry — and then appends their remaining pools — passes
@@ -1232,33 +1237,27 @@ suite, and all three binding on all thirteen cases, LOTTO-0013's and LOTTO-0014'
   absent from. Read the seam the other way — as though constructing the server
   built the model — and both cases still run, still pass, and assert against
   the empty *no-build* page (§4.2) instead of the thing the invariant is about.
-  **`uncheckable_not_a_loss` is the exception, and deliberately so** — it runs
-  the *real* builder under a doubled `all_draws`, because its whole subject is a
-  derivation the builder performs (§4.5's `reason`), and a stub returning a
-  finished fixture would assert only that the fixture was rendered. It still
-  costs no network: the double is exactly what `all_draws` would have gone to
-  the network for. No case issues an outbound request, so a whole run costs well
+  **`uncheckable_not_a_loss` is NOT an exception**, though this paragraph said
+  it was until 2026-09-28 (LOTTO-0007 (o)): it renders a hand-authored model
+  through `render_pure()` and never runs the builder, so §4.5's `reason`
+  derivation is not what it checks — see INV-15's *Test* clause for the gap
+  that leaves. No case issues an outbound request, so a whole run costs well
   under a second against the 27 requests a real build makes. (`urllib` is not
   untouched — every case that drives a real socket speaks HTTP to it, and
   LOTTO-0013's `is_ready()` and `post()` use it too. The rule is that nothing
   leaves the loopback interface, not that the module is unimported.)
 
-  **INV-15 needs a second seam**, because its fixture requires `scorable()` to
-  differ between two pools of one ticket — a property of `history.all_draws()`,
-  not of the model. Its case injects `all_draws` with a double returning draws
-  for one pool and `[]` for the other, which is the `daily/0` vs `daily/1`
-  shape that makes 11 real tickets partly uncheckable.
-  **That double is swapped for a raising one before `render()` is called**, and
-  the swap lives in one place — the `render_pure()` helper every case that
+  **`render_pure()` installs a raising `all_draws` double before `render()` is
+  called.** (This paragraph described a second, returning double for INV-15's
+  build step; that case has no build step, so there is none.) The double
+  lives in one place — the `render_pure()` helper every case that
   renders `page.py` **directly** goes through — which is what makes §11's
   "`page.py` performs no I/O" row true. Scope it honestly: cases that render by
   driving the real server over HTTP (`failed_refresh_keeps_model`,
   `nothing_in_the_url`) call `render()` inside the server process, where no
   double is installed, so the guarantee those cases give is about the *response*
-  and not about `page.py`'s purity. The two doubles are not interchangeable and
-  the swap point matters: a raising double during the build kills every case,
-  and a returning one during the render lets a renderer that calls
-  `all_draws()` pass unnoticed.
+  and not about `page.py`'s purity. The double must RAISE: a returning one
+  would let a renderer that calls `all_draws()` pass unnoticed.
 - **It must not touch real data.** Cases run with **both `$HOME` and
   `$XDG_CONFIG_HOME`** pointed at a
   temporary directory and tickets built from the `VAS00000000000` sentinel, not

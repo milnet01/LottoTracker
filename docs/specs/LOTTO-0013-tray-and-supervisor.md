@@ -6,8 +6,9 @@ has happened, and reporting a failure as a success), gated over three loops, and
 then built: `supervise.py` carries `status()`, `refresh()`, the four outcome
 constants and `REFRESH_MESSAGE`, `tray.py::refresh()` shows what the wait
 returns, and all three of INV-23's breaks were observed red. (`verify_page.py`
-ran eleven cases and sixteen breaks then; it runs **thirteen and twenty-two today**,
-after the LOTTO-0024 amendment below.)
+ran eleven cases and sixteen breaks then, and thirteen and twenty-two on
+2026-08-03 after the LOTTO-0024 amendment below. Both are dated records; the
+current set is that file's `CASES` table and its `--list` breaks, not a number here.)
 
 **Amended again 2026-08-03 for ROADMAP LOTTO-0024** (running under an external
 process manager): §4.2 pins both port variables in the child, §4.5 states the

@@ -75,12 +75,17 @@ needs teaching. See [Adding your bank](#adding-your-bank).
 
 ## What it does
 
+- Warns you from the tray when a ticket is nearly out of draws, so you can buy
+  the next one
 - Pulls lottery SMSes off an Android phone — by USB, or over Wi-Fi
 - Parses ticket reference, numbers, game, start date, draw count and price
 - Fetches draw results, including for draws before the 2026 handover
 - Works out every draw you paid to enter, from the price, and checks them all
 - Scores every line, expands Multiplay entries correctly, and prices each win
-- Flags what is still claimable, and when each prize expires
+- Checks each win against the bank's own payout messages
+- Shows what you spent against what you won, by year or month
+- Shows it all on a local page in your browser, started from a tray icon
+- Shows when each prize's claim window closes
 
 ## Your messages stay yours
 

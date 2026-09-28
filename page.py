@@ -139,22 +139,33 @@ def _notice(model):
     return ""
 
 
+def _count(n, one, many):
+    """Say "1 entry" and "2 entries"; the page said "1 entries" (LOTTO-0007 (w))."""
+    return f"{n:,} {one if n == 1 else many}"
+
+
 def _uncheckable_banner(u):
     """Renders above the wins, never below, and is not collapsible (§4.5)."""
     if not u or not u.get("uncheckable"):
         return ""
     bits = []
     if u.get("too_old"):
-        bits.append(f"{u['too_old']:,} predate all draw data for their pool")
+        n = u["too_old"]
+        bits.append(f"{n:,} predate{'s' if n == 1 else ''} all draw data "
+                    "for their pool")
     if u.get("no_pool"):
-        bits.append(f"{u['no_pool']:,} are in a pool no results source carries")
+        n = u["no_pool"]
+        bits.append(f"{n:,} {'is' if n == 1 else 'are'} in a pool no results "
+                    "source carries")
     detail = "; ".join(bits)
     return (
         '<div class="notice"><strong>'
-        f"{u['uncheckable']:,} of {u['entries']:,} entries cannot be checked."
+        f"{u['uncheckable']:,} of {_count(u['entries'], 'entry', 'entries')} "
+        "cannot be checked."
         "</strong> They are <strong>not losses</strong> &mdash; nothing exists "
         f"to score them against. {_e(detail)}. This affects "
-        f"{u.get('wholly', 0):,} tickets wholly and {u.get('partly', 0):,} "
+        f"{_count(u.get('wholly', 0), 'ticket', 'tickets')} wholly and "
+        f"{u.get('partly', 0):,} "
         "partly; a partly-checkable ticket is still scored on its other pools."
         "</div>"
     )
@@ -251,7 +262,7 @@ def _outstanding_section(model):
         )
     if unchecked:
         parts.append(
-            f"<h3>Not checkable ({len(unchecked):,} entries)</h3>"
+            f"<h3>Not checkable ({_count(len(unchecked), 'entry', 'entries')})</h3>"
             '<p class="muted">Draws remaining is unknown for these: there is '
             "nothing to measure a window against. They are not losses.</p>"
             "<table><thead><tr><th>Ticket</th><th>Pool</th>"
@@ -383,8 +394,11 @@ def _periods_section(model):
         f'<optgroup label="Years">{"".join(opts["year"])}</optgroup>'
         f'<optgroup label="Months">{"".join(opts["month"])}</optgroup>'
         "</select></label>"
-        '<table id="periods"><thead><tr><th>Period</th><th>Spent</th>'
-        "<th>Won</th></tr></thead><tbody>"
+        '<table id="periods"><thead><tr><th>Period</th>'
+        # Right-aligned like the figures under them, or each figure sits
+        # under the NEXT column's heading (LOTTO-0007 (w)).
+        '<th class="money">Spent</th><th class="money">Won</th>'
+        "</tr></thead><tbody>"
         + "".join(rows)
         + f"</tbody></table>{residue}</section>"
     )

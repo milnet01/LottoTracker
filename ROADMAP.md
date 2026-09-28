@@ -2022,6 +2022,25 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   board is reported not checkable with a reason, never scored as one
   line. (s): close as a known limit; LOTTO-0034 s4.2 and s6 already
   carry it.
+  Resolved 2026-09-28. (b) backfill.py::month_number() reads full or
+  abbreviated months; an unreadable one drops that row with a SKIPPED
+  line. Checked by tools/verify_sources.py::parse_page_reads_months,
+  observed red (KeyError) on the old parser. (e) LOTTO-0001 s8
+  recomputed from s10: over 50 requests a month, not ~30; the rejection
+  stands on cost. (f) LOTTO-0013's dated counts now read as dated, and
+  point at CASES and --list for the current set. (g) LOTTO-0014 s5 names
+  only what the splits moved and says how to find any other invariant's
+  owner. (h) CHANGELOG [Unreleased] has one Security block, in canonical
+  order; the only line lost is the duplicate heading. (o) INV-15's Test
+  clause and LOTTO-0002 s7 now say the case renders a hand-authored
+  model and never runs the builder, and name the gap. (s) closed as a
+  known limit, per the user; LOTTO-0034 s4.2 and s6 carry it. (w) the
+  page says "1 entry" and "1 is", and the Spent and Won headings sit
+  over their figures; checked by verify_page.py::counts_read_as_english,
+  red under --break plural_ignored and on the old page.py. (x) README's
+  What it does list now leads with the re-buy warning and names the
+  page, periods and payout check. Still open: (d), (p), (q), which need
+  spec amendments first.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
