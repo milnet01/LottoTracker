@@ -87,7 +87,9 @@ needs teaching. See [Adding your bank](#adding-your-bank).
 This matters enough to be explicit, because the repository is public:
 
 - The USB path filters **on the phone**. Only messages whose text contains
-  `lotto` or `powerball` cross to the PC; everything else is never read. Note
+  `lotto`, `powerball` or `VAS00` (the reference on the bank's payout
+  messages) cross to the PC, minus the electricity-token messages that would
+  otherwise match; everything else is never read. Note
   this is a keyword filter, not a sender filter — a personal message
   mentioning the lottery would come across too, so glance at the dump before
   sharing it.
