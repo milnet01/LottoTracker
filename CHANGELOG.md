@@ -366,6 +366,16 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An abbreviated month in an archive link no longer stops the results download** (LOTTO-0007)
+  `backfill.py` now reads "sep" or "sept" as September. A month it cannot
+  read skips that one draw and says so, instead of crashing and losing the
+  whole page.
+
+- **The page counts in plain English, and money headings sit over their figures** (LOTTO-0007)
+  It said "1 entries" and "1 are in a pool"; it now says "1 entry" and
+  "1 is". In the spend-by-period table the Spent and Won headings now line up
+  with the numbers under them.
+
 - **Dates are South African time whatever the computer's clock is set to** (LOTTO-0066)
   Every date was the machine's local one, so on a machine set to another
   zone a draw could read as the day before or after, and a ticket bought
