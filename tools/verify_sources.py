@@ -11,6 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from backfill import parse_page  # noqa: E402
 from history import ARCHIVE, POOL_NAMES  # noqa: E402
 from results import draws  # noqa: E402
 
@@ -20,7 +21,30 @@ from results import draws  # noqa: E402
 EXPECTED_EMPTY = {("daily", 1)}
 
 
+def parse_page_reads_months():
+    """LOTTO-0001 §6: a month the scraper cannot read drops ONE row, loudly.
+
+    It raised KeyError on an abbreviated month and lost the whole page
+    (LOTTO-0007 (b)). Pure - no archive, no network - so it runs first.
+    """
+    row = ('<tr><a href="/lotto/results/{d}-{m}-2026">x</a>'
+           '<ul class="balls"><li class="ball">1</li><li class="ball">2</li>'
+           '<li class="ball">3</li><li class="ball">4</li>'
+           '<li class="ball">5</li><li class="ball">6</li>'
+           '<li class="ball bonus-ball">7</li></ul></tr>')
+    html = "".join(row.format(d=d, m=m) for d, m in (
+        (2, "september"), (5, "sep"), (9, "sept"), (12, "ma"), (16, "foo")))
+    got = sorted(parse_page(html, "lotto"))
+    want = ["2026-09-02", "2026-09-05", "2026-09-09"]
+    if got != want:
+        print(f"  MONTHS: parsed {got}, expected {want}")
+        return False
+    return True
+
+
 def main():
+    if not parse_page_reads_months():
+        return 1
     if not os.path.exists(ARCHIVE):
         sys.exit(f"{ARCHIVE} missing - run `python3 backfill.py` first")
     archive = json.load(open(ARCHIVE))

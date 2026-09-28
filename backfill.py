@@ -55,6 +55,18 @@ MONTHS = {
     )
 }
 
+
+def month_number(word):
+    """1-12 for a full or abbreviated month name ("sep", "sept"), else None.
+
+    An abbreviation must be at least three letters and a prefix of exactly one
+    month, so "ma" is refused rather than guessed as March or May.
+    """
+    word = word.lower()
+    hits = [i for name, i in MONTHS.items()
+            if len(word) >= 3 and name.startswith(word)]
+    return hits[0] if len(hits) == 1 else None
+
 # (main ball count, whether a special ball is expected), per site slug family.
 # parse_page() checks every row against this. Ball ROLES come from the CSS
 # class, and that is a free third-party site's markup: one appended class turns
@@ -125,7 +137,14 @@ def parse_page(html, slug=None):
         balls = re.search(r'<ul class="balls">(.*?)</ul>', row, re.S)
         if not (m and balls):
             continue
-        date = f"{m.group(3)}-{MONTHS[m.group(2)]:02d}-{int(m.group(1)):02d}"
+        month = month_number(m.group(2))
+        if month is None:
+            # Said out loud and dropped, SHAPE's rule below: an absent draw is
+            # safer than a crash that loses the whole page (LOTTO-0007 (b)).
+            print(f"  SKIPPED {slug} {m.group(0)}: month {m.group(2)!r} is "
+                  "not a month name. The site's link format has changed.")
+            continue
+        date = f"{m.group(3)}-{month:02d}-{int(m.group(1)):02d}"
         main, special = [], None
         for cls, val in re.findall(
             r'<li class="([^"]*)">\s*(\d+)\s*</li>', balls.group(1)
