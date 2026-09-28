@@ -1998,6 +1998,15 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   entries)". And the per-period table's Spent and Won headers sit left
   while their figures are right-aligned, so each figure lands under the
   next column's heading. Presentation only; no figure is wrong.
+  (x) Seen 2026-09-28 while checking the project hub page against the
+  README: README.md § What it does still leads with the old framing. Its list
+  ends on "Flags what is still claimable, and when each prize expires" and
+  omits the re-buy warning (LOTTO-0034), the local page and tray, spend
+  against winnings by period (LOTTO-0036) and the payout reconciliation
+  (LOTTO-0029). The README's opening and § How you would know it works are
+  already current; only that list lags. The hub site's copy was corrected the
+  same day (its commit 913c69e), so the README is now the staler of the two.
+  Documentation only.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
