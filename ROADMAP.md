@@ -403,6 +403,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Sequencing that follows — do this item, or close sign 5, before reaching for
   `cut-release`. Not a ruling, and no user decision was taken; recorded so the
   next session weighing "shouldn't we release?" does not re-derive it.
+  Note (2026-09-28): when the first release with a packaged Linux file is cut,
+  message the antsprojectshub.co.za website session (Ants_Projects_Hub_Website)
+  so its LottoTracker page can switch "Download source" to the release asset.
+  Asked for by that session on 2026-09-28; until then the page stays source-only.
   Source: user-request-2026-08-02.
 
 - ✅ [LOTTO-0016] **Run the CI locally before pushing, from the same script CI runs.**
