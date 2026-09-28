@@ -1272,6 +1272,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   weighing: label the current period "2026 so far" / "September 2026 so
   far", and decide whether a current month with nothing scored yet should
   appear with a reason rather than not appear.
+  Decided by the user 2026-09-28: label the current year and month "so
+  far" ("2026 so far", "September 2026 so far"), and show the current
+  month even before a draw in it is scored, with a note saying nothing
+  has been checked yet.
   **Layman:** The page cannot show you this month so far, and last year sits next to a part-year labelled as if it were whole.
   Kind: fix.
   Source: verify-delivery-2026-09-01 sign 4.
@@ -1451,6 +1455,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Still open: `docs/design.md`, `docs/decisions/`, and an audit config. Each
   is a separate decision, and the first two are authoring jobs that owe a
   `review-contract` gate of their own.
+  Decided by the user 2026-09-28: write all three - an audit config,
+  docs/design.md (gated as an ADR), and docs/decisions/ with the
+  load-bearing choices moved out of CLAUDE.md prose.
   **Layman:** A few standard files are missing, including a licence on a public repository.
   Kind: doc.
   Source: session-audit-2026-09-01 missing-documents sweep.
@@ -2007,6 +2014,14 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   already current; only that list lags. The hub site's copy was corrected the
   same day (its commit 913c69e), so the README is now the staler of the two.
   Documentation only.
+  Decided by the user 2026-09-28. (p): keep the tray alive; show ONE
+  notice that the warn state cannot be saved, then suppress re-buy
+  notices until restart. (q): give ndraws < 1 its own wording, carrying
+  no ticket data. (o): correct INV-15's prose to what the case does; do
+  not move a builder case into verify_page. (d): a >6-number non-Lotto
+  board is reported not checkable with a reason, never scored as one
+  line. (s): close as a known limit; LOTTO-0034 s4.2 and s6 already
+  carry it.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
@@ -3063,6 +3078,9 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Then decide whether a record file is owed by every sweep from now on, and
   write that down wherever the answer belongs - the gap recurs otherwise, and
   this item only closes the one instance.
+  Decided by the user 2026-09-28: every future review-code sweep leaves
+  a record file in docs/reviews/. Also decided: yamllint, typos, pyright
+  and mypy join ./local-CI.sh so they stay at zero.
   **Layman:** The biggest code review this project has run left no report - only to-do items - so nobody can check what it actually found.
   Kind: doc.
   Source: session-audit-2026-09-02 backlog tally.
