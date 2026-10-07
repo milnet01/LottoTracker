@@ -32,6 +32,14 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request cancels the run it supersedes
+# (local-gate.md § 9). Never on master: a cancelled run there would hide which
+# commit broke, and the local gate covers each commit anyway. The event is in
+# the key so a push and a pull request never cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -87,6 +95,11 @@ jobs:
         # verify_page.py's one subprocess case, so its version decides nothing
         # and pinning it would just age. Bumping the pin is
         # `check-dependencies`' question, with its own diff.
+        #
+        # No download cache, by measurement (local-gate.md § 9): on run
+        # 36410691754 this step took 7 s of a 36 s job. A cache can save at
+        # most those 7 s, less the time to restore PySide6's wheels, and adds
+        # a key to keep right. Revisit if this step grows.
         run: pip install --disable-pip-version-check 'ruff==0.16.4' PySide6
 
       - name: The CI lane
