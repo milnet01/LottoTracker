@@ -21,6 +21,22 @@
 # a second remote gated against the wrong range entirely - which is exactly
 # when "run the gate before anything leaves this machine" matters most.
 
+# git's stdin can be read only once, and two readers need it: the secret scan
+# and the range builder below. So read it into a variable and feed both.
+refs=$(cat)
+
+# The secret scan over the pushed commits (local-gate.md § 2.1). It runs on
+# EVERY push, the documentation-only ones included, because local-CI.sh's
+# docs skip must never be a route past it. The machine-wide hook owns the
+# scan; --secrets-only runs it and no gate. On a machine without that hook,
+# say so: a scan that did not run must not look like one that passed.
+SHARED_HOOK="${ANTS_GLOBAL_HOOKS:-$HOME/.claude/githooks}/pre-push"
+if [ -x "$SHARED_HOOK" ]; then
+    printf '%s\n' "$refs" | "$SHARED_HOOK" --secrets-only "$1" || exit 1
+else
+    echo "pre-push: NO SECRET SCAN - $SHARED_HOOK is absent" >&2
+fi
+
 ZERO=0000000000000000000000000000000000000000
 ranges=""
 while read -r _local_ref local_sha _remote_ref remote_sha; do
@@ -32,7 +48,9 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
     else
         ranges="$ranges $remote_sha..$local_sha"
     fi
-done
+done <<EOF_REFS
+$refs
+EOF_REFS
 
 export GATE_RANGES="${ranges# }"
 exec ./local-CI.sh
