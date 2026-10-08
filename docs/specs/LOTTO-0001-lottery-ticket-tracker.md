@@ -948,7 +948,7 @@ the figure is a lower bound until it is re-measured.
 | INV-1 | §5 command, `tickets.py::parse()` |
 | INV-2 | §5 command, `tickets.py::parse()` |
 | INV-3 | `tools/verify_sources.py` |
-| INV-4 | `tools/verify_privacy.py`, run by `local-CI.sh` and so by `.githooks/pre-push` — **partly advanced by LOTTO-0025**, which made it a pre-*push* gate; still **not a pre-commit hook**, so a commit can carry a leak that only the push refuses. Tracked by LOTTO-0004 |
+| INV-4 | `tools/verify_privacy.py`, run by `local-CI.sh` and so by `.githooks/pre-push` (LOTTO-0025), and with `--staged` by `.githooks/pre-commit` on the copy a commit records (LOTTO-0004). `tools/verify_hooks.py` proves the commit hook refuses a staged leak. Neither catches inferred identity — a figure that pins a ticket without quoting it |
 | INV-5 | §5 grep, production modules only — labels only; **nothing** catches a hardcoded prize *amount*, and nothing checks the `tools/` literals the glob deliberately excludes. It also cannot see a feed-side **rename**, and no widening fixes that: `api_label()` builds three of its four forms with f-strings and the fourth as the plain literal `"MATCH POWERBALL"`, so a pattern broad enough to see them fires on correct code — and since LOTTO-0027 the widened glob also matches the comments quoting the old labels. INV-26 is what catches a rename, and closes LOTTO-0007(c) in place of a wider glob |
 | INV-6 | `tools/verify_coverage.py` |
 | §4.3 special-ball-is-last | `tools/verify_sources.py` — catches a change on either source alone; blind only if both change the same way together |

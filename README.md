@@ -102,7 +102,11 @@ This matters enough to be explicit, because the repository is public:
   `python3 tools/verify_privacy.py`. It compares every tracked file against the
   dump's own text, and also runs identifying patterns — so it catches a real
   message pasted into a doc as an "example", not just a stray file. Without the
-  dump only the pattern half runs.
+  dump only the pattern half runs. Once `git config core.hooksPath .githooks`
+  is set, `.githooks/pre-commit` runs it on the staged files of every commit.
+  It catches copied content, not inferred identity: a figure that pins one
+  real ticket without quoting it, such as an exact win amount beside its
+  draw date, passes. That still needs a human read.
 - Nothing is uploaded anywhere. The only outbound requests are to public
   lottery results pages.
 - Sample ticket references in this repo are deliberately fake

@@ -1630,7 +1630,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: chore.
   Source: user-request-2026-08-03.
 
-- 📋 [LOTTO-0004] **Automated guard that no SMS content can be committed.**
+- ✅ [LOTTO-0004] **Automated guard that no SMS content can be committed.**
   Kind: security. Source: in-session-2026-08-01.
   Layman: make it impossible to accidentally publish your messages.
   `tools/verify_privacy.py` now does the checking, but someone must remember
@@ -1653,6 +1653,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   So the hook is worth building and must not be mistaken for completeness. Note
   it in the README as "catches copied content, not inferred identity", and keep
   the reviewer's eye on aggregates in any prose that quotes figures.
+  Resolved (2026-10-08): `.githooks/pre-commit` runs `verify_privacy.py
+  --staged`, reading the index rather than the working copy. Shown red first:
+  the old checker passed a staged leak that was edited out of the working copy.
+  `tools/verify_hooks.py` covers it, with a `--break` per case observed red.
+  `git commit -a` and `git commit <path>` were both checked refused. The README
+  now says the check catches copied content, not inferred identity.
   Source: in-session-2026-08-01.
 
 - ✅ [LOTTO-0012] **Retry the results API instead of dying on its first refusal.**

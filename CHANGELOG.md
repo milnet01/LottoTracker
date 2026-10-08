@@ -837,6 +837,14 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- **A commit carrying SMS content is now refused at the commit, not only at the push** (LOTTO-0004)
+  `.githooks/pre-commit` runs `tools/verify_privacy.py --staged`, which reads
+  the copy git is about to record rather than the working copy. A leak staged
+  and then edited out of the file no longer slips past.
+  `tools/verify_hooks.py` proves it in a throwaway repository and runs on the
+  public CI. It still catches copied content only, not a figure that
+  identifies a ticket without quoting it; the README now says so.
+
 - **A documentation-only push ran no privacy check anywhere** (LOTTO-0050)
   The gate skips itself when every changed file is documentation, and the
   GitHub workflow ignored `.md` pushes to match. Between them, the one

@@ -20,7 +20,7 @@
 # fails verify_sources, verify_coverage, verify_pools, verify_payouts,
 # verify_expiry and verify_periods on missing input, and no amount of YAML fixes
 # without publishing the private data. The rest - verify_page,
-# verify_watch and verify_privacy - are the CI lane.
+# verify_watch, verify_hooks and verify_privacy - are the CI lane.
 #
 # This paragraph said "three of the five" until 2026-08-20, and had said it
 # since before verify_payouts.py existed. It was found by the review-contract
@@ -161,6 +161,9 @@ run "verify_page.py"    python3 tools/verify_page.py
 # and no dump. Its one dump-dependent case says so and carries on when there is
 # none, which is why it is honest to run it where there never is one.
 run "verify_watch.py"   python3 tools/verify_watch.py
+# In the CI lane on purpose: LOTTO-0004's cases build a throwaway repository
+# and need no dump, no archive and none of this clone's history.
+run "verify_hooks.py"   python3 tools/verify_hooks.py
 # --require-content ONLY on the local lane. It makes verify_privacy.py exit
 # non-zero when the dump is absent, which is the strong mode this machine can
 # always run; a public runner never has the dump, so asking there would fail

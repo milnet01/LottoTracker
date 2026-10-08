@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#
+# pre-commit - refuse a commit whose STAGED files carry SMS content (LOTTO-0004).
+#
+# Enabled by the same once-per-clone setting as pre-push:
+#
+#     git config core.hooksPath .githooks
+#
+# --staged makes verify_privacy.py read what the commit records, git's index,
+# rather than the working copy. With the SMS dump present it compares content
+# and patterns; on a clone without the dump only the pattern half runs, which
+# still refuses a reference-shaped string.
+#
+# `git commit --no-verify` skips this. pre-push runs the check again, at full
+# strength, before anything leaves the machine.
+exec python3 tools/verify_privacy.py --staged

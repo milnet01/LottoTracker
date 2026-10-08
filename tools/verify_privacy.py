@@ -24,6 +24,11 @@ public CI lane does not, because a public runner never has the dump. The
 docstring claimed the opposite until 2026-09-02, which is the one place a
 maintainer would look to learn whether a green tick means anything.
 
+`--staged` reads each file's copy in git's index instead of its working copy.
+.githooks/pre-commit passes it, because the index is what a commit records
+(LOTTO-0004). Without it, a leak staged and then edited out of the working
+copy is committed past a clean run.
+
 Three things here exist because a run that checks NOTHING must not look like a
 clean one -- the failure this file is least able to afford:
 
@@ -97,8 +102,32 @@ def dead_patterns(dump):
     return [p.pattern for p in IDENTIFYING if not p.search(dump)]
 
 
+def read_text(rel, staged):
+    """The text of tracked file `rel`: its working copy, or with `staged`
+    the copy in git's index.
+
+    The index is what a commit records, and the working copy can differ from
+    it: stage a leak, then edit it out of the file without re-staging, and the
+    working copy is clean while the commit carries the leak. So
+    .githooks/pre-commit asks for the staged copy (LOTTO-0004). `git show`
+    honours $GIT_INDEX_FILE, which is how `git commit -a` and `git commit
+    <path>` hand a hook the temporary index they are about to commit.
+    """
+    if not staged:
+        with open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    out = subprocess.run(
+        ["git", "-C", ROOT, "show", f":{rel}"], capture_output=True
+    )
+    if out.returncode != 0:
+        # An OSError, so main() names and counts it like any unreadable file.
+        raise OSError(f"git show :{rel} failed (rc={out.returncode})")
+    return out.stdout.decode("utf-8", errors="replace")
+
+
 def main(argv=()):
     require_content = "--require-content" in argv
+    staged = "--staged" in argv
 
     dump = None
     if os.path.exists(DUMP):
@@ -121,10 +150,8 @@ def main(argv=()):
     leaks = 0
     unreadable = []
     for rel in files:
-        path = os.path.join(ROOT, rel)
         try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                text = fh.read()
+            text = read_text(rel, staged)
         except IsADirectoryError:
             # A submodule: git tracks the gitlink, not files under it.
             continue
@@ -154,7 +181,8 @@ def main(argv=()):
 
     mode = "content+pattern" if dump is not None else "pattern only (no dump present)"
     print(f"{len(files)} tracked files, {leaks} leak(s) [{mode}]"
-          + (f", {problems} problem(s)" if problems else ""))
+          + (f", {problems} problem(s)" if problems else "")
+          + (" - staged copies" if staged else ""))
     return 0 if leaks == 0 and problems == 0 else 1
 
 
