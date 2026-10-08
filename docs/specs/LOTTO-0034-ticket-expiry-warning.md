@@ -10,6 +10,9 @@ was amended 2026-08-31 (§4.2) when LOTTO-0006 widened the archive. Gated by
 two loops, three cold lanes each, 20 verified findings all fixed, 1 dismissed
 as immaterial. Reached the 2-loop cap for a spec, which is the normal exit —
 implementation is the third reviewer. See §12.
+**Amended 2026-10-08** for LOTTO-0007 (p) and (q): §3.5, §3.6, §4.1, §4.5,
+§4.7, INV-54, INV-65, INV-66, §6, §7 and §10. A `review-contract` gate is owed
+before they are built.
 **Kind:** feature.
 **Source:** ROADMAP LOTTO-0034 — the project's primary job, settled with the
 user during discovery on 2026-08-20 and recorded as sign of success 1 in
@@ -66,8 +69,8 @@ What exists today falls short in three separate ways.
 
 ## 3. Scope decisions (agreed with the user)
 
-All four were preference rather than deduction, taken with the user on
-2026-08-22.
+Items 1 to 4 were preference rather than deduction, taken with the user on
+2026-08-22. Items 5 and 6 were taken with the user on 2026-09-28.
 
 1. **The warning fires once a ticket has two draws or fewer left** — never at
    three, and never on a fixed number of days. On Lotto and PowerBall that is roughly four to seven
@@ -97,6 +100,15 @@ All four were preference rather than deduction, taken with the user on
    inside that process does the work is §4.7's, not this decision's. Putting the same figure
    on the page is LOTTO-0032's and LOTTO-0021's territory and is out of scope
    here (§9).
+
+5. **A warned-list that cannot be saved pauses re-buy warnings until the app
+   restarts.** The tray stays alive and shows one notice saying so. Swallowing
+   the failure silently would repeat notices, against item 2; letting it
+   propagate killed the tray. §4.5 holds the contract.
+
+6. **A ticket that runs for fewer than one draw gets its own notice**, naming
+   nothing from the ticket. It is a malformed ticket, not an unknown game, so
+   it must not say the draw calendar needs updating. §4.7 holds the wording.
 
 ## 4. Design
 
@@ -148,14 +160,15 @@ being swallowed.
 **There is a second precondition and a second exception: `ndraws` is at least
 1, and below that both functions raise `ValueError`.** Stated 2026-08-31
 because it was not, while `expiry_notices()` already caught
-`(KeyError, ValueError)` together — so a ticket with a bad `ndraws` produces the
+`(KeyError, ValueError)` together — so a ticket with a bad `ndraws` produced the
 *unrecognised-game* notice, telling the user the draw calendar needs updating
 when the real defect is a malformed ticket. An implementer building from the
 old text writes `except KeyError` and a bad `ndraws` kills the tray instead.
 Both routes are wrong in a way that matters, which is why the contract is named
-here rather than left to the caller. **Catching them together is what shipped
-and is what this documents; giving the `ValueError` its own wording is a
-deferred rough edge (LOTTO-0007), not a licence to widen the catch.**
+here rather than left to the caller. **So `expiry_notices()` tests
+`ndraws < 1` itself, before calling either function** (§3.6, §4.7, INV-66).
+The `(KeyError, ValueError)` catch stays for the calendar's own faults: a game
+absent from `DRAW_DAYS`, or one listed with no draw days.
 
 The table is hardcoded because no feed publishes a draw schedule. That is the
 same position `tickets.py::TIER_PRICES` is in, and it carries the same risk —
@@ -339,21 +352,23 @@ or malformed file yields the empty set rather than raising. The consequence is
 a repeated notice rather than a lost one, which is the right way round for a
 file the user may delete.
 
-**The WRITE side is not guarded, and that is stated rather than chosen.**
-`_write_warned()` calls `os.makedirs()` and `open(path, "w")` with no `try`, and
-`tray.py` calls `expiry_notices()` with none either — so an unwritable config
-directory, a read-only home or a full disk puts the exception in the tray's
-timer slot and kills the tray, which is the outcome §6 names the read-side
-catch to prevent. The asymmetry was unnoticed until 2026-08-31: only one of the
-two I/O paths in this function had its contract pinned.
+**A write failure pauses re-buy warnings until restart (§3.5).**
+`_write_warned()` can raise `OSError`: an unwritable config directory, a
+read-only home, a full disk. `expiry_notices()` catches it, because an
+exception there lands in the tray's timer slot and kills the tray. On the
+first failure in a process it:
 
-**What to do about it is a decision, not a default, and it has not been taken.**
-Swallowing the failure silently converts *say it once* into a repeated notice —
-the direction §3.2 records the user rejecting — while letting it propagate
-loses the tray. Neither is obviously right, so this documents what ships today
-(unguarded, propagates) and files the choice as a deferred rough edge
-(LOTTO-0007) rather than inventing a contract inside a review. §6 carries the
-failure mode.
+- discards this call's re-buy notices, because their records were not saved
+  and showing them now would repeat them on the next call;
+- returns `WARN_STATE_NOTICE` (§4.7) once;
+- sets the module-level flag `supervise._warn_state_unsaved`. Every later call
+  in the process then selects no ticket for a re-buy notice and attempts no
+  write.
+
+Defect notices are not re-buy notices, so the unrecognised-game and
+malformed-ticket notices (§4.7) still recur while paused. A restart clears
+the flag: a fixed directory resumes warnings, and one still broken says so
+once more. INV-65.
 
 The record is written **before** the notice is shown, not after. A crash
 between the two then costs a missed notice rather than a repeated one, which
@@ -493,6 +508,22 @@ This notice reports a defect rather than nudging a re-buy, §3.2's *say it
 once* is a decision about re-buy notices, and going quiet about a game the app
 cannot score is LOTTO-0031's failure exactly. INV-53 and INV-56 both say so.
 
+**A ticket with `ndraws < 1` gets `MALFORMED_TICKET_NOTICE`, never the
+unrecognised-game one** (§3.6). `expiry_notices()` tests `t.ndraws < 1` before
+calling the calendar, skips that ticket, and appends at most one such notice
+per call. It names nothing from any ticket, is not recorded, and recurs, for
+the reasons the unrecognised-game notice gives above. Of the form:
+
+> A ticket in your records lists no draws, so the app cannot say when it
+> runs out. Its text message may be damaged.
+
+**`WARN_STATE_NOTICE` is the paused notice** (§4.5). It also names nothing
+from any ticket. Of the form:
+
+> Re-buy warnings are paused until Lotto Tracker restarts: it could not save
+> which tickets it has already warned you about. Check that your settings
+> folder can be written to.
+
 ## 5. Invariants
 
 - **INV-49** — `expiry.DRAW_DAYS` agrees with observed draw history in both
@@ -570,7 +601,8 @@ cannot score is LOTTO-0031's failure exactly. INV-53 and INV-56 both say so.
 - **INV-54** — A notice contains the game's display name, the final draw date
   and the number of draws left, and no other field of the ticket: not the
   reference, the board numbers, the cost, the prize or the purchase date. The
-  unrecognised-game notice (§4.7) names no game at all.
+  unrecognised-game, malformed-ticket and paused notices (§4.5, §4.7) name
+  nothing from any ticket; INV-65's and INV-66's cases check the last two.
   *Test:* `tools/verify_expiry.py`, case `notice_names_nothing_else`.
   *Breaks when:* someone interpolates the `Ticket` itself, or adds the amount
   "so the user knows what to spend". This is the bound on §3.3's exception,
@@ -616,6 +648,28 @@ cannot score is LOTTO-0031's failure exactly. INV-53 and INV-56 both say so.
   clock_reads_local_zone`; each half was also broken alone and went red).
   LOTTO-0066: every date was the machine's local one until 2026-09-25.
 
+- **INV-65** — A state-file write failure never escapes `expiry_notices()`.
+  The first failure in a process returns exactly one `WARN_STATE_NOTICE` and
+  no re-buy notice. Every later call in that process returns no re-buy notice
+  and no second `WARN_STATE_NOTICE`, while an unrecognised-game notice still
+  recurs. The notice contains no field of any ticket.
+  *Test:* `tools/verify_expiry.py`, case `unsaved_state_pauses_warnings`. Its
+  `state_path` sits under a regular file, so the directory cannot be created
+  whoever runs it. It resets `supervise._warn_state_unsaved` before and after,
+  so the pause cannot leak into another case.
+  *Breaks when:* the catch is removed (`--break write_failure_escapes`), or the
+  flag is never set, so each later call fails again and repeats the notice
+  (`--break pause_forgotten`).
+
+- **INV-66** — A ticket with `ndraws < 1` yields exactly one
+  `MALFORMED_TICKET_NOTICE` per call, however many such tickets there are, and
+  never `UNKNOWN_GAME_NOTICE`. It is not recorded, so it recurs. The notice
+  contains no field of the ticket.
+  *Test:* `tools/verify_expiry.py`, case `malformed_ticket_is_named`.
+  *Breaks when:* the `ndraws` test is dropped and the calendar's `ValueError`
+  is left to the shared catch (`--break malformed_reads_as_unknown_game`). That
+  is a wrong diagnosis, the class LOTTO-0031 is cited against.
+
 ## 6. Failure modes
 
 - **The dump is missing or unreadable.** `tickets.load()` **raises**
@@ -638,11 +692,14 @@ cannot score is LOTTO-0031's failure exactly. INV-53 and INV-56 both say so.
   98% floor are what permit it rather than an oversight.
 
 - **The state file cannot be WRITTEN.** A read-only home, an unwritable
-  `$XDG_CONFIG_HOME`, a full disk. `_write_warned()` is unguarded, so the
-  exception propagates through `expiry_notices()` into the tray's timer slot
-  and the tray dies — the same outcome the read-side catch exists to prevent,
-  from the path nobody pinned. §4.5 records that the remedy is a decision
-  rather than a default, and it is filed against LOTTO-0007.
+  `$XDG_CONFIG_HOME`, a full disk. `expiry_notices()` catches the failure and
+  pauses re-buy warnings until restart, saying so once (§4.5, INV-65). The
+  cost: a ticket crossing the threshold while paused is warned about only after
+  a restart with the directory fixed, and not at all if it expires first.
+
+- **A ticket lists fewer than one draw.** It is skipped, and one notice per call
+  says a ticket is malformed (§4.7, INV-66). Not known to be reachable from
+  real dump data.
 
 - **A ticket bought in the gap left by a draw moved LATER** — and this is the
   live one, because such a move has already happened. The moved draw sits on a
@@ -709,6 +766,10 @@ for `verify_page.py`.
 | `notice_names_nothing_else` | INV-54 |
 | `state_file_is_pruned` | INV-55 |
 | `unknown_game_is_loud` | INV-56 |
+| `draws_left_today_boundary` | INV-61 |
+| `clock_is_sast_anywhere` | INV-64 |
+| `unsaved_state_pauses_warnings` | INV-65 |
+| `malformed_ticket_is_named` | INV-66 |
 
 **It goes in the data-dependent lane of `local-CI.sh`, not the CI lane.**
 `archive_results.json` is gitignored (`.gitignore` lists it under
@@ -728,9 +789,10 @@ most rot-prone cases on a public runner would be the degraded-mode trap
 this one does not get a weak mode.
 
 **Every case that calls `expiry_notices()` passes a temporary `state_path`,
-and there are five of them** — `expired_tickets_are_silent`,
-`notice_is_said_once`, `notice_names_nothing_else`, `state_file_is_pruned` and
-`unknown_game_is_loud`. **The isolation is the injected argument §4.7 provides,
+and there are seven of them** — `expired_tickets_are_silent`,
+`notice_is_said_once`, `notice_names_nothing_else`, `state_file_is_pruned`,
+`unknown_game_is_loud`, `unsaved_state_pauses_warnings` and
+`malformed_ticket_is_named`. **The isolation is the injected argument §4.7 provides,
 not an environment variable**: `_tmp_state()` returns a path under
 `tempfile.mkdtemp()`, and the verifier never sets `$XDG_CONFIG_HOME`.
 
@@ -809,10 +871,11 @@ would silently destroy the feature it exists to check, before every push.
 | INV-56 | `tools/verify_expiry.py::unknown_game_is_loud` |
 | INV-61 | `tools/verify_expiry.py::draws_left_today_boundary` |
 | INV-64 | `tools/verify_expiry.py::clock_is_sast_anywhere` |
+| INV-65 | `tools/verify_expiry.py::unsaved_state_pauses_warnings` |
+| INV-66 | `tools/verify_expiry.py::malformed_ticket_is_named` |
 | §4.6's date guard firing once a day — INV-53's `sync()` half | **nothing** — it lives in `tray.py::sync()`, which needs a `QSystemTrayIcon`; the project has no Qt-constructing test. The wording, the selection and the state file are all checkable because §4.7 puts them in `supervise.py`; the call site is not. Same exposure LOTTO-0003 INV-37 records. |
 | A draw day changing in the real world | **nothing in production** — INV-49 catches it only when the verifier is run. Accepted, as for `TIER_PRICES`. |
 | §4.5's write-before-notice ORDERING | **nothing** — inside `expiry_notices()` both orderings look identical to two successive calls, so INV-53 catches the write being removed and not its being moved. Observing it needs the process to die between the two statements. Held by the paragraph in §4.5. |
-| A state-file WRITE failure (§4.5) | **nothing** — `_write_warned()` is unguarded and `tray.py` adds no `try`, so it reaches the timer slot. Contract unresolved; filed against LOTTO-0007. |
 | `DISPLAY_NAME` covering every `DRAW_DAYS` key (§4.7) | **nothing** — INV-56 covers a game missing from `DRAW_DAYS`, which is the opposite direction. A game added to one table and not the other raises in the timer slot. |
 
 ## 11. Cross-doc impact
@@ -842,7 +905,8 @@ would silently destroy the feature it exists to check, before every push.
 - **`README.md`** — sign of success 1 moves from *partly done* to built. (The
   same standing line still calls sign 2 open, which LOTTO-0035 shipped on
   2026-08-20; that correction is not this item's to make.)
-- **`CHANGELOG.md`** — one entry citing LOTTO-0034.
+- **`CHANGELOG.md`** — one entry citing LOTTO-0034, and one citing LOTTO-0007
+  (p) and (q) for the 2026-10-08 amendment.
 - **`docs/specs/LOTTO-0003-live-sms-watch.md` §4.7** — states the
   no-ticket-data rule for `new_ticket_notice()`. Unchanged in force, but gains
   a cross-reference so the two rules are not read as one.

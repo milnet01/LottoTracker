@@ -308,6 +308,27 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   ants-projects-hub-website session, which is waiting to swap it in at
   antsprojectshub.co.za/p/lotto-tracker.html. The current picture shows
   the retiring "Claimable now" heading.
+  Decided by the user 2026-10-08, filling two gaps in the 2026-09-25
+  decision. A win whose reference the bank paid LESS than the app computed
+  (reconcile's `high`) keeps its claim deadline and reads "partly paid". When
+  no payout SMS parses at all (reconcile returns no records, INV-47), every
+  win reads "payment unknown" and keeps its deadline: missing data never reads
+  as paid.
+  Design drafted 2026-10-08, not yet written into a spec. check.py gains a
+  pure payment_status(wins, records) over reconcile()'s records: agree or low
+  is paid; high is partly paid; unpaid is unpaid; no records at all, or a ref
+  absent from them, is unknown. Only an unexpired win that is not paid shows a
+  deadline. Page section 1 "Claimable now" becomes "Not yet paid": those wins,
+  soonest deadline first, each labelled unpaid, partly paid (the bank paid R p
+  of R c on this ticket) or payment unknown. No summed claimable total. Empty
+  state: "No unexpired win is waiting on the bank". Model wins[] gain payment,
+  ref_paid_cents and ref_computed_cents; the builder runs load_payouts() and
+  reconcile(). check.py's terminal STILL CLAIMABLE line becomes a NOT YET PAID
+  list. Invariants: LOTTO-0001 INV-69 (the mapping; tools/verify_payouts.py case
+  with breaks short_paid_reads_paid and no_records_reads_paid) and LOTTO-0002
+  INV-70 (deadline only when not paid; tools/verify_page.py case with break
+  deadline_on_paid_win). Specs to amend: LOTTO-0001 s4.4 and s5; LOTTO-0002
+  title, s1, s2, s4.1, s4.5 item 1, s7, s11; README wording. LOTTO-0058 after.
   Source: user-correction-2026-08-02.
 
 - ✅ [LOTTO-0003] **Pick up new tickets automatically as the SMS arrives.**
@@ -1276,6 +1297,17 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   far" ("2026 so far", "September 2026 so far"), and show the current
   month even before a draw in it is scored, with a note saying nothing
   has been checked yet.
+  Design drafted 2026-10-08, not yet written into a spec. LOTTO-0036 INV-60
+  stands: no bucket for a period nothing scored. A new pure
+  serve.py::mark_current(periods, today) relabels the buckets keyed by today's
+  SAST year and month to "2026 so far" and "October 2026 so far", and touches
+  no other label. When no month bucket carries today's key it adds
+  periods["current_month"] = {key, label} and NO bucket. page._periods_section()
+  renders that as an option and a row saying nothing in that month has been
+  checked yet, with no money cell. Month only, per the decision; an unscored
+  current year gets nothing. LOTTO-0036 INV-71 (tools/verify_periods.py case,
+  break current_unlabelled) plus a tools/verify_page.py case with break
+  unscored_month_shows_zero. Specs: LOTTO-0036 s3, s4.5 to s4.7, s5, s7, s10.
   **Layman:** The page cannot show you this month so far, and last year sits next to a part-year labelled as if it were whole.
   Kind: fix.
   Source: verify-delivery-2026-09-01 sign 4.
@@ -2047,6 +2079,25 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   What it does list now leads with the re-buy warning and names the
   page, periods and payout check. Still open: (d), (p), (q), which need
   spec amendments first.
+  (d) design drafted 2026-10-08, not yet written into a spec. Oversized means
+  more numbers than one line of the game holds: PowerBall 6 counting the
+  PowerBall, Daily Lotto 5. That generalises the user's ">6" so a 6-number
+  Daily board is not scored as one line either; tell the user when presenting.
+  parse() records the labels in Ticket.oversized. history.scorable() returns
+  False for every entry of that ticket, because the price per line is unknown
+  so the whole ticket cannot be priced. check.uncheckable_report() gains a
+  count odd_board, decided BEFORE too_old and no_pool. serve.py's per-entry
+  reason moves into a pure serve.entry_reason() so a case can call it. The
+  page banner names the reason, and its sentence "nothing exists to score them
+  against" is reworded to hold for all three reasons. verify_coverage.py
+  recomputes scorability itself, so it applies the size rule too. LOTTO-0009
+  INV-7 stays loud on such a ticket. New CI-lane verifier tools/verify_boards.py
+  with breaks oversized_scored_as_line, oversized_misfiled, odd_board_unnamed.
+  Invariants: LOTTO-0001 INV-67 (parse, gate, report) and LOTTO-0002 INV-68
+  (reason and banner). Specs to amend: LOTTO-0001 s4.2, s5, s11; LOTTO-0009
+  s4.6 counts, INV-7, s9; LOTTO-0002 s4.1 model and s4.5.
+  (p) and (q): written into LOTTO-0034 2026-10-08 as INV-65 and INV-66; gate
+  owed, then build.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
@@ -3213,6 +3264,14 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   cannot silently stop imports. The check covers BOTH kinds, purchases and
   payouts, because a forged purchase adds a ticket never bought. Sender
   pinning makes a forgery visible, not impossible.
+  Plan 2026-10-08: a new spec docs/specs/LOTTO-0062-<topic>.md through
+  write-spec, gated before building. Contract: normalise the sender (uppercase,
+  strip non-alphanumerics); accept the one current sender name and the legacy
+  numeric prefix, both read off the dump; an unknown sender on a parsed
+  purchase or payout is kept and FLAGGED on the page and in check.py's output,
+  never in a desktop notification. rows() already returns the sender; load()
+  and load_payouts() must carry it. Run verify_privacy before committing any
+  sender value. Next free invariant is INV-72.
   **Layman:** Anyone who can text the phone could add a fake winnings message to the ledger.
   Kind: security.
   Source: in-session-2026-09-02, found while building LOTTO-0061's import filter.
