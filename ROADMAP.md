@@ -3208,6 +3208,11 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   forgery visible; it does not make one impossible. The real containment is
   still the existing rule that reconcile() never resolves a disagreement in the
   message's favour.
+  Decided by the user 2026-10-08: a lottery text from a sender not seen
+  before is KEPT and FLAGGED, never dropped, so a bank renaming its sender
+  cannot silently stop imports. The check covers BOTH kinds, purchases and
+  payouts, because a forged purchase adds a ticket never bought. Sender
+  pinning makes a forgery visible, not impossible.
   **Layman:** Anyone who can text the phone could add a fake winnings message to the ledger.
   Kind: security.
   Source: in-session-2026-09-02, found while building LOTTO-0061's import filter.
