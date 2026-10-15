@@ -1,0 +1,6 @@
+# Paths no tool should scan (LOTTO-0056). Each is untracked here.
+# Scraped results pages, regenerable by backfill.py; not this project's code.
+archive_cache/
+# Build-agent copies of the repository, made and removed during a session.
+.claude/worktrees/
+__pycache__/

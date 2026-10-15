@@ -1,0 +1,19 @@
+{
+  "project": "LottoTracker",
+  "scope_file": "tools/audit/scope.txt",
+  "tools": {
+    "ruff": {"command": "ruff", "flags": ["check", "."]},
+    "pyright": {"command": "pyright", "flags": []},
+    "mypy": {"command": "mypy", "flags": ["."]},
+    "yamllint": {"command": "yamllint", "flags": ["."]},
+    "typos": {"command": "typos", "flags": []},
+    "shellcheck": {"command": "shellcheck", "flags": ["local-CI.sh", ".githooks/pre-commit", ".githooks/pre-push"]},
+    "actionlint": {"command": "actionlint", "flags": []},
+    "zizmor": {"command": "zizmor", "flags": [".github/workflows/ci.yml"]}
+  },
+  "presets": {
+    "default": ["ruff", "pyright", "mypy", "yamllint", "typos", "shellcheck", "actionlint", "zizmor"],
+    "quick": ["ruff", "pyright", "shellcheck"],
+    "all": ["ruff", "pyright", "mypy", "yamllint", "typos", "shellcheck", "actionlint", "zizmor"]
+  }
+}
