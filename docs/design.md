@@ -61,6 +61,10 @@ are what keep that so.
 4. The page builder, `serve.py`.
 5. The tray, `tray.py`.
 
+Verification sits outside the order. A file under `tools/` may import any
+step, and nothing outside `tools/` imports from it. `tools/import_adb.py`
+imports nothing of the project.
+
 Within that order:
 
 - **`page.py` imports nothing of the project.** It is a pure function from a
@@ -126,7 +130,7 @@ sources LOTTO-0001 names: the operator's API and a third-party archive. The page
 
 ## 7. Trust boundaries
 
-- **The user's messages.** The dump and the scraped archive are real personal
+- **The user's messages.** The dump (`lotto_sms_raw.txt`) and `archive_cache/` are real personal
   data and never tracked by git; nothing real is pasted into code or docs
   (`CLAUDE.md` § Privacy, LOTTO-0001 INV-4).
 - **Who sent an SMS.** A sender ID is not authenticated. A record from a
