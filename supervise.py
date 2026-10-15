@@ -156,6 +156,25 @@ UNKNOWN_GAME_NOTICE = (
     "A ticket names a lottery game this app does not recognise, so it cannot "
     "say when that ticket runs out. The draw calendar needs updating."
 )
+# LOTTO-0007 (q), INV-66: a ticket with ndraws < 1 is damaged, not a new game,
+# so it must not send the user to update the draw calendar.
+MALFORMED_TICKET_NOTICE = (
+    "A ticket in your records lists no draws, so the app cannot say when it "
+    "runs out. Its text message may be damaged."
+)
+# LOTTO-0007 (p), INV-65: the warned-list could not be saved.
+WARN_STATE_NOTICE = (
+    "Re-buy warnings are paused until Lotto Tracker restarts: it could not "
+    "save which tickets it has already warned you about. Check that your "
+    "settings folder can be written to."
+)
+# The notices that report a fault. tray.py shows these with note()'s failure
+# icon, and asks this set rather than deciding which strings are faults itself.
+FAULT_NOTICES = frozenset({UNKNOWN_GAME_NOTICE, MALFORMED_TICKET_NOTICE,
+                           WARN_STATE_NOTICE})
+
+# Set by the first failed state-file write; cleared only by a restart (s4.5).
+_warn_state_unsaved = False
 
 
 # Explicit, not %a/%b - see expiry_notice().
@@ -277,6 +296,29 @@ def _write_warned(path, records):
     os.replace(tmp, path)
 
 
+def _save_or_pause(path, records):
+    """Write the warned-list, or pause re-buy notices if it cannot be written.
+
+    -> True when saved. On OSError - an unwritable config directory, a
+    read-only home, a full disk - it sets the pause flag and returns False
+    rather than raising: this runs in the tray's timer slot, where an exception
+    kills the tray (LOTTO-0034 s4.5, INV-65).
+    """
+    global _warn_state_unsaved
+    try:
+        _write_warned(path, records)
+    except OSError:
+        _warn_state_unsaved = True
+        return False
+    return True
+
+
+def _malformed(t):
+    """ndraws below 1: both calendar functions raise ValueError for it, and the
+    shared catch would call it an unknown game (INV-66)."""
+    return t.ndraws < 1
+
+
 def _qualifies(draws_left, ref, warned):
     """§4.4's test: is this ticket owed a re-buy notice right now?
 
@@ -292,7 +334,7 @@ def _qualifies(draws_left, ref, warned):
 def expiry_notices(today, tickets=None, state_path=None):
     """Every notice owed right now, and the state write that makes it once.
 
-    LOTTO-0034 §4.7; INV-52, INV-53, INV-55, INV-56.
+    LOTTO-0034 §4.7; INV-52, INV-53, INV-55, INV-56, INV-65, INV-66.
 
     This owns loading, selection and the state file; tray.py owns none of them
     and holds no decision, which is what makes those four invariants reachable
@@ -340,8 +382,14 @@ def expiry_notices(today, tickets=None, state_path=None):
     records = [r for r in on_disk if r["final"] >= cutoff]
     warned = {r["ref"] for r in records}
 
-    notices, unknown = [], False
+    # Paused by an earlier failed write: select nothing for a re-buy notice
+    # and attempt no write, until a restart clears the flag (s4.5).
+    paused = _warn_state_unsaved
+    notices, unknown, malformed = [], False, False
     for t in tickets:
+        if _malformed(t):
+            malformed = True
+            continue
         try:
             left = expiry.draws_left(t.game, t.start, t.ndraws, today)
         except (KeyError, ValueError):
@@ -350,7 +398,7 @@ def expiry_notices(today, tickets=None, state_path=None):
             # carry it - one per ticket would be a burst of hundreds.
             unknown = True
             continue
-        if not _qualifies(left, t.ref, warned):
+        if paused or not _qualifies(left, t.ref, warned):
             continue
         final = expiry.final_draw_date(t.game, t.start, t.ndraws)
         warned.add(t.ref)
@@ -359,9 +407,14 @@ def expiry_notices(today, tickets=None, state_path=None):
             expiry_notice(expiry.DISPLAY_NAME[t.game], final, left)
         )
 
-    if records != on_disk:
-        _write_warned(path, records)
+    if not paused and records != on_disk and not _save_or_pause(path, records):
+        # These records were not saved, so showing their notices now would
+        # repeat them on the next call. Said once instead.
+        notices = [WARN_STATE_NOTICE]
 
+    # Defect notices are not re-buy notices: they recur, paused or not.
+    if malformed:
+        notices.append(MALFORMED_TICKET_NOTICE)
     if unknown:
         # Deliberately NOT recorded, so it recurs every day until the table is
         # updated. Mechanically it cannot be: §4.5's record needs a `final` and

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""LOTTO-0034 INV-49..INV-56, LOTTO-0007(r) INV-61, LOTTO-0066 INV-64: the
-re-buy warning, from the calendar alone, in South African time.
+"""LOTTO-0034 INV-49..INV-56, LOTTO-0007(r) INV-61, LOTTO-0066 INV-64,
+LOTTO-0007(p)(q) INV-65 and INV-66: the re-buy warning, from the calendar
+alone, in South African time.
 
     python3 tools/verify_expiry.py                       # every case
     python3 tools/verify_expiry.py --list
@@ -28,9 +29,10 @@ verifier echoing real content puts it where verify_privacy.py cannot see it.
 The two constructed fixtures use the one sentinel reference and a name that is
 not reference-shaped at all.
 
-The FIVE cases that call expiry_notices() each pass a temporary state_path -
+The SEVEN cases that call expiry_notices() each pass a temporary state_path -
 expired_tickets_are_silent, notice_is_said_once, notice_names_nothing_else,
-state_file_is_pruned and unknown_game_is_loud. The isolation is that injected
+state_file_is_pruned, unknown_game_is_loud, unsaved_state_pauses_warnings and
+malformed_ticket_is_named. The isolation is that injected
 argument, never $XDG_CONFIG_HOME: _tmp_state() returns a path under
 tempfile.mkdtemp() and nothing here touches the environment.
 
@@ -71,7 +73,7 @@ def ticket(game="powerball", start=datetime.datetime(2026, 8, 1), ndraws=10,
                   60.0, [(0, 100)], start, True)
 
 
-_TEMP_DIRS = []  # drained in main()'s finally; 8 call sites
+_TEMP_DIRS = []  # drained by main() after the cases run
 
 
 def _tmp_state():
@@ -394,6 +396,74 @@ def unknown_game_is_loud():
     return "one notice for 5 unknown tickets, and it recurs"
 
 
+WARN_STATE_TEXT = (
+    "Re-buy warnings are paused until Lotto Tracker restarts: it could not "
+    "save which tickets it has already warned you about. Check that your "
+    "settings folder can be written to.")
+MALFORMED_TEXT = (
+    "A ticket in your records lists no draws, so the app cannot say when it "
+    "runs out. Its text message may be damaged.")
+
+
+def _unwritable_state():
+    """A state path whose directory cannot be created, whoever runs this.
+
+    It sits under a regular FILE, so makedirs() fails with NotADirectoryError
+    even as root - a read-only directory would not stop root.
+    """
+    d = os.path.dirname(_tmp_state())
+    blocker = os.path.join(d, "not-a-directory")
+    open(blocker, "w").close()
+    return os.path.join(blocker, "warned.json")
+
+
+def unsaved_state_pauses_warnings():
+    """INV-65 (LOTTO-0007 p): a failed write pauses re-buy notices, says so once.
+
+    The tray calls expiry_notices() from its timer slot, where an exception
+    kills it. The fixture holds a QUALIFYING ticket, so the write is actually
+    attempted (it runs only when the records change), beside an unknown-game
+    ticket, whose defect notice must keep recurring while paused.
+    """
+    supervise._warn_state_unsaved = False
+    try:
+        state = _unwritable_state()
+        tks = [ticket(start=datetime.datetime(2026, 8, 21), ndraws=2),
+               ticket(game="scratchcard", ref=SECOND_REF)]
+        first = supervise.expiry_notices(TODAY, tks, state)
+        assert first == [supervise.WARN_STATE_NOTICE, supervise.UNKNOWN_GAME_NOTICE], (
+            f"first failing call: {first!r}")
+        second = supervise.expiry_notices(TODAY, tks, state)
+        assert second == [supervise.UNKNOWN_GAME_NOTICE], (
+            f"a later call repeated the pause or warned anyway: {second!r}")
+        # Equality, for notice_names_nothing_else's reason: anything added fails.
+        assert supervise.WARN_STATE_NOTICE == WARN_STATE_TEXT, (
+            f"the paused notice is not the fixed sentence: {supervise.WARN_STATE_NOTICE!r}")
+        assert supervise.WARN_STATE_NOTICE in supervise.FAULT_NOTICES
+    finally:
+        supervise._warn_state_unsaved = False
+    return "paused once with no re-buy notice; the defect notice still recurs"
+
+
+def malformed_ticket_is_named():
+    """INV-66 (LOTTO-0007 q): ndraws < 1 is a malformed ticket, not a new game.
+
+    Telling the user the draw calendar needs updating would send them after the
+    wrong fault, which is the misdiagnosis LOTTO-0031 is cited against.
+    """
+    bad = [ticket(ndraws=0, ref=f"malformed-{i}") for i in range(3)]
+    state = _tmp_state()
+    first = supervise.expiry_notices(TODAY, bad, state)
+    assert first == [supervise.MALFORMED_TICKET_NOTICE], (
+        f"3 malformed tickets gave {first!r}")
+    second = supervise.expiry_notices(TODAY, bad, state)
+    assert second == first, "the malformed-ticket notice went quiet on repeat"
+    assert supervise.MALFORMED_TICKET_NOTICE == MALFORMED_TEXT, (
+        f"the malformed notice is not the fixed sentence: {supervise.MALFORMED_TICKET_NOTICE!r}")
+    assert supervise.MALFORMED_TICKET_NOTICE in supervise.FAULT_NOTICES
+    return "one notice for 3 malformed tickets, never the unknown-game one"
+
+
 def draws_left_today_boundary():
     """INV-61: draws_left is 1 on a ticket's own final draw day, 0 the day after.
 
@@ -493,6 +563,8 @@ CASES = [
     ("unknown_game_is_loud", "INV-56", unknown_game_is_loud),
     ("draws_left_today_boundary", "INV-61", draws_left_today_boundary),
     ("clock_is_sast_anywhere", "INV-64", clock_is_sast_anywhere),
+    ("unsaved_state_pauses_warnings", "INV-65", unsaved_state_pauses_warnings),
+    ("malformed_ticket_is_named", "INV-66", malformed_ticket_is_named),
 ]
 
 BREAKS = {
@@ -507,6 +579,9 @@ BREAKS = {
     "notice_per_unknown_ticket": "unknown_game_is_loud",
     "today_boundary_off_by_one": "draws_left_today_boundary",
     "clock_reads_local_zone": "clock_is_sast_anywhere",
+    "write_failure_escapes": "unsaved_state_pauses_warnings",
+    "pause_forgotten": "unsaved_state_pauses_warnings",
+    "malformed_reads_as_unknown_game": "malformed_ticket_is_named",
 }
 
 
@@ -531,10 +606,13 @@ ALSO_RED = {
     # `start` read as exclusive shifts every projected final draw date, so
     # every case that names one moves with it.
     "exclusive_start": ["notice_names_nothing_else", "draws_left_today_boundary"],
-    # With nothing ever recorded there is nothing to prune either.
-    "never_records": ["state_file_is_pruned"],
-    # A swallowed unknown game removes the notice the wording case inspects.
-    "swallow_unknown_game": ["notice_names_nothing_else"],
+    # With nothing ever recorded there is nothing to prune either - and no
+    # write is attempted, so INV-65's failing write never fails.
+    "never_records": ["state_file_is_pruned", "unsaved_state_pauses_warnings"],
+    # A swallowed unknown game removes the notice the wording case inspects,
+    # and the one INV-65 requires to keep recurring while paused.
+    "swallow_unknown_game": ["notice_names_nothing_else",
+                             "unsaved_state_pauses_warnings"],
 }
 
 
@@ -588,6 +666,25 @@ def _apply_break(name):
         # The pre-LOTTO-0066 behaviour: the machine's own zone, whatever it is.
         clock.from_ms = lambda ms: datetime.datetime.fromtimestamp(ms / 1000)
         clock.today = datetime.date.today
+    elif name == "write_failure_escapes":
+        # The catch removed: the OSError reaches the tray's timer slot.
+        def unguarded(path, records):
+            supervise._write_warned(path, records)
+            return True
+        supervise._save_or_pause = unguarded
+    elif name == "pause_forgotten":
+        # Caught but the flag never set, so every call fails and says it again.
+        def forgetful(path, records):
+            try:
+                supervise._write_warned(path, records)
+            except OSError:
+                return False
+            return True
+        supervise._save_or_pause = forgetful
+    elif name == "malformed_reads_as_unknown_game":
+        # The ndraws test dropped: the calendar's ValueError falls to the
+        # shared catch and reads as an unrecognised game.
+        supervise._malformed = lambda t: False
     elif name == "notice_per_unknown_ticket":
         real = supervise.expiry_notices
 
