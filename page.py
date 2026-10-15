@@ -139,6 +139,29 @@ def _notice(model):
     return ""
 
 
+def _senders_section(model):
+    """Records from a sender the bank is not known to use (LOTTO-0062 s4.4).
+
+    Rendered only when there is one: a heading over an empty list would read
+    as an alarm with nothing behind it (INV-75). Never in a notification -
+    that rule is CLAUDE.md's, and this is the page.
+    """
+    flagged = model.get("unknown_senders") or []
+    if not flagged:
+        return ""
+    rows = "".join(
+        f"<li>{_e(f['received'])} — {_e(f['kind'])} — {_e(f['ref'])} — "
+        f"from <code>{_e(f['sender'])}</code></li>"
+        for f in flagged
+    )
+    return (
+        '<div class="notice bad"><strong>From a sender not seen before</strong>'
+        f"<ul>{rows}</ul>These are still counted on this page. If one is the "
+        "bank, it has a new sender name; if not, the message was not from the "
+        "bank.</div>"
+    )
+
+
 def _count(n, one, many):
     """Say "1 entry" and "2 entries"; the page said "1 entries" (LOTTO-0007 (w))."""
     return f"{n:,} {one if n == 1 else many}"
@@ -812,6 +835,7 @@ def render(model, token):
         body = (
             f"<h1>{TITLE}</h1>"
             + _notice(model)
+            + _senders_section(model)
             + _uncheckable_banner(model.get("uncheckable"))
             + _wins_section(model)
             + _outstanding_section(model)

@@ -1,7 +1,11 @@
 <!-- ants-spec-format: 1 -->
 # LOTTO-0062 — Flag a lottery SMS from a sender not seen before
 
-**Status:** accepted (2026-10-15).
+**Status:** accepted (2026-10-15); **implemented and verified 2026-10-15** —
+`tools/verify_senders.py`'s four cases pass and each was observed failing
+under its own `--break` (five breaks). The live dump holds no record from an
+unknown sender. INV-77, which this spec's §9 points at, is LOTTO-0001's and
+is built with LOTTO-0011.
 **Kind:** security.
 **Source:** ROADMAP LOTTO-0062 (in-session-2026-09-02, found while building
 LOTTO-0061's import filter). The scope decisions in §3 were taken with the

@@ -274,6 +274,11 @@ def categories_partition():
         counts[r["category"]] = counts.get(r["category"], 0) + 1
     print("  " + "  ".join(f"{k} {v}" for k, v in sorted(counts.items())))
     print(f"  {len(recs)} records over a union of {len(union)} references")
+    # LOTTO-0062 s7: printed, never asserted - one forged SMS would otherwise
+    # block every push for good. A non-zero count means the page is flagging
+    # records; read them there, not here (no message content in a CI log).
+    flagged = check.unknown_senders(tk, payouts)
+    print(f"  {len(flagged)} records from a sender not seen before")
     assert len(seen) == len(set(seen)), "a reference appears in more than one record"
     assert set(seen) == union, (
         f"{len(union - set(seen))} references dropped and "

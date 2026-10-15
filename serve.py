@@ -240,6 +240,7 @@ def build_model():
             f"Refusing to render the merge (LOTTO-0002 s4.1)."
         )
     wins = check.check(all_tickets)
+    bank_paid = tickets.load_payouts(DUMP)
     _lines, counts = check.uncheckable_report(all_tickets)
     today = clock.today()
 
@@ -380,6 +381,9 @@ def build_model():
             "lifetime_cents": won_life,
             "unexpired_cents": won_live,
         },
+        # LOTTO-0062 s4.4: records from a sender the bank is not known to use.
+        # Still counted everywhere above; listed so a forgery is visible.
+        "unknown_senders": check.unknown_senders(all_tickets, bank_paid),
         "settings": _settings_snapshot(),
     }
 

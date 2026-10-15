@@ -3245,7 +3245,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: security.
   Source: review-code-2026-09-01 lane sms-parsing, deferred out of LOTTO-0040.
 
-- 📋 [LOTTO-0062] **A payout SMS is admitted on its wording alone, never on who sent it.**
+- ✅ [LOTTO-0062] **A payout SMS is admitted on its wording alone, never on who sent it.**
   Found next door while proving LOTTO-0061's filter, and out of its scope.
 
   `watch_sms.py::wanted()` admits a message on keywords in its BODY. The sender
@@ -3315,6 +3315,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   never in a desktop notification. rows() already returns the sender; load()
   and load_payouts() must carry it. Run verify_privacy before committing any
   sender value. Next free invariant is INV-72.
+  Shipped 2026-10-15 per docs/specs/LOTTO-0062-sender-pinning.md (gated,
+  converged loop 2). tools/verify_senders.py: 4 cases, 5 breaks, each
+  observed red alone; CI lane. Live dump: 0 records from an unknown
+  sender. The forged-payout half (an unknown sender's payout never marks a
+  win paid) is LOTTO-0001 INV-77 and lands with LOTTO-0011, whose
+  payment_status() it guards.
   **Layman:** Anyone who can text the phone could add a fake winnings message to the ledger.
   Kind: security.
   Source: in-session-2026-09-02, found while building LOTTO-0061's import filter.

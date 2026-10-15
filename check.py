@@ -517,6 +517,40 @@ def reconcile_report(records):
     return lines, counts
 
 
+def unknown_senders(tickets, bank_paid):
+    """Every purchase and payout whose sender is not one the bank is known to
+    use, oldest first (LOTTO-0062 INV-75). Pure; reads no file.
+
+    A record with sender_known None was built outside the loaders - a fixture
+    - and is not listed: only load() and load_payouts() can say who sent it.
+    """
+    out = []
+    for t in tickets:
+        if t.sender_known is False:
+            out.append({"kind": "purchase", "received": t.bought.strftime("%Y-%m-%d"),
+                        "ref": t.ref, "sender": t.sender})
+    for p in bank_paid:
+        if p.sender_known is False:
+            out.append({"kind": "payout", "received": p.received.strftime("%Y-%m-%d"),
+                        "ref": p.ref, "sender": p.sender})
+    return sorted(out, key=lambda d: d["received"])
+
+
+def unknown_senders_report(flagged):
+    """-> [str], the terminal lines for unknown_senders(); [] when none."""
+    if not flagged:
+        return []
+    lines = [
+        "FROM A SENDER NOT SEEN BEFORE - still counted below. If it is the bank,",
+        "add the name to tickets.KNOWN_SENDERS; if not, treat the record as forged.",
+    ]
+    for f in flagged:
+        # Both fields come from an SMS, outside this project's control (CWE-150).
+        lines.append(f"  {f['received']}  {f['kind']:8}  "
+                     f"{terminal_safe(f['ref'])}  from {terminal_safe(f['sender'])}")
+    return lines
+
+
 def retired_report(tickets):
     """-> lines naming any pool whose archive era paid a division now unnameable.
 
@@ -552,6 +586,8 @@ def retired_report(tickets):
 
 if __name__ == "__main__":
     all_tickets = load()
+    # Not `payouts`: that name is backfill's scraper, which amount() calls.
+    bank_paid = load_payouts()
     wins = check(all_tickets)
     live = [w for w in wins if not w["expired"]]
 
@@ -565,6 +601,12 @@ if __name__ == "__main__":
             f"record, so only the pool their name states is scored. Check the "
             f"price table in tickets.py against the operator's current prices."
         )
+        print()
+
+    # LOTTO-0062: before the wins, so a forged record is read before its effect.
+    sender_lines = unknown_senders_report(unknown_senders(all_tickets, bank_paid))
+    if sender_lines:
+        print("\n".join(sender_lines))
         print()
 
     lines, _ = uncheckable_report(all_tickets)
@@ -585,7 +627,7 @@ if __name__ == "__main__":
     # it is missing, so the only OSError this could catch is a real I/O
     # failure - and swallowing it replaces INV-47's loud NO PAYOUT DATA notice
     # with silence, which is the one outcome that invariant forbids.
-    paid_lines, _ = reconcile_report(reconcile(all_tickets, wins, load_payouts()))
+    paid_lines, _ = reconcile_report(reconcile(all_tickets, wins, bank_paid))
     if paid_lines:
         print("\n".join(paid_lines))
         print()

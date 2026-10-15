@@ -837,6 +837,13 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- **A lottery text from a sender the bank doesn't use is flagged, never trusted silently** (LOTTO-0062)
+  Until now the app believed any text worded like the bank's, whoever sent it. Anyone who could text your phone could add a ticket you never bought, or a fake "winnings paid" message.
+
+  Every purchase and payout now carries its sender, checked against the one name the bank uses today and the long numbers it used before March 2025. A text from anyone else is still kept and counted — so a bank changing its sender name can never quietly stop your imports — but it is listed on the page under *From a sender not seen before*, and at the top of `check.py`'s output. It never appears in a desktop notification. If a flagged name turns out to be the bank's, it is added by hand to `tickets.KNOWN_SENDERS`.
+
+  A text message's sender can be faked, so this makes a forgery visible rather than impossible. Checked by `tools/verify_senders.py`.
+
 - **A commit carrying SMS content is now refused at the commit, not only at the push** (LOTTO-0004)
   `.githooks/pre-commit` runs `tools/verify_privacy.py --staged`, which reads
   the copy git is about to record rather than the working copy. A leak staged

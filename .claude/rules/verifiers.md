@@ -16,8 +16,8 @@ suite, and each maps to a numbered invariant in the specs. Run from the
 repository root, after `backfill.py`, with `lotto_sms_raw.txt` present. The CI
 lane is the verifiers that still run honestly on a fresh clone; the rest FAIL
 there on missing input, and that failure is what puts a verifier on the local
-lane. `verify_page.py` needs neither input, and `verify_hooks.py` builds a
-throwaway repository instead; `verify_watch.py` needs no phone
+lane. `verify_page.py` needs neither input, `verify_hooks.py` builds a
+throwaway repository instead, and `verify_senders.py` a throwaway dump; `verify_watch.py` needs no phone
 and no `dbus-python` either, and reads the dump only if it is there;
 `verify_privacy.py` drops to its weaker pattern-only mode. So
 `verify_sources.py` is on the local lane despite needing no dump — it reads the
@@ -59,6 +59,10 @@ python3 tools/verify_watch.py     # INV-32..INV-39: the cable-free SMS path writ
                                   # spawned, observed and reaped; two watchers
                                   # appending at once collide never; and a KDE
                                   # Connect restart is read as one
+python3 tools/verify_senders.py   # INV-72..INV-75: a lottery SMS from a sender
+                                  # the bank is not known to use is KEPT and
+                                  # flagged on the page and in check.py, never
+                                  # dropped; --break/--list like verify_page
 python3 tools/verify_hooks.py     # LOTTO-0004: .githooks/pre-commit refuses a
                                   # commit carrying a reference, reading the
                                   # STAGED copy; --break/--list like verify_page

@@ -124,6 +124,9 @@ class Ticket:
         # False when the price matched no tier, so pools fell back to the game
         # name alone. Counted and printed rather than quietly accepted.
         self.resolved = resolved
+        # Set by load() from the dump row (LOTTO-0062 s4.2). None means a
+        # ticket built outside load() - a fixture - and never "known".
+        self.sender = self.sender_known = None
 
     def __repr__(self):
         return f"<{self.ref} {self.game} x{self.ndraws} from {self.start.date()}>"
@@ -240,6 +243,7 @@ class Payout:
         # is compared against, and money compared in rands disagrees with
         # itself (LOTTO-0029 INV-42).
         self.ref, self.cents, self.received = ref, cents, received
+        self.sender = self.sender_known = None  # load_payouts() sets both
 
     def __repr__(self):
         return f"<paid {self.ref} {self.cents}c>"
@@ -300,6 +304,42 @@ def rows(raw):
     return out
 
 
+# Who the bank sends from, read off the dump on 2026-10-15 (LOTTO-0062 s2). A
+# new name the bank starts using is added here BY HAND, once the page has
+# flagged it and the user has judged it the bank's: learning senders by
+# itself would teach the app to trust a forger after their first message.
+# This makes a forgery visible, not impossible - an SMS sender ID is not
+# authenticated, and reconcile() never trusting the SMS is the containment.
+KNOWN_SENDERS = frozenset({"STDBANK"})
+LEGACY_PREFIX = "27839"               # the numeric era's shared prefix
+LEGACY_DIGITS = 16                    # every numeric sender's length, after "+"
+LEGACY_UNTIL = datetime(2025, 3, 1)   # naive SAST, exclusive; the era ended 2025-02-26
+
+
+def normalise_sender(address):
+    """Uppercase, every non-alphanumeric character removed (INV-72).
+
+    The current sender reaches the dump in three spellings that differ only by
+    a trailing space or newline; all three must read as one name.
+    """
+    return re.sub(r"[^A-Z0-9]", "", str(address).upper())
+
+
+def sender_known(address, received):
+    """Is this one of the senders the bank is known to use? (INV-73)
+
+    The one current name, or the legacy era's numeric shape received before
+    the era closed. `received` is the phone's receipt time, which a sender
+    cannot choose. False for anything else, an empty address included - and
+    False never drops a record: it only flags it (INV-74).
+    """
+    n = normalise_sender(address)
+    if n in KNOWN_SENDERS:
+        return True
+    return (len(n) == LEGACY_DIGITS and n.isdigit()
+            and n.startswith(LEGACY_PREFIX) and received < LEGACY_UNTIL)
+
+
 def terminal_safe(s):
     """Third-party text, safe to print to a terminal (CWE-150).
 
@@ -317,7 +357,7 @@ def load(path="lotto_sms_raw.txt"):
     out = []
     with open(path, errors="replace") as fh:
         raw = fh.read()
-    for _address, date_ms, body in rows(raw):
+    for address, date_ms, body in rows(raw):
         # Android's SMS timestamp, in milliseconds since the epoch. SAST on
         # both sides of the era comparison: HANDOVER is a naive SAST
         # datetime, and reading this as UTC - or as the machine's own zone,
@@ -333,6 +373,10 @@ def load(path="lotto_sms_raw.txt"):
         except (ValueError, OverflowError, OSError):
             continue
         if t := parse(body, bought):
+            # Kept whatever the sender: a filter here would turn a bank
+            # renaming its sender into imports silently stopping (INV-74).
+            t.sender = normalise_sender(address)
+            t.sender_known = sender_known(address, bought)
             out.append(t)
     return out
 
@@ -347,11 +391,13 @@ def load_payouts(path="lotto_sms_raw.txt"):
     out = []
     with open(path, errors="replace") as fh:
         raw = fh.read()
-    for _address, date_ms, body in rows(raw):
+    for address, date_ms, body in rows(raw):
         try:  # load()'s reason, same unbounded date field
             paid = clock.from_ms(date_ms)
         except (ValueError, OverflowError, OSError):
             continue
         if p := parse_payout(body, paid):
+            p.sender = normalise_sender(address)        # kept either way, as
+            p.sender_known = sender_known(address, paid)  # load() keeps tickets
             out.append(p)
     return out

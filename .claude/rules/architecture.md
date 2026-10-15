@@ -50,6 +50,12 @@ tool; an Ants-verb read does not load it.
   payout out of the dump until LOTTO-0030 widened the import filter. Widening
   `PAYOUT` toward "paid" counts the 14 debits as winnings, so lifetime "paid"
   grows by what the user *spent* (LOTTO-0029 INV-40).
+  **The sender is checked at read time and filters nothing** (LOTTO-0062):
+  `load()` and `load_payouts()` set `sender` and `sender_known` on every
+  record, from `KNOWN_SENDERS` and the closed legacy numeric rule. A record
+  from an unknown sender is kept, counted and flagged on the page and in
+  `check.py` — never dropped, since a bank renaming its sender must not stop
+  imports, and never in a notification.
   `parse()` handles two SMS eras; `GAME_MAP` translates an SMS game name to the one `(game, plus_flag,
   pool_id)` it names, and `entered_pools()` derives the *full* set of pools
   from the ticket price, which is what scoring actually iterates
