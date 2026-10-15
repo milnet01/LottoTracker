@@ -25,7 +25,8 @@ headline.
 Pure Python 3.9+ standard library. **`ruff.toml`'s `py39` target holds the
 SYNTAX floor; nothing checks library use** — CI runs a much newer Python — so
 check a new stdlib call's version by hand.
-Plus `dbus-python` (`find_lotto_sms.py`, `watch_sms.py`) and PySide6 (`tray.py`,
+Plus `dbus-python` (`find_lotto_sms.py`, `watch_sms.py`), PyGObject (`watch_sms.py`'s
+GLib main loop) and PySide6 (`tray.py`,
 and the one `verify_page.py` case that starts it in a subprocess). No package
 manager, no virtualenv, no test framework, no build step — everything runs as
 `python3 <file>` from the repository root.

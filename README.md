@@ -293,7 +293,7 @@ matches the PowerBall. Whatever your bank does, check that case first.
 | `tickets.py` | Parses SMSes into tickets and into the bank's payout messages; expands Multiplay |
 | `check.py` | Scores tickets, prices wins, flags expiry, and reconciles against what the bank actually paid |
 | `watch_sms.py` | Imports new SMSes over KDE Connect, no cable |
-| `find_lotto_sms.py` | Prints lottery threads seen over KDE Connect; imports nothing |
+| `find_lotto_sms.py` | Prints lottery threads seen over KDE Connect; adds nothing to the dump |
 | `serve.py` | Serves the local page, and does all of its I/O |
 | `page.py` | Turns what `check.py` worked out into the page's HTML |
 | `supervise.py` | Starts, watches and stops the server and the SMS listener |

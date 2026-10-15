@@ -1448,7 +1448,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: test.
   Source: review-code-2026-09-01 coverage gap.
 
-- 📋 [LOTTO-0056] **Documents the project is expected to have and does not.**
+- ✅ [LOTTO-0056] **Documents the project is expected to have and does not.**
   Checked on 2026-09-01. Each is absent; each is a separate decision, so
   this bullet is a list rather than one job.
 
@@ -1506,6 +1506,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   (the 2026-10-08 trim): each gets its own record in docs/decisions/ with
   the full reasoning, and architecture.md keeps a one-line rule per
   decision with a link, so a session opening code still sees every rule.
+  Shipped 2026-10-15; the last three parts landed. docs/design.md,
+  gated by review-contract (genre adr, three loops, calm cap, nothing
+  deferred; log in docs/reviews/design-loop-log.md). docs/decisions/
+  ADR-0001 to ADR-0013, moved verbatim from .claude/rules/architecture.md,
+  which keeps one rule line per decision with a link (the user's
+  2026-10-15 choice). tools/audit/ holds check-code's config.
   **Layman:** A few standard files are missing, including a licence on a public repository.
   Kind: doc.
   Source: session-audit-2026-09-01 missing-documents sweep.
