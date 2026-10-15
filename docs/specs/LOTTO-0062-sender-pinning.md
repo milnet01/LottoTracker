@@ -32,8 +32,8 @@ discard it (`for _address, date_ms, body in rows(raw)`).
 
 1. **A forged payout inflates "the bank paid".** Anyone who can deliver an SMS
    to the phone can send text matching `tickets.PAYOUT`. `check.reconcile()`
-   never resolves a disagreement in the message's favour, so a forgery shows
-   as a `no_ticket` or `high` row rather than as money the app believes. It
+   never resolves a disagreement in the message's favour, so a forgery is
+   never adopted as money the app believes. It
    still adds noise to the figure sign 5 is judged by.
 2. **A forged purchase adds a ticket never bought.** It is scored, priced into
    spend, and counted by the re-buy warning (LOTTO-0034).
@@ -167,8 +167,7 @@ renders the empty string.
   message from a new sender is in the dump and can be flagged.
 - **`check.reconcile()`.** A payout from an unknown sender is reconciled like
   any other. LOTTO-0029 INV-43 is the containment.
-- **Every desktop notification.** No notification function takes a record or
-  a sender. `supervise.new_ticket_notice()` takes `(running, busy)` and
+- **Every desktop notification.** `supervise.new_ticket_notice()` takes `(running, busy)` and
   LOTTO-0003 INV-37 holds its wording; the re-buy notice's content is
   LOTTO-0034 INV-54's.
 
@@ -176,8 +175,8 @@ renders the empty string.
 
 The trust boundary is the SMS sender, which the sender controls. The defences
 this design must preserve are LOTTO-0029 INV-43 (a disagreement is never
-resolved in the SMS's favour) and LOTTO-0003 INV-37 (a notification carries no
-ticket data).
+resolved in the SMS's favour) and `CLAUDE.md` § Privacy's rule that a desktop
+notification carries no ticket data.
 
 - **INV-72** — `tickets.normalise_sender()` uppercases and removes every
   non-alphanumeric character, so `"StdBank "`, `"STDBANK\n"` and `"stdbank"`
@@ -190,12 +189,14 @@ ticket data).
 
 - **INV-73** — `tickets.sender_known()` returns `True` for exactly two shapes:
   a normalised address in `KNOWN_SENDERS`, and `LEGACY_DIGITS` digits starting
-  `LEGACY_PREFIX` received before `LEGACY_UNTIL`. Each fixture below isolates
-  one condition: the known name (`True`); another name (`False`); an empty
+  `LEGACY_PREFIX` received before `LEGACY_UNTIL`. The fixtures are passed
+  already normalised — digits with no `+` — so the case reads the rule and not
+  the normalisation INV-72 owns. Each isolates one condition: the known name (`True`); another name (`False`); an empty
   address (`False`); a legacy number on 2025-02-28 (`True`); the same number on
   2025-03-01 (`False`); a fifteen-digit number with the prefix before the
   cutoff (`False`); a sixteen-digit number with another prefix before the
-  cutoff (`False`).
+  cutoff (`False`); a sixteen-character address starting `27839` and holding a
+  letter, before the cutoff (`False`).
   *Test:* `tools/verify_senders.py`, case `accept_rule_is_exact`; breaks
   `legacy_any_date` (drops the date condition) and `prefix_only` (drops the
   length condition).
@@ -224,19 +225,18 @@ ticket data).
   *Breaks when:* a surface omits the list, or renders a heading for an empty
   one — the second reads as an alarm with nothing behind it.
 
-- **INV-76** — Every record in the live dump comes from a known sender.
-  *Test:* `tools/verify_payouts.py`, case `real_senders_known`: over
-  `tickets.load()` and `tickets.load_payouts()` on the dump,
-  `check.unknown_senders()` is empty. Break `forget_current_sender`, which
-  empties `KNOWN_SENDERS`.
-  *Breaks when:* the constants in §4.1 stop describing the data — the bank adds
-  a sender, or a forged message reaches the dump. Either way the developer's
-  gate goes red as well as the page.
+- **INV-76** — *Withdrawn 2026-10-15, before it was built.* It asserted that
+  every record in the live dump comes from a known sender. `tools/verify_payouts.py`
+  prints the counts it takes from real data rather than asserting them, and one
+  forged SMS would have blocked every push for good. The census prints the
+  count instead (§7).
+  *Test:* none — withdrawn.
+  *Breaks when:* not applicable.
 
 ## 6. Failure modes
 
 - **The bank changes its sender name.** Every new record is flagged and still
-  counted. The page says so; INV-76 turns `./local-CI.sh` red. The user adds
+  counted. The page says so. The user adds
   the name to `KNOWN_SENDERS`.
 - **A forger uses the bank's own name.** Not caught; §2 says why it cannot be.
   LOTTO-0029 INV-43 still holds the payout side.
@@ -246,9 +246,11 @@ ticket data).
 - **The address field is empty or malformed.** `rows()` reads it as
   `([^,]*)`, so the worst case is an empty string, which `sender_known()`
   returns `False` for. The record is kept and flagged.
-- **A comma in a sender name.** `rows()` reads the address up to the first
-  comma, so the name is truncated and fails the match. Flagged; not seen in the
-  dump.
+- **A comma in a sender name.** `watch_sms.py::format_row()` replaces it with
+  a space, which `normalise_sender()` then removes, so the name still matches.
+  An adb-imported record whose address holds a comma does not match `rows()`
+  at all and is dropped before any sender check; that is existing behaviour,
+  unchanged here. Not seen in the dump.
 
 ## 7. Tests
 
@@ -257,8 +259,9 @@ building a temporary one for `unknown_is_kept`. It follows
 `tools/verify_payouts.py`'s shape — named cases, the exit code as the signal,
 `--break <name>` and `--list`. This item is greenfield, so each case is
 observed red under its own break rather than against pre-fix code.
-`real_senders_known` needs the dump, so it joins `tools/verify_payouts.py` on
-the local lane.
+`tools/verify_payouts.py`'s census, on the local lane, also prints how many
+records in the live dump come from an unknown sender, and asserts nothing about
+that count.
 
 | Case | File | Locks |
 |------|------|-------|
@@ -266,7 +269,6 @@ the local lane.
 | `accept_rule_is_exact` | `tools/verify_senders.py` | INV-73 |
 | `unknown_is_kept` | `tools/verify_senders.py` | INV-74 |
 | `unknown_is_shown` | `tools/verify_senders.py` | INV-75 |
-| `real_senders_known` | `tools/verify_payouts.py` | INV-76 |
 
 `unknown_is_shown` checks `check.py`'s `__main__` output only through
 `unknown_senders()`, which it prints; the print loop itself is not executed.
@@ -299,7 +301,7 @@ the local lane.
 | INV-73 | `tools/verify_senders.py::accept_rule_is_exact` |
 | INV-74 | `tools/verify_senders.py::unknown_is_kept` |
 | INV-75 | `tools/verify_senders.py::unknown_is_shown` |
-| INV-76 | `tools/verify_payouts.py::real_senders_known` |
+| INV-76 | withdrawn; the count is printed by `tools/verify_payouts.py`, not asserted |
 | No notification carries a sender (§4.5) | **Partial:** LOTTO-0003 INV-37 and LOTTO-0034 INV-54 check the wording of today's notices; nothing stops a new notice being given a record |
 | `check.py`'s `__main__` print loop (§4.3) | **nothing** — no verifier runs `check.py` as a script |
 
