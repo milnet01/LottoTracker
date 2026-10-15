@@ -30,7 +30,7 @@ where each stands. This table places each in the part that delivers it.
 | 2. Numbers chosen beside numbers drawn | scoring (`check.py::check()`), shown by the page | LOTTO-0001, LOTTO-0002 |
 | 3. What each ticket won, in one place | scoring, shown by the page | LOTTO-0001, LOTTO-0009, LOTTO-0002 |
 | 4. Cost against winnings by period | the page's builder (`serve.py::period_buckets()`) | LOTTO-0036 |
-| 5. Every disagreement with the bank explained | reconciliation (`check.py::reconcile()`) | LOTTO-0029, LOTTO-0011 |
+| 5. Every disagreement with the bank explained | reconciliation (`check.py::reconcile()`) | LOTTO-0029; payment status in LOTTO-0001 |
 
 ## 3. The parts, and their files
 
@@ -50,8 +50,18 @@ What each file owns in detail is in `.claude/rules/architecture.md`.
 
 ## 4. What each part may touch
 
-Data flows one way: collection → dump → reading → scoring → page. Results feed
-scoring through `history.py` alone. These rules are what keep that so.
+Data flows one way: collection → dump → reading → scoring → page. These rules
+are what keep that so.
+
+**A file imports only files at its own step or an earlier one:**
+
+1. Time — `clock.py`, which imports nothing of the project.
+2. Reading, Results, Calendar, and the renderer `page.py`.
+3. Scoring (`check.py`), the supervisor (`supervise.py`) and Collection.
+4. The page builder, `serve.py`.
+5. The tray, `tray.py`.
+
+Within that order:
 
 - **`page.py` imports nothing of the project.** It is a pure function from a
   model dict to HTML, so the whole page renders in a test with no socket and
@@ -59,20 +69,21 @@ scoring through `history.py` alone. These rules are what keep that so.
 - **`expiry.py` imports nothing of the project and opens no file**, so the
   re-buy warning is right with the server stopped and the machine offline
   (LOTTO-0034 INV-50).
-- **`history.py` is the only place the two results sources are merged.**
-  Scoring reads draws through it.
+- **`history.py` is the only place the two results sources are merged.** The
+  draws a ticket is scored against reach scoring through it alone. Scoring
+  reads prize tables, and the recent draw that names the current prize
+  divisions, from `results.py` and `backfill.py` directly.
 - **`tickets.py::rows()` is the dump's one reader.** Both writers depend on it
   to avoid writing a record twice (LOTTO-0003 INV-34).
 - **`tray.py` is the only file that imports PySide6, and it never imports
-  `serve.py`.** What it needs from the server's side — the settings reader,
-  the notice wording — lives in `supervise.py`, which is Qt-free so a headless
-  script can check it (LOTTO-0013).
+  `serve.py`.** What the tray needs from the server's side — the settings
+  reader, the notice wording — lives in `supervise.py`, which is Qt-free so a
+  headless script can check it (LOTTO-0013). The order already keeps
+  `supervise.py` from importing `serve.py`.
 - **`dbus` is imported only by the collection part** — at the top of
   `find_lotto_sms.py`, and inside the `watch_sms.py` functions that reach the
   phone — so every other file, `tray.py` included, imports without
   `dbus-python`.
-- **Nothing in scoring or below imports the page or the tray.** `serve.py`
-  imports scoring; scoring never imports `serve.py`.
 
 The import edges as built can be listed with:
 
@@ -89,12 +100,14 @@ for f in *.py; do printf '%s: ' "$f"; grep -E '^\s*(import|from) ' "$f" \
   with its reason, never counted as a zero win. Missing data raises or is
   named; it never becomes an empty result that reads as "nothing won"
   (`CLAUDE.md` § Working conventions, the cardinal rule).
-- **Money is whole cents.** Rands appear only at the edges where a source
-  reports them, and in display (LOTTO-0029 INV-42).
+- **Money is compared and summed in whole cents.** `check.py::amount()`
+  returns float rands, so each figure is converted to cents before it is added
+  or compared (LOTTO-0029 INV-42).
 - **Every date is South African time, read through `clock.py`.** No part calls
-  `date.today()` or `datetime.now()` directly (LOTTO-0066; LOTTO-0034 INV-64).
-- **Each state file has one writer.** The dump: the two collectors, through
-  `rows()`'s format. `settings.json`: `serve.py`, behind `POST /settings`.
+  `date.today()`, `datetime.now()` or `fromtimestamp()` directly; an SMS
+  timestamp goes through `clock.from_ms()` (LOTTO-0066; LOTTO-0034 INV-64).
+- **Each state file has one writer, except the dump.** The dump has two
+  writers, the two collectors, and one reader, `tickets.py::rows()`. `settings.json`: `serve.py`, behind `POST /settings`.
   `expiry_warned.json`: `supervise.py::expiry_notices()`.
 - **Third-party text is made safe where it leaves.** `terminal_safe()` for the
   terminal, `page.py::_e()` for HTML.
