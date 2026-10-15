@@ -211,6 +211,35 @@ def period_buckets(all_tickets, wins, entry_draws, increments):
     return {"buckets": buckets, "no_result_cents": no_result}
 
 
+def mark_current(periods, today):
+    """Label the current year and month "so far" (LOTTO-0036 §4.6, INV-71).
+
+    Pure, like period_buckets(): `today` is the caller's (clock.today() in
+    build_model(), INV-64) and the argument is not modified. Only the two
+    buckets keyed by today change, and only their label - a part-year beside a
+    whole one must never read as whole (LOTTO-0051).
+
+    When no month bucket carries today's key, the month is added as
+    `current_month` and NOT as a bucket: nothing in it has been scored, so a
+    bucket would be an R0.00 meaning "unknown", which INV-60 forbids. The
+    page renders it as an option and a row with no money in it.
+    """
+    year, month = str(today.year), today.strftime("%Y-%m")
+    out = dict(periods)
+    out.pop("current_month", None)
+    out["buckets"] = [
+        dict(b, label=b["label"] + " so far") if b["key"] in (year, month)
+        else dict(b)
+        for b in periods["buckets"]
+    ]
+    if not any(b["kind"] == "month" and b["key"] == month for b in periods["buckets"]):
+        out["current_month"] = {
+            "key": month,
+            "label": f"{MONTH_NAMES[today.month - 1]} {year} so far",
+        }
+    return out
+
+
 def build_model():
     """Everything the page renders, computed here so page.py stays pure.
 
@@ -360,15 +389,18 @@ def build_model():
         # than inferred from an empty date list: covered() returns [] both for
         # an unscorable entry and for a scorable one whose draws have not
         # happened, and those two must not be conflated (INV-60 vs the residue).
-        "periods": period_buckets(
-            all_tickets,
-            wins,
-            lambda t, pf: (
-                [d["date"] for d in history.covered(t, pf)]
-                if history.scorable(t, pf)
-                else None
+        "periods": mark_current(
+            period_buckets(
+                all_tickets,
+                wins,
+                lambda t, pf: (
+                    [d["date"] for d in history.covered(t, pf)]
+                    if history.scorable(t, pf)
+                    else None
+                ),
+                tier_increments,
             ),
-            tier_increments,
+            today,
         ),
         "spend": {
             "compared_cents": spend_cmp,

@@ -36,12 +36,13 @@ python3 tools/verify_page.py      # the page, its security boundary, the tray's
                                   # underneath them. Its own CASES table names the
                                   # invariant each case covers — read it there, not
                                   # from a list here, which went stale twice
-python3 tools/verify_periods.py   # INV-57..INV-60: cost against winnings per
-                                  # period. Money belongs to the period of the
+python3 tools/verify_periods.py   # INV-57..INV-60, INV-71: cost against winnings
+                                  # per period. Money belongs to the period of the
                                   # DRAW, never of the purchase; both sides are
                                   # drawn over the scorable entries of RESOLVED
                                   # tickets; a period nothing scored gets no
-                                  # bucket at all. --break/--list like
+                                  # bucket at all; the current year and month
+                                  # read "so far". --break/--list like
                                   # verify_page
 python3 tools/verify_payouts.py   # INV-40..INV-47: the bank's own payout SMSes,
                                   # reconciled per VAS reference against every

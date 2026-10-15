@@ -11,6 +11,9 @@ reviewer. See §12.
 sentence, INV-71, §7, §10 and §11. Gated the same day by `review-contract`
 (genre spec): two loops, two cold lanes each, eight verified findings fixed and
 two dismissed, ending at a **calm** 2-loop cap — ready to build. See §12.
+**LOTTO-0051 implemented and verified 2026-10-15**: `current_period_marked`
+and `unscored_month_not_zero` pass, and each of their five breaks was observed
+turning only its own case red.
 **Kind:** feature.
 **Source:** ROADMAP LOTTO-0036 — sign of success 4 in `README.md` § How you
 would know it works, asked for by the user during discovery on 2026-08-20. The
@@ -666,7 +669,7 @@ cases, INV-59 and INV-60 carrying two each and INV-71 four; `tools/verify_page.p
 | INV-58 | `tools/verify_periods.py::periods_by_draw_date` |
 | INV-59 | `tools/verify_periods.py::periods_over_checkable` |
 | INV-60 | `tools/verify_periods.py::empty_period_is_absent` |
-| INV-71 | `tools/verify_periods.py::current_period_marked` (the labels and `current_month`) and `tools/verify_page.py::unscored_month_not_zero` (the row holds no money). **Partial:** neither runs `build_model()`, so a builder that never calls `mark_current()` stays green — code review only, the same limit §7 records for the renderer. §4.7's rule that `current_month` is not shown when `buckets` is empty is asserted by nothing |
+| INV-71 | `tools/verify_periods.py::current_period_marked` (the labels and `current_month`) and `tools/verify_page.py::unscored_month_not_zero` (the row holds no money). **Partial:** neither runs `build_model()`, so a builder that never calls `mark_current()` stays green — code review only, the same limit §7 records for the renderer. §4.7's rule that `current_month` is not shown when `buckets` is empty is asserted by `unscored_month_not_zero` too, with no `--break` of its own; it was observed red once by hand, 2026-10-15 |
 | §4.7 the period control puts nothing in the URL | `tools/verify_page.py::nothing_in_the_url` — LOTTO-0014 INV-21's existing case scans the whole rendered body, so it covers the control **once the fixture renders it**. It renders through `serve_on(Stub())` and `serve.refresh()`, and `Stub()` with no argument returns `fixture_model()` — a hand-authored dict, never the dump — so that fixture must gain `periods` buckets or the control is simply absent from the bytes being scanned and the row is empty cover. Wiring that is part of this item |
 | §4.5 `page.py` renders `spend_cents` and `won_cents` verbatim and sums no displayed column | **nothing** — code review only. It was a clause of INV-59 until 2026-09-06 and was moved here because every case that invariant names is builder-side: `tools/verify_periods.py` never imports `page`, so a `_periods_section()` that added a totals row summing the spend column would leave all four cases green. Claiming coverage for it was worse than recording that there is none. A case in `tools/verify_page.py` asserting each rendered cell equals the model integer would close it |
 | §4.6 the current period's bucket is year/month to date, as far as the record goes | **nothing** — it is a property of `covered()` returning only draws in the record, not a separate computation, so there is nothing to assert that INV-57 does not already cover. The freshness half is LOTTO-0002 INV-18's stale notice, which this document adds no opinion to |

@@ -651,6 +651,34 @@ def counts_read_as_english():
              f"the {head} heading is not right-aligned over its figures")
 
 
+def unscored_month_not_zero():
+    """LOTTO-0036 INV-71, the page half: the unscored current month is offered,
+    and its row carries no money.
+
+    A figure in that row would read as "checked, won nothing" for a month
+    nobody checked - the cardinal rule. The builder half (mark_current()) is
+    tools/verify_periods.py::current_period_marked.
+    """
+    cur = {"key": "2026-08", "label": "August 2026 so far"}
+    periods = dict(fixture_model()["periods"], current_month=cur)
+    html = render_pure(fixture_model(periods=periods))
+    need('<option value="2026-08">August 2026 so far</option>' in html,
+         "the current month is not offered")
+    months = re.search(r'<optgroup label="Months">(.*?)</optgroup>', html, re.S)
+    need(months and months.group(1).startswith('<option value="2026-08">'),
+         "the current month is not first among the months")
+    row = re.search(r'<tr data-period="2026-08"[^>]*>.*?</tr>', html, re.S)
+    need(row is not None, "the current month has no row")
+    need("August 2026" in row.group(0), "the row does not name the month")
+    need(not re.search(r"R\d", row.group(0)),
+         f"the unscored month's row carries a money figure: {row.group(0)!r}")
+    # §4.7: with no bucket at all, the no-period notice stands alone.
+    empty = render_pure(fixture_model(periods={"buckets": [], "no_result_cents": 0,
+                                               "current_month": cur}))
+    need('data-period="2026-08"' not in empty and 'value="2026-08"' not in empty,
+         "current_month shown beside the no-period notice")
+
+
 def render_pure(model, token="tok"):
     """Render with all_draws replaced by a double that RAISES.
 
@@ -2192,6 +2220,7 @@ CASES = [
     ("numbers_chosen_and_drawn", "INV-48", numbers_chosen_and_drawn),
     ("theme_is_dark_and_readable", "INV-62", theme_is_dark_and_readable),
     ("counts_read_as_english", "0007(w)", counts_read_as_english),
+    ("unscored_month_not_zero", "INV-71", unscored_month_not_zero),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -2233,6 +2262,7 @@ BREAKS = {
     "ball_without_colour": "theme_is_dark_and_readable",
     "theme_unreadable_palette": "theme_is_dark_and_readable",
     "plural_ignored": "counts_read_as_english",
+    "unscored_month_shows_zero": "unscored_month_not_zero",
 }
 
 
@@ -2259,6 +2289,25 @@ def apply_render_breaks():
         page._entries_section = only_scorable
     if broken("plural_ignored"):
         page._count = lambda n, one, many: f"{n:,} {many}"
+    if broken("unscored_month_shows_zero"):
+        # The unscored current month rendered as a zero bucket, through
+        # _rands(): R0.00 for a month nobody checked.
+        real_periods = page._periods_section
+
+        def zero_month(model):
+            p = dict(model.get("periods") or {})
+            cur = p.pop("current_month", None)
+            if cur and p.get("buckets"):
+                # First among the months, so the order assertions still pass
+                # and the money assertion is the one that sees the defect.
+                years = [b for b in p["buckets"] if b["kind"] == "year"]
+                months = [b for b in p["buckets"] if b["kind"] == "month"]
+                p["buckets"] = years + [
+                    {"key": cur["key"], "kind": "month", "label": cur["label"],
+                     "spend_cents": 0, "won_cents": 0}] + months
+            return real_periods(dict(model, periods=p))
+
+        page._periods_section = zero_month
     if broken("url_pushstate"):
         page.JS = page.JS.replace(
             'if(%s)poll();', 'history.pushState({},"","?game=lotto");if(%s)poll();'
