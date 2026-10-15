@@ -7,7 +7,10 @@ the shipped implementation are folded in below.
 **Amended 2026-10-15** for LOTTO-0007 (d): §4.6, INV-7, §7, §9 and §11.
 Gated the same day by `review-contract` (genre spec): two loops, two cold
 lanes each, 5 verified findings, 4 fixed and 1 surfaced to the user, 2
-dismissed; the cap was reached, which is the normal exit. See §13.
+dismissed; the cap was reached, which is the normal exit. See §13. The
+surfaced finding was decided by the user later that day: INV-7, §6 and §11
+now report an oversized ticket apart from `unresolved`. A gate is owed
+before building.
 **Kind:** fix.
 **Source:** ROADMAP LOTTO-0009 (in-session-2026-08-01, found while sizing LOTTO-0008).
 **Covers:** LOTTO-0008 (record what each ticket cost), LOTTO-0009 (entered pools).
@@ -483,12 +486,21 @@ a handle.
   or a Multiplay shape appears that `paid_lines` does not model. Both surface
   as a non-zero unresolved count and a non-zero exit, instead of a silent
   reversion to name-only scoring.
-  **An oversized board stays loud here, and is no longer guarded by this
-  invariant alone.** A PowerBall board over six numbers or a Daily Lotto board
-  over five counts as one paid line, so its price normally matches no tier and
-  INV-7 fires. That depends on the operator's price, which could match a tier
-  by coincidence; LOTTO-0001 INV-67 makes such a ticket uncheckable whatever its
-  price resolves to. Amended 2026-10-15 (LOTTO-0007 (d)).
+  **A ticket with an oversized board (LOTTO-0001 INV-67) is outside this
+  invariant.** Its price per line is unknown, so its price normally matches no
+  tier, and no price row could fix that without inventing one. So
+  `verify_pools.py` leaves such a ticket out of `unresolved` and prints its own
+  count on the same line, `<n> oversized (not priced)`, asserting nothing about
+  it; the page already says why it cannot be checked. Decided by the user
+  2026-10-15. The split is one pure helper, `verify_pools.py::oversized(ticket)`,
+  judging board size from `Ticket.boards` as §7 says; `main()` counts a ticket
+  in `unresolved` only when it is not oversized.
+  *Test, for this half:* `tools/verify_boards.py`, case
+  `oversized_not_unresolved`: `oversized()` is true for a seven-number
+  PowerBall fixture and false for a six-number one. Break
+  `oversized_counted_unresolved`, which makes `oversized()` always false.
+  *Breaks when, for this half:* an oversized ticket is counted in
+  `unresolved`, which leaves the gate red with no fix.
 
 - **INV-8** — A ticket is entered in every tier up to the one its price paid
   for, base tier first.
@@ -533,6 +545,9 @@ a handle.
 
 - **A board price changes again.** INV-7 fires: unresolved is non-zero and
   `tools/verify_pools.py` exits 1. The fix is a row in §4.2's table, not code.
+- **An oversized board arrives.** INV-7 does not fire; `verify_pools.py`
+  prints a non-zero `oversized (not priced)` count and the page reports the
+  ticket not checkable (LOTTO-0001 INV-67). Nothing needs clearing.
 - **A renamed game appears.** Sizekhaya renamed Lotto Plus 2 to `LOTTO 5 Max`
   and PowerBall Plus to `PowerBall XTRA`. **This happened on 2026-08-08 and is
   closed** (LOTTO-0031): the first such message arrived, parsed to `None` and
@@ -696,11 +711,12 @@ Zero archive fetches in either run, as LOTTO-0001 §10 describes.
 | §4.5 `amount()` pricing each win from its **entry's** pool | **nothing** — a win priced from the wrong pool's division table is a plausible-looking number, and nothing compares it against the right one |
 | §4.6 partly-uncheckable never counted as wholly uncheckable | `tools/verify_pools.py` (INV-11) |
 | §4.6 `odd_board` decided before `too_old` and `no_pool` | `tools/verify_boards.py::odd_board_counted_first` (LOTTO-0001 INV-67) |
+| INV-7's oversized half: an oversized ticket is never counted `unresolved` | `tools/verify_boards.py::oversized_not_unresolved` |
 | §7 `verify_pools.py` applying the size rule in its own recomputation | **nothing** — its INV-11 sweep runs over the dump alone, which holds no oversized board, so a recomputation without the rule passes until the first oversized Daily Lotto Plus ticket arrives |
 | §4.7 comparison drawn only over checkable entries | `tools/verify_page.py::spend_over_checkable` (LOTTO-0002 INV-16) — shipped 2026-08-02; it recomputes the compared spend from `TIER_PRICES` over the scorable entries of resolved tickets and asserts the rendered figure equals it |
 | §2 the rules reading itself | **nothing mechanical** — three agreeing lines of evidence (§6), and each win names its pool so a claim is checkable |
 
-Fourteen rows, four `nothing`.
+Fifteen rows, four `nothing`.
 
 ## 12. Cross-doc impact
 

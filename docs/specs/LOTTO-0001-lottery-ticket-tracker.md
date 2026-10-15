@@ -5,7 +5,9 @@
 (INV-67, INV-69), §6, §7, §11 and §12. Gated 2026-10-15 by `review-contract`
 (genre spec): two loops, two cold lanes each, eight verified findings all
 fixed, one dismissed. It reached the 2-loop cap for a spec, a calm one;
-implementation is the third reviewer. See §13.
+implementation is the third reviewer. See §13. **Amended again 2026-10-15**
+with the user's decision that an unknown sender's payout never pays a win:
+§4.4 and INV-77. A gate is owed before building.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0001 (user request, 2026-08-01).
 
@@ -402,7 +404,12 @@ There is no claimable total (LOTTO-0011).
 2026-10-08). The bank pays a prize into the account by itself, so a win keeps
 its claim deadline only when nothing says the bank paid it in full.
 `check.py::payment_status(wins, records)` is pure. `records` is
-`check.py::reconcile()`'s output over the same `wins`; the result is a new
+`check.py::reconcile()`'s output over the same `wins` and
+`check.py::trusted_payouts(payouts)` — the payouts whose `sender_known is True`
+(LOTTO-0062 §4.2), so a payout from an unknown sender, or one built outside
+`load_payouts()`, never makes a win read as paid (INV-77; the user,
+2026-10-15). The reconciliation report still runs over every payout, and
+LOTTO-0062 still flags the unknown one. The result is a new
 list, one dict per win in the same order, each a copy of the win with three
 keys added. Neither input is modified (LOTTO-0029 INV-43).
 
@@ -429,8 +436,8 @@ its reference in `reconcile()`'s `won`, so its category is `agree`, `low`,
 `reconcile()` can never make a win read as paid. Locked by INV-69.
 
 **Only an unexpired win whose `payment` is not `paid` shows a claim deadline.**
-`check.py`'s `__main__` keeps the `reconcile()` records it already builds,
-passes them to `payment_status()`, and replaces its `STILL CLAIMABLE` total
+`check.py`'s `__main__` builds a second set of `reconcile()` records over
+`trusted_payouts()`, passes them to `payment_status()`, and replaces its `STILL CLAIMABLE` total
 with a list. Angle brackets are values; the wording is fixed:
 
 ```
@@ -528,9 +535,9 @@ invariant left a tombstone in LOTTO-0014 naming its new owner:
 
 This document owns INV-1 to INV-6; INV-22, which LOTTO-0007(a) added on
 2026-08-02 after the specs above had taken their ranges; and INV-26, added by
-LOTTO-0026 on 2026-08-03; INV-31, added by LOTTO-0023; and INV-67 and INV-69,
+LOTTO-0026 on 2026-08-03; INV-31, added by LOTTO-0023; INV-67 and INV-69,
 added 2026-10-15 by LOTTO-0007 (d) and LOTTO-0011, whose page halves are
-LOTTO-0002's INV-68 and INV-70. A new invariant here takes the next free number
+LOTTO-0002's INV-68 and INV-70; and INV-77, added the same day for LOTTO-0062. A new invariant here takes the next free number
 in the project, not the next free number in this file.
 
 - **INV-1** — For PowerBall tickets the final number on a board line is the
@@ -837,6 +844,19 @@ in the project, not the next free number in this file.
   LOTTO-0011 keeps it for, and turns a change in the bank's wording into every
   prize reading as already banked.
 
+- **INV-77** — A payout whose `sender_known` is not `True` never makes a win
+  read as paid. `check.py::trusted_payouts()` returns exactly the payouts with
+  `sender_known is True`, and the records `payment_status()` reads are built
+  from that list alone. Added 2026-10-15 (LOTTO-0062, the user's decision).
+  *Test:* `tools/verify_senders.py`, case `unknown_sender_never_pays`: one
+  win, and one payout matching it in full from a sender with `sender_known`
+  `False`. `trusted_payouts()` drops it, and `payment_status()` over
+  `reconcile()` of the trusted list gives `unknown`; the same payout with
+  `sender_known` `True` gives `paid`, so the case can tell the two apart. Break
+  `trust_unknown_sender`, which makes `trusted_payouts()` return every payout.
+  *Breaks when:* the payment records are built from every payout, so one
+  forged "winnings paid" text removes a real unpaid win's claim deadline.
+
 ## 6. Failure modes
 
 - **The API changes shape or path.** `results.py::_post()` raises on any
@@ -989,8 +1009,8 @@ LOTTO-0009's invariants; INV-1, INV-2 and INV-5 are the one-line commands
 recorded in §5. There is no test framework in this project and adding one is
 out of scope (§9) — these run under plain `python3`.
 
-Two invariants added 2026-10-15 have cases of their own, built with `--break`
-and `--list` like `tools/verify_payouts.py`; both are greenfield, so each case
+The invariants added 2026-10-15 have cases of their own, built with `--break`
+and `--list` like `tools/verify_payouts.py`; all are greenfield, so each case
 is observed red under its own breaks rather than against pre-fix code:
 
 | Case | File | Lane | Locks |
@@ -998,6 +1018,7 @@ is observed red under its own breaks rather than against pre-fix code:
 | `oversized_not_scored` | `tools/verify_boards.py` (new) | CI | INV-67 |
 | `odd_board_counted_first` | `tools/verify_boards.py` (new) | CI | INV-67 |
 | `payment_follows_record` | `tools/verify_payouts.py` | local | INV-69 |
+| `unknown_sender_never_pays` | `tools/verify_senders.py` | CI | INV-77 |
 
 `tools/verify_boards.py` reads neither the dump nor the archive: its fixtures
 are synthetic and its draw record is a seeded `history._cache` (INV-67). LOTTO-0002 INV-68 adds the page's
@@ -1123,6 +1144,7 @@ the figure is a lower bound until it is re-measured.
 | `backfill.py` date parsing | `tools/verify_sources.py::parse_page_reads_months` — `backfill.py::month_number()` reads a full or abbreviated month; one it cannot read drops that row with a `SKIPPED` line instead of raising `KeyError` and losing the page (LOTTO-0007 (b), fixed 2026-09-28) |
 | INV-67 oversized board never scored as a line | `tools/verify_boards.py::oversized_not_scored` and `::odd_board_counted_first`. Replaces the row that leaned on LOTTO-0009 INV-7, which fires only where the price matches no tier. `tools/verify_coverage.py`'s copy of the size rule (§4.4) is checked by nothing beyond agreeing with `scorable()` on the dump, which holds no oversized board |
 | INV-69 payment answer per win | `tools/verify_payouts.py::payment_follows_record` |
+| INV-77 an unknown sender's payout never pays a win | `tools/verify_senders.py::unknown_sender_never_pays` |
 | §4.4 terminal `NOT YET PAID` list: deadline only on an unexpired win not `paid`, and no summed total | **nothing** — no verifier runs `check.py` as a script. The page's half is LOTTO-0002 INV-70 |
 | §4.2 pools derived from price, not from the game name | `tools/verify_pools.py` (LOTTO-0009 INV-7, INV-8) |
 

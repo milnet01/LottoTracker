@@ -10,9 +10,12 @@ the re-gate the amendment's implementation forced.
 **Amended 2026-10-15** for LOTTO-0007 (d), LOTTO-0011 and LOTTO-0062: the
 title, the layman line, §1, §2, §3, §4.1, §4.5, INV-68, INV-70, §6, §7, §11
 and §12. Gated by `review-contract` the same day (genre spec, §13 loops 8–9):
-seven verified findings, six fixed, one surfaced to the user rather than
-fixed — §4.6 still lists a "still unexpired" winnings line, which LOTTO-0011's
-no-summed-total rule contradicts — and one dismissed. Cap reached; calm.
+seven verified findings, six fixed, one surfaced to the user and then
+decided by them (§4.6's "still unexpired" line removed, with
+`won.unexpired_cents`), and one dismissed. Cap reached; calm. **Amended again
+2026-10-15** with the user's decisions: §4.1 and §4.6 drop the unexpired
+total, §4.1's builder reconciles payment over trusted payouts only (LOTTO-0001
+INV-77), and §3's board size is confirmed. A gate is owed before building.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0002 (user-request-2026-08-01; three further choices
 taken with the user 2026-08-02, recorded in §3).
@@ -109,8 +112,8 @@ tray decisions — the tray is required rather than optional, it is PySide6, and
 
 **Taken with the user for LOTTO-0007 (d), 2026-09-28:** a non-Lotto board with
 more than six numbers is reported not checkable with a reason, never scored as
-one line. **The author's generalisation, 2026-10-08, still to be confirmed with
-the user:** "oversized" means more numbers than one line of that game holds —
+one line. **Generalised by the author 2026-10-08, confirmed by the user
+2026-10-15:** "oversized" means more numbers than one line of that game holds —
 six for PowerBall counting the PowerBall, five for Daily Lotto — so a six-number
 Daily Lotto board is not scored as one line either. It errs toward "not
 checkable". LOTTO-0001 owns the rule; §4.5 renders it.
@@ -183,7 +186,7 @@ happen in `serve.py`'s builder, not in the renderer.
   "unknown_senders": [ {...} ],             # LOTTO-0062 §4.3-§4.4 owns the shape
   "spend":  {"compared_cents", "lifetime_cents", "unresolved_cents",
              "unresolved_tickets": int},
-  "won":    {"compared_cents", "lifetime_cents", "unexpired_cents"},
+  "won":    {"compared_cents", "lifetime_cents"},  # no unexpired total (§4.6)
             # compared_cents: wins on scorable entries of RESOLVED tickets only
   "settings": {"autostart": bool, "open_on_start": bool},
 }
@@ -281,8 +284,9 @@ checkable" with nothing after it, which is half of INV-15 lost.
 **The three payment keys on a win are the REFERENCE's, not the win's.**
 `check.reconcile()` (LOTTO-0029) joins the bank's payouts to tickets per `VAS`
 reference, never per winning line, so the builder runs
-`tickets.load_payouts(DUMP)`, `check.reconcile()` and `check.payment_status()`
-(LOTTO-0001 §4.4 and INV-69 own the mapping and its values) and takes the wins
+`tickets.load_payouts(DUMP)`, `check.reconcile()` over
+`check.trusted_payouts()` and `check.payment_status()` (LOTTO-0001 §4.4,
+INV-69 and INV-77 own the mapping, its values and which payouts count) and takes the wins
 `payment_status()` returns as the model's wins, converting `amount` to
 `amount_cents` as below. It does no reference join of its own. That is why a short-paid win reads "the bank paid
 R p of R c **on this ticket**" rather than naming a figure for the line.
@@ -795,8 +799,13 @@ won lifetime R2,651.60, unexpired R2,418.90, unresolved tickets 0
 |---|---|---|
 | Spend on entries that could be scored | R10,603.50 | the comparison |
 | Winnings on those entries (`won.compared_cents`) | R2,651.60 | the comparison |
-| Winnings lifetime and still unexpired | R2,651.60 lifetime, R2,418.90 unexpired | separate, labelled lines — **not** the comparison (below) |
+| Winnings lifetime | R2,651.60 | a separate, labelled line — **not** the comparison (below) |
 | Lifetime spend, all 1,233 entries | R28,244.50 | a separate, labelled line |
+
+The unexpired total the command prints is not shown and is not in the model:
+it counts wins the bank already paid, so it would read as money still owed
+(LOTTO-0011). `won.unexpired_cents` was removed by the user's decision of
+2026-10-15.
 
 **The identity holds only where the price resolved, and the display must say so.**
 LOTTO-0009 §4.7 states it with that condition — *"the entry costs sum back to

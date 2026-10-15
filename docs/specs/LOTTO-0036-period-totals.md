@@ -100,6 +100,8 @@ labelled "2026 so far" and "October 2026 so far", so a part-year is never read
 as a whole one beside the year before. The current month is offered even
 before a draw in it is scored, with a note saying nothing in it has been
 checked yet — whenever any period has a scored draw (§4.7). **Month only**: a current year with nothing scored gets nothing.
+When no period has a scored draw at all, only the no-period notice shows — the
+user's confirmation, 2026-10-15.
 §3.3 still holds for buckets — the unscored current month is an option and a
 row, never a bucket (§4.6, INV-60, INV-71).
 

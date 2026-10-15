@@ -80,7 +80,7 @@ forgery visible; it does not make one impossible.
   notification** — from the 2026-10-08 plan, under `CLAUDE.md` § Privacy: a
   notification may be logged and synced off the machine.
 - **The legacy numeric rule is closed at a date** — the author's call,
-  2026-10-15, to be confirmed with the user when this spec is presented. A
+  confirmed by the user 2026-10-15. A
   number matching the legacy pattern received on or after
   `LEGACY_UNTIL` is flagged. The era ended 2025-02-26; leaving it open would
   accept any forger who picks a sixteen-digit `+27839` number.
@@ -269,6 +269,7 @@ that count.
 | `accept_rule_is_exact` | `tools/verify_senders.py` | INV-73 |
 | `unknown_is_kept` | `tools/verify_senders.py` | INV-74 |
 | `unknown_is_shown` | `tools/verify_senders.py` | INV-75 |
+| `unknown_sender_never_pays` | `tools/verify_senders.py` | LOTTO-0001 INV-77 |
 
 `unknown_is_shown` checks `check.py`'s `__main__` output only through
 `unknown_senders()`, which it prints; the print loop itself is not executed.
@@ -291,7 +292,8 @@ that count.
 - Authenticating the bank's messages. Not possible over SMS (§2).
 - Excluding flagged purchases from the re-buy warning or flagged payouts from
   reconciliation — deferred; not yet queued. The user's decision keeps them
-  counted.
+  counted. A flagged payout never marks a win paid: LOTTO-0001 INV-77 (the
+  user, 2026-10-15).
 
 ## 10. What checks this
 
