@@ -8,9 +8,10 @@ the shipped implementation are folded in below.
 Gated the same day by `review-contract` (genre spec): two loops, two cold
 lanes each, 5 verified findings, 4 fixed and 1 surfaced to the user, 2
 dismissed; the cap was reached, which is the normal exit. See §13. The
-surfaced finding was decided by the user later that day: INV-7, §6 and §11
-now report an oversized ticket apart from `unresolved`. A gate is owed
-before building.
+surfaced finding was decided by the user later that day: INV-7, §6, §11 and
+§12 now report an oversized ticket apart from `unresolved`, gated by a second
+`review-contract` run (§13 loops 8–9): five verified findings, all fixed;
+cap reached, middling. Ready to build.
 **Kind:** fix.
 **Source:** ROADMAP LOTTO-0009 (in-session-2026-08-01, found while sizing LOTTO-0008).
 **Covers:** LOTTO-0008 (record what each ticket cost), LOTTO-0009 (entered pools).
@@ -489,20 +490,24 @@ a handle.
   **A ticket with an oversized board (LOTTO-0001 INV-67) is outside this
   invariant.** Its price per line is unknown, so its price normally matches no
   tier, and no price row could fix that without inventing one. So
-  `verify_pools.py` leaves such a ticket out of `unresolved` and prints its own
-  count on the same line, `<n> oversized (not priced)`, asserting nothing about
-  it; the page already says why it cannot be checked. Decided by the user
-  2026-10-15. The split is two pure helpers in `verify_pools.py`:
-  `oversized(ticket)`, judging board size from `Ticket.boards` as §7 says, and
-  `price_counts(tickets) -> (unresolved, oversized)`, which counts a ticket
-  whose `expected_pools()` is `None` as `unresolved` only when `oversized()` is
-  false. `main()` prints both figures from `price_counts()`, and skips an
-  oversized ticket in its `UNRESOLVED` branch.
+  `verify_pools.py` leaves such a ticket out of `unresolved` and appends
+  `, <n> oversized (not priced)` to the summary line, only when `<n>` is
+  non-zero, asserting nothing about it; the page already says why it cannot be
+  checked. Decided by the user 2026-10-15. The split is two pure helpers in
+  `verify_pools.py`: `oversized(ticket)`, judging board size from
+  `Ticket.boards` as §7 says, and `price_counts(tickets) -> (unresolved,
+  oversized)`. `oversized` counts every ticket for which `oversized()` is true,
+  whether or not its price resolves; `unresolved` counts the tickets whose
+  `expected_pools()` is `None` and for which `oversized()` is false. `main()`
+  prints both figures from `price_counts()`. In its per-ticket loop, an
+  oversized ticket takes `continue` before the `UNRESOLVED` branch, so it adds
+  nothing to `bad` and gets none of the `POOLS`, `UNFLAGGED` or name checks.
   *Test, for this half:* `tools/verify_boards.py`, case
-  `oversized_not_unresolved`: `price_counts()` over a seven-number PowerBall
-  ticket whose price matches no tier and a six-number one that resolves
-  returns `(0, 1)`. Break `oversized_counted_unresolved`, which makes
-  `oversized()` always false, so the result is `(1, 0)`.
+  `oversized_not_unresolved`: `price_counts()` over three tickets — a
+  seven-number PowerBall board whose price matches no tier, a seven-number one
+  whose price resolves, and a six-number one that resolves — returns `(0, 2)`.
+  Break `oversized_counted_unresolved`, which makes `oversized()` always
+  false, so the result is `(1, 0)`.
   *Breaks when, for this half:* an oversized ticket is counted in
   `unresolved`, which leaves the gate red with no fix.
 
@@ -715,7 +720,7 @@ Zero archive fetches in either run, as LOTTO-0001 §10 describes.
 | §4.5 `amount()` pricing each win from its **entry's** pool | **nothing** — a win priced from the wrong pool's division table is a plausible-looking number, and nothing compares it against the right one |
 | §4.6 partly-uncheckable never counted as wholly uncheckable | `tools/verify_pools.py` (INV-11) |
 | §4.6 `odd_board` decided before `too_old` and `no_pool` | `tools/verify_boards.py::odd_board_counted_first` (LOTTO-0001 INV-67) |
-| INV-7's oversized half: an oversized ticket is never counted `unresolved` | **Partial:** `tools/verify_boards.py::oversized_not_unresolved` locks `price_counts()`; `main()` taking its figures from it, and skipping the ticket's `UNRESOLVED` line, is code review only — the dump holds no oversized ticket |
+| INV-7's oversized half: an oversized ticket is never counted `unresolved` | **Partial:** `tools/verify_boards.py::oversized_not_unresolved` locks `price_counts()`; `main()` taking its figures from it, and its `continue` for an oversized ticket, are code review only — the dump holds no oversized ticket |
 | §7 `verify_pools.py` applying the size rule in its own recomputation | **nothing** — its INV-11 sweep runs over the dump alone, which holds no oversized board, so a recomputation without the rule passes until the first oversized Daily Lotto Plus ticket arrives |
 | §4.7 comparison drawn only over checkable entries | `tools/verify_page.py::spend_over_checkable` (LOTTO-0002 INV-16) — shipped 2026-08-02; it recomputes the compared spend from `TIER_PRICES` over the scorable entries of resolved tickets and asserts the rendered figure equals it |
 | §2 the rules reading itself | **nothing mechanical** — three agreeing lines of evidence (§6), and each win names its pool so a claim is checkable |
@@ -766,6 +771,7 @@ Fifteen rows, four `nothing`.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 9 | 2026-10-15 | 2, cold, via `neutral-lane` — identical brief, packet rebuilt from disk; every lane held every question | Q1 0 | Q2 1 | Q3 2 | Q4 0 | **Cap reached (2 for a spec); the run ships.** Verified 3, fixed 3, dismissed 0. [Q3]: *skips an oversized ticket in its `UNRESOLVED` branch* read two ways, one of which falls through to `want[-1]` with `want` `None` and crashes; INV-7 now says the ticket takes `continue` first and adds nothing to `bad`. [Q3]: `price_counts()`'s `oversized` figure did not say whether it counts an oversized ticket whose price resolves, and the `(0, 1)` fixture could not tell; it now counts every oversized ticket and the fixture gains a resolving one, `(0, 2)`. [Q2]: whether the new count prints when zero decided whether INV-7's own expected line stays true; it now prints only when non-zero. **Own-fix share of the final loop: 2 of 3**, both tightening `price_counts()`, which loop 8 introduced — detail an unpropagated decision left open, not repairs of repairs, so the cap is read as middling and shipping is right. **Share of the run inside the arming span: 5 of 5.** This loop's three fixes are read by no lane. Lane open questions resolved clean or out of radius: §7's Daily Lotto Plus example is the only shape INV-11's sweep can misreport (an all-reachable ticket never enters `partly`); `check.py`'s own unresolved warning still counting an oversized ticket is LOTTO-0001's. |
 | 8 | 2026-10-15 | 2, cold, via `neutral-lane` — genre pinned `spec`; every lane held every question; new run, armed by commit 9643da3 | Q1 0 | Q2 1 | Q3 0 | Q4 1 | Verified 2, fixed 2, dismissed 1. **Both lanes found both defects.** [Q2]: INV-7's new oversized half and §6's new bullet say INV-7 does not fire on an oversized ticket, while LOTTO-0001 §6 still says it does, so `verify_pools.py`'s exit status had two specified behaviours; §12 now names the LOTTO-0001 line that must change, and that edit is LOTTO-0001's. [Q4]: `oversized_not_unresolved` exercised only `oversized()`, so a `main()` still counting the ticket in `unresolved` passed it, and the dump holds none (re-measured: 0 oversized boards), so nothing else could; the split is now `price_counts()`, which the case drives with a non-resolving oversized ticket, and §11's row is Partial for `main()`'s use of it. Dismissed as immaterial: whether `<n> oversized (not priced)` prints when zero — nothing reads that line. Lane open question resolved clean: `check.py::uncheckable_report()` prints its `too_old` and `no_pool` lines only when non-zero, as §4.6 says. Facts executed before dispatch: `verify_pools.py` passes today (561 tickets, 0 unresolved); `import verify_pools` succeeds in a fresh clone with no dump or archive. Every finding lies inside the arming span. |
 | 7 | 2026-10-15 | 2, cold, via `neutral-lane` — identical brief, packet rebuilt from disk; every lane held every question | Q1 0 | Q2 0 | Q3 1 | Q4 0 | **Cap reached (2 for a spec); the run ships.** Verified 1, fixed 1, dismissed 1. [Q3], raised by both lanes as an open question: §7's "board lengths in `Ticket.boards`" read as `len(mains)` misses a seven-number PowerBall board, since `parse()` stores the PowerBall apart; §7 now says to count it. The same wording in LOTTO-0001 §4.4's route for `tools/verify_coverage.py` is that document's to fix. **This loop's one fix is read by no lane.** Dismissed [Q1]: a lane said INV-11's `wrong` and `double` never reach `verify_pools.py`'s exit code; they do, in `main()`'s return expression, outside the window the lane was given. **Own-fix share of the final loop: 1 of 1**, on the §7 sentence loop 6 wrote — a gap in this run's own addition that closes once stated, not a repair oscillating, so the cap is read as calm. **Share of the run inside the arming change's span: 1 of 5 verified** (the surfaced INV-7 finding); three landed on text this run wrote, and one on §7, which the amendment left untouched but whose recomputation its new rule outdated. Lane open question resolved clean: the passage cited as LOTTO-0001 §4.4 is in §4.4. |
 | 6 | 2026-10-15 | 2, cold, via `neutral-lane` — genre pinned `spec`; every lane held every question; new run, armed by the amend-d row's commit | Q1 0 | Q2 2 | Q3 1 | Q4 1 | **Severity columns carry `review-contract`'s four questions on this and later rows.** Verified 4, fixed 3, surfaced 1, dismissed 1. **Found while building the packet** [Q2]: §7 said `verify_pools.py` recomputes scorability, and `reaches()` does so without the size rule, so an oversized Daily Lotto Plus ticket would be partly uncheckable to the verifier and wholly to `check.py`, and INV-11 would fail on a correct report. §7 now requires the size rule, from board lengths and its own copy of the line sizes rather than `Ticket.oversized` [Q3, from a lane's open question], and §11 records that nothing tests it, since the dump holds no oversized board [Q4]. **Surfaced to the user, not fixed** [Q2]: INV-7 asserts `0 unresolved`, and an oversized ticket usually will not resolve, so `verify_pools.py` stays red with no fix, while §6 says a red INV-7 is cleared by a price row — which here would invent a tier. Whether that red is the intended lasting signal or oversized tickets are counted apart is a design decision. Dismissed as immaterial: the Status line's list of amended sections omitted §7. Lane open question resolved clean: the INV-8 per-ticket pools comparison needs no size rule, since board size does not change the pools a price derives. |
