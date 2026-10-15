@@ -1,7 +1,7 @@
 # LottoTracker — design
 
-**Status:** written 2026-10-15 (LOTTO-0056), from the code as built. Gated with
-`review-contract --genre adr`.
+**Status:** written 2026-10-15 (LOTTO-0056), from the code as built. Gated the
+same day with `review-contract --genre adr`: three loops, the cap; calm.
 
 This says what the whole project is for, which part delivers what, and what
 each part may touch. A single feature's contract is its spec (§ 9). A close
@@ -61,9 +61,10 @@ are what keep that so.
 4. The page builder, `serve.py`.
 5. The tray, `tray.py`.
 
-Verification sits outside the order. A file under `tools/` may import any
-step, and nothing outside `tools/` imports from it. `tools/import_adb.py`
-imports nothing of the project.
+Verification sits outside the order. A `tools/verify_*.py` file may import
+any step, and nothing outside `tools/` imports from `tools/`.
+`tools/import_adb.py` belongs to Collection and imports nothing of the
+project.
 
 Within that order:
 
@@ -77,8 +78,10 @@ Within that order:
   draws a ticket is scored against reach scoring through it alone. Scoring
   reads prize tables, and the recent draw that names the current prize
   divisions, from `results.py` and `backfill.py` directly.
-- **`tickets.py::rows()` is the dump's one reader.** Both writers depend on it
-  to avoid writing a record twice (LOTTO-0003 INV-34).
+- **`tickets.py::rows()` is the dump's one reader.** `watch_sms.py` depends on
+  it to avoid appending a record twice (LOTTO-0003 INV-34).
+  `tools/import_adb.py` rewrites the whole dump from adb's output and never
+  reads it.
 - **`tray.py` is the only file that imports PySide6, and it never imports
   `serve.py`.** What the tray needs from the server's side — the settings
   reader, the notice wording — lives in `supervise.py`, which is Qt-free so a
@@ -107,7 +110,7 @@ for f in *.py; do printf '%s: ' "$f"; grep -E '^\s*(import|from) ' "$f" \
 - **Money is compared and summed in whole cents.** `check.py::amount()`
   returns float rands, so each figure is converted to cents before it is added
   or compared (LOTTO-0029 INV-42).
-- **Every date is South African time, read through `clock.py`.** No part calls
+- **Every date is South African time, read through `clock.py`.** No part but `clock.py` calls
   `date.today()`, `datetime.now()` or `fromtimestamp()` directly; an SMS
   timestamp goes through `clock.from_ms()` (LOTTO-0066; LOTTO-0034 INV-64).
 - **Each state file has one writer, except the dump.** The dump has two
@@ -120,11 +123,12 @@ for f in *.py; do printf '%s: ' "$f"; grep -E '^\s*(import|from) ' "$f" \
 
 ## 6. The stack, and what it rules out
 
-Python 3.9 or later and its standard library, plus `dbus-python` for
-collection and PySide6 for the tray. No package manager, no virtualenv, no
+Python 3.9 or later and its standard library, plus `dbus-python` and
+PyGObject (`gi`, for the watcher's GLib main loop) for collection, and PySide6
+for the tray. No package manager, no virtualenv, no
 build step: every file runs as `python3 <file>` from the repository root.
 
-That rules out any third-party library outside those two, any service the
+That rules out any third-party library outside those three, any service the
 user would have to sign up for, and any network call beyond the two results
 sources LOTTO-0001 names: the operator's API and a third-party archive. The page listens on `127.0.0.1` only.
 
