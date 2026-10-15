@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=79 -->
+<!-- ants-roadmap-id-high-water: LOTTO=80 -->
 
 # ROADMAP — LottoTracker
 
@@ -1637,6 +1637,17 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** People who bank elsewhere could send in their bank's lottery texts, so the app can learn to read those too.
   Kind: feature.
   Source: user-request-2026-10-15.
+
+- 💭 [LOTTO-0080] **Support lotteries in countries other than South Africa — not before 1.0.0.**
+  Decided by the user 2026-10-15: focus only on South Africa until 1.0.0
+  is out; revisit after. Each country would need its own results source
+  (today results.py and backfill.py), game map and price table (GAME_MAP,
+  TIER_PRICES), draw calendar (expiry.DRAW_DAYS), time zone (clock.py),
+  claim rule (check.CLAIM_DAYS) and bank SMS formats, and real tickets to
+  test against. LOTTO-0079 covers other South African banks.
+  **Layman:** Letting people in other countries use the app is an idea for after the first full release.
+  Kind: feature.
+  Source: user-decision-2026-10-15.
 
 ## Hardening
 
