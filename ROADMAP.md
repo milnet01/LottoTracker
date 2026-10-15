@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=80 -->
+<!-- ants-roadmap-id-high-water: LOTTO=81 -->
 
 # ROADMAP — LottoTracker
 
@@ -1668,6 +1668,19 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   test against. LOTTO-0079 covers other South African banks.
   **Layman:** Letting people in other countries use the app is an idea for after the first full release.
   Kind: feature.
+  Source: user-decision-2026-10-15.
+
+- 📋 [LOTTO-0081] **Cut the first release, then record the trailer clips from it.**
+  Decided by the user 2026-10-15: cut the first release next session.
+  The repository has no tag and no GitHub release yet. Use cut-release.
+  Then record 3-6 trailer clips per the ants-projects-hub-website brief
+  (~/.local/share/claude-handoff/ants-projects-hub-website-trailers-2026-10-10.md):
+  demoreel at 1920x1080, demo data only, released features only, plus a
+  notes.md, into /mnt/Games/Trailers/incoming/lottotracker/, then message
+  ants-projects-hub-website. Tell that session the version, and whether it
+  is 1.0.0.
+  **Layman:** The app gets its first official version, so the website can make its video from it.
+  Kind: release.
   Source: user-decision-2026-10-15.
 
 ## Hardening
