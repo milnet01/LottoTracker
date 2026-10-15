@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""LOTTO-0036 INV-57..INV-60: cost against winnings, per period.
+"""LOTTO-0036 INV-57..INV-60 and INV-71: cost against winnings, per period.
 
-    python3 tools/verify_periods.py                            # all four
+    python3 tools/verify_periods.py                            # every case
     python3 tools/verify_periods.py --list
     python3 tools/verify_periods.py --break attribute_by_purchase  # must FAIL
 
@@ -245,11 +245,57 @@ def empty_period_is_absent():
     return "skipped month absent; unresolved-only month absent"
 
 
+def _bucket(key, label, spend=500, won=0):
+    kind = "year" if len(key) == 4 else "month"
+    return {"key": key, "kind": kind, "label": label,
+            "spend_cents": spend, "won_cents": won}
+
+
+def current_period_marked():
+    """INV-71 - mark_current() labels exactly the current period.
+
+    `today` is fixed and is NOT the newest period, so an implementation that
+    reads the real clock, or marks the newest bucket, labels the wrong ones.
+    """
+    import copy
+
+    today = datetime.date(2025, 6, 15)
+    periods = {"buckets": [_bucket("2026", "2026"), _bucket("2025", "2025", won=300),
+                           _bucket("2025-08", "August 2025"),
+                           _bucket("2025-06", "June 2025", won=300)],
+               "no_result_cents": 700}
+    before = copy.deepcopy(periods)
+    out = serve.mark_current(periods, today)
+    need(periods == before, "mark_current() modified its argument")
+    labels = [b["label"] for b in out["buckets"]]
+    need(labels == ["2026", "2025 so far", "August 2025", "June 2025 so far"],
+         f"wrong labels with today=2025-06-15: {labels}")
+    strip = [{k: v for k, v in b.items() if k != "label"} for b in out["buckets"]]
+    need(strip == [{k: v for k, v in b.items() if k != "label"} for b in before["buckets"]],
+         "a key or a figure changed")
+    need(out["no_result_cents"] == 700, "the residue changed")
+    need("current_month" not in out,
+         "current_month set although a bucket carries today's month")
+
+    # The current month has no bucket: it is offered, never added as one.
+    periods["buckets"] = periods["buckets"][:3]
+    out2 = serve.mark_current(periods, today)
+    labels2 = [b["label"] for b in out2["buckets"]]
+    need(labels2 == ["2026", "2025 so far", "August 2025"],
+         f"wrong labels with no current-month bucket: {labels2}")
+    need(len(out2["buckets"]) == 3,
+         f"{len(out2['buckets'])} buckets: the unscored month became one (INV-60)")
+    need(out2.get("current_month") == {"key": "2025-06", "label": "June 2025 so far"},
+         f"current_month wrong: {out2.get('current_month')!r}")
+    return "current year and month marked; unscored month offered, not bucketed"
+
+
 CASES = [
     ("periods_reconcile", "INV-57", periods_reconcile),
     ("periods_by_draw_date", "INV-58", periods_by_draw_date),
     ("periods_over_checkable", "INV-59", periods_over_checkable),
     ("empty_period_is_absent", "INV-60", empty_period_is_absent),
+    ("current_period_marked", "INV-71", current_period_marked),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -260,7 +306,42 @@ BREAKS = {
     "period_won_unfiltered": "periods_over_checkable",
     "zero_bucket_for_empty_period": "empty_period_is_absent",
     "conjure_bucket_from_win": "empty_period_is_absent",
+    "current_unlabelled": "current_period_marked",
+    "current_reads_clock": "current_period_marked",
+    "current_month_always": "current_period_marked",
+    "current_month_as_bucket": "current_period_marked",
 }
+
+# INV-71's breaks patch serve.mark_current(); every other break patches
+# serve.period_buckets().
+MARK_BREAKS = {"current_unlabelled", "current_reads_clock",
+               "current_month_always", "current_month_as_bucket"}
+
+
+def _break_mark_current(name):
+    """Replace mark_current() with a deliberately wrong one, in its own case."""
+    import clock
+
+    real = serve.mark_current
+
+    def patched(periods, today):
+        if ACTIVE_CASE != BREAKS[name]:
+            return real(periods, today)
+        if name == "current_unlabelled":
+            return periods                      # the identity
+        if name == "current_reads_clock":
+            return real(periods, clock.today())  # ignores its argument
+        out = real(periods, today)
+        key = today.strftime("%Y-%m")
+        if name == "current_month_always":
+            out["current_month"] = {"key": key, "label": "always"}
+        elif name == "current_month_as_bucket" and "current_month" in out:
+            out["buckets"].append({"key": key, "kind": "month",
+                                   "label": out["current_month"]["label"],
+                                   "spend_cents": 0, "won_cents": 0})
+        return out
+
+    serve.mark_current = patched
 
 
 def _apply_break(name):
@@ -377,7 +458,10 @@ def main(argv):
             if broken_name not in BREAKS:
                 print(f"unknown break {broken_name!r}; --list shows them")
                 return 2
-            _apply_break(broken_name)
+            if broken_name in MARK_BREAKS:
+                _break_mark_current(broken_name)
+            else:
+                _apply_break(broken_name)
             print(f"BREAK {broken_name}: {BREAKS[broken_name]} must FAIL\n")
 
     global ACTIVE_CASE

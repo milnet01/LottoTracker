@@ -423,10 +423,10 @@ def _periods_section(model):
             "it means no draw this ticket history covers has been checked "
             "against a result.</p></section>"
         )
-    rows, opts = [], {"year": [], "month": []}
+    rows, opts = {"year": [], "month": []}, {"year": [], "month": []}
     for i, b in enumerate(buckets):
         hide = "" if i == 0 else ' style="display:none"'
-        rows.append(
+        rows[b["kind"]].append(
             f'<tr data-period="{_e(b["key"])}"{hide}>'
             f'<td>{_e(b["label"])}</td>'
             f'<td class="money">{_e(_rands(b["spend_cents"]))}</td>'
@@ -434,6 +434,22 @@ def _periods_section(model):
         )
         opts[b["kind"]].append(
             f'<option value="{_e(b["key"])}">{_e(b["label"])}</option>'
+        )
+    cur = p.get("current_month")
+    if cur:
+        # LOTTO-0051 / INV-71: the current month before anything in it is
+        # scored. NOT a bucket, so NO money cell: a figure here would read as
+        # "checked, won nothing" for a month nobody checked. Option first among
+        # the months, row between the years and the months, the same order.
+        rows["month"].insert(
+            0,
+            f'<tr data-period="{_e(cur["key"])}" style="display:none">'
+            f'<td>{_e(cur["label"])}</td>'
+            '<td colspan="2" class="notcheckable">Nothing in this month has '
+            "been checked against a result yet.</td></tr>",
+        )
+        opts["month"].insert(
+            0, f'<option value="{_e(cur["key"])}">{_e(cur["label"])}</option>'
         )
     residue = ""
     if p.get("no_result_cents"):
@@ -460,7 +476,7 @@ def _periods_section(model):
         # under the NEXT column's heading (LOTTO-0007 (w)).
         '<th class="money">Spent</th><th class="money">Won</th>'
         "</tr></thead><tbody>"
-        + "".join(rows)
+        + "".join(rows["year"] + rows["month"])
         + f"</tbody></table>{residue}</section>"
     )
 
