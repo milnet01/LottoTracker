@@ -7,8 +7,10 @@ a **violent** cap. The second was re-armed by the 2026-09-02 authoring edit to
 against, and that bar lapses when the text changes — and ended **calm** at the
 same 2-loop cap, which is a spec's normal exit: implementation is the third
 reviewer. See §12.
-**Amended 2026-10-15** for LOTTO-0051: §3.4, §4.5, §4.6, §4.7, INV-71, §7 and
-§10. A `review-contract` gate is owed before they are built.
+**Amended 2026-10-15** for LOTTO-0051: §3.4, §4.5, §4.6, §4.7, INV-60's second
+sentence, INV-71, §7, §10 and §11. Gated the same day by `review-contract`
+(genre spec): two loops, two cold lanes each, eight verified findings fixed and
+two dismissed, ending at a **calm** 2-loop cap — ready to build. See §12.
 **Kind:** feature.
 **Source:** ROADMAP LOTTO-0036 — sign of success 4 in `README.md` § How you
 would know it works, asked for by the user during discovery on 2026-08-20. The
@@ -518,19 +520,22 @@ been checked.
   does, `current_month` is absent. When `buckets` is not empty, the page
   renders `current_month` as an option and a row holding no money (§4.7).
   *Test:* `tools/verify_periods.py::current_period_marked`, and its breaks
-  `current_unlabelled` and `current_month_always`;
-  `tools/verify_page.py::unscored_month_not_zero`, and its
-  `--break unscored_month_shows_zero`.
+  `current_unlabelled`, `current_reads_clock`, `current_month_always` and
+  `current_month_as_bucket`; `tools/verify_page.py::unscored_month_not_zero`,
+  and its `--break unscored_month_shows_zero`.
   *Breaks when:* `mark_current()` relabels nothing or ignores `today`, so "2026" sits
-  above "2025" reading as a whole year. The fixture holds buckets for today's
-  year and month and for the year before, and asserts both current labels and
-  the previous year's unchanged one, and that `current_month` is absent;
-  `current_unlabelled` replaces `mark_current()` with the identity, and
-  `current_month_always` adds `current_month` whatever the buckets hold, which
-  would show the current month twice. A second call passes periods with no
-  current-month bucket and asserts `current_month` is set and `buckets` is the
-  same length, so a version that adds a zero bucket — an INV-60 breach — fails
-  too. On the page, the row renders its cells through `_rands()`, showing
+  above "2025" reading as a whole year. The fixture's `today` is a fixed date
+  that is not the real one, 2025-06-15, beside buckets for 2026, 2025, 2025-08
+  and 2025-06, so the current buckets are not the newest. The first call
+  asserts "2025 so far" and "June 2025 so far", every other label unchanged,
+  and no `current_month`. `current_unlabelled` replaces `mark_current()` with
+  the identity; `current_reads_clock` reads `clock.today()` instead of its
+  argument; `current_month_always` adds `current_month` whatever the buckets
+  hold, which would show the current month twice. A second call drops the
+  2025-06 bucket and asserts `current_month` keyed `2025-06`, every label but
+  "2025 so far" unchanged, and `buckets` the same length;
+  `current_month_as_bucket` adds the month as a zero bucket, an INV-60 breach.
+  On the page, the row renders its cells through `_rands()`, showing
   `R0.00` for a month nobody checked; `unscored_month_shows_zero` does exactly
   that, and the case asserts the row exists, names the month, and contains no
   `R` figure.
@@ -577,7 +582,7 @@ scripts from eight to nine. That is the ordinary shape for this project:
 | `periods_by_draw_date` | INV-58 | a ticket bought in the last days of a month whose ten draws run into the next, **winning on a draw in the second month**; asserts two buckets, the spend split falling where the draw dates fall, and the win landing in the second bucket |
 | `periods_over_checkable` | INV-59 | asserts the bucket spend equals the recomputed scorable-and-resolved figure and is strictly less than the lifetime figure (so the fixture cannot be degenerate), **and** that a bucket's `won_cents` excludes the winnings of an unresolved ticket the fixture carries for that purpose |
 | `empty_period_is_absent` | INV-60 | a fixture whose scored draws skip a month; asserts no bucket for that month, that a month reachable only through an unresolved ticket produces no bucket either, and that a win dated in a month carrying no spend conjures no bucket. It asserts nothing about the row or the `<option>` and does not need to: `_periods_section()` builds both from `buckets` in one loop, so a period with no bucket has neither by construction. `current_month` is the one row not built from `buckets`, and INV-71 owns it |
-| `current_period_marked` | INV-71 | `mark_current()` over a hand-built periods dict and an injected `today`: the two current labels, the previous year's label unchanged, keys and figures unchanged, no `current_month`; then a dict with no current-month bucket, asserting `current_month` and an unchanged bucket count |
+| `current_period_marked` | INV-71 | `mark_current()` over INV-71's fixture, whose fixed `today` is not the newest period: the two current labels, every other label, key and figure unchanged, no `current_month`; then the fixture without its current-month bucket, asserting `current_month`, the labels, and an unchanged bucket count |
 
 **INV-71's page half is in `tools/verify_page.py`**, case
 `unscored_month_not_zero`, because it asserts rendering, which is that file's
@@ -599,8 +604,8 @@ is part of this item.
 believed.** These are greenfield, so there is no pre-fix code to red-test
 against — the `--break` flag is what makes "observed failing" reproducible, and
 `docs/specs/LOTTO-0034-ticket-expiry-warning.md` records the same reasoning for
-`tools/verify_expiry.py`. In `tools/verify_periods.py`, eight breaks for five
-cases, INV-59, INV-60 and INV-71 carrying two each; `tools/verify_page.py` gains one,
+`tools/verify_expiry.py`. In `tools/verify_periods.py`, ten breaks for five
+cases, INV-59 and INV-60 carrying two each and INV-71 four; `tools/verify_page.py` gains one,
 `unscored_month_shows_zero`.
 
 ## 8. Alternatives considered (and rejected)
@@ -659,7 +664,7 @@ cases, INV-59, INV-60 and INV-71 carrying two each; `tools/verify_page.py` gains
 | INV-58 | `tools/verify_periods.py::periods_by_draw_date` |
 | INV-59 | `tools/verify_periods.py::periods_over_checkable` |
 | INV-60 | `tools/verify_periods.py::empty_period_is_absent` |
-| INV-71 | `tools/verify_periods.py::current_period_marked` (the labels and `current_month`) and `tools/verify_page.py::unscored_month_not_zero` (the row holds no money). **Partial:** neither runs `build_model()`, so a builder that never calls `mark_current()` stays green — code review only, the same limit §7 records for the renderer |
+| INV-71 | `tools/verify_periods.py::current_period_marked` (the labels and `current_month`) and `tools/verify_page.py::unscored_month_not_zero` (the row holds no money). **Partial:** neither runs `build_model()`, so a builder that never calls `mark_current()` stays green — code review only, the same limit §7 records for the renderer. §4.7's rule that `current_month` is not shown when `buckets` is empty is asserted by nothing |
 | §4.7 the period control puts nothing in the URL | `tools/verify_page.py::nothing_in_the_url` — LOTTO-0014 INV-21's existing case scans the whole rendered body, so it covers the control **once the fixture renders it**. It renders through `serve_on(Stub())` and `serve.refresh()`, and `Stub()` with no argument returns `fixture_model()` — a hand-authored dict, never the dump — so that fixture must gain `periods` buckets or the control is simply absent from the bytes being scanned and the row is empty cover. Wiring that is part of this item |
 | §4.5 `page.py` renders `spend_cents` and `won_cents` verbatim and sums no displayed column | **nothing** — code review only. It was a clause of INV-59 until 2026-09-06 and was moved here because every case that invariant names is builder-side: `tools/verify_periods.py` never imports `page`, so a `_periods_section()` that added a totals row summing the spend column would leave all four cases green. Claiming coverage for it was worse than recording that there is none. A case in `tools/verify_page.py` asserting each rendered cell equals the model integer would close it |
 | §4.6 the current period's bucket is year/month to date, as far as the record goes | **nothing** — it is a property of `covered()` returning only draws in the record, not a separate computation, so there is nothing to assert that INV-57 does not already cover. The freshness half is LOTTO-0002 INV-18's stale notice, which this document adds no opinion to |
@@ -718,6 +723,7 @@ cases, INV-59, INV-60 and INV-71 carrying two each; `tools/verify_page.py` gains
 | 4 | 2026-09-06 | 3, cold — identical brief, packet rebuilt from disk | 1 | 3 | 0 | 1 | **Five verified, five fixed; the dated-count cluster dismissed. Cap reached (2 for a spec); the run ships. A CALM cap — one of the five landed on text loop 3 wrote**, against the previous run's five of nine, so the document held more defects than the cap held loops rather than the run repairing itself. **Two lanes independently found the run's best finding, and the code had already written it down: INV-60's WIN side was unfalsifiable.** The invariant names one break, covering the spend side only, while §4.5 assigns the win side to it explicitly — and `tools/verify_periods.py` carried a comment saying that replacing both of `period_buckets()`' `if … in months/years` guards with `setdefault` left all four cases green. So the assertion existed, had been in the case since it was written, and had never been observed failing: §7 requires every case to be observed red under its own break, and no break reached this one. Fixed on both sides — a sixth break, `conjure_bucket_from_win`, now injects exactly that defect and was observed failing only `empty_period_is_absent`; INV-60 gains the win-side *Breaks when*, §7's row gains the assertion, and its count goes to six breaks for four cases with INV-59 and INV-60 carrying two each. **One lane found §4.5 and §4.6 stating bucket existence over `scorable()` alone** where INV-60 requires a scorable entry *of a resolved ticket* — INV-60's own next paragraph says that gap renders R0.00 against R0.00 meaning *excluded*, so an implementer copying §4.5 builds the cardinal-rule breach the invariant exists to stop. Both sentences now carry the condition. **One lane found §4.7 promising a caption naming the span it covers**, while §4.3 and §10 both credit that caption for naming NO date — which is why it survived LOTTO-0006 moving the floor without an edit. The shipped caption carries no date; §4.7 now says so, and loop 3's own §6 wording, which had inherited the word *span*, is corrected with it. That is this loop's one piece of self-collateral. **One lane found §7 asking `fixture_model()` for a `periods` KEY where §10 asks for buckets** — an empty `buckets` list renders the notice and no `<select>` at all, so the fixture would satisfy §7 and leave §10's row the empty cover it warns about. **And one found §11's row for LOTTO-0002 §4.6 unapplied**: every other §11 row was live on disk, and that section carried no cross-reference to §4.1 here, leaving one formula independently maintained in two documents. Landed in LOTTO-0002 §4.6. **Dismissed, recorded not fixed:** all three lanes independently reached the same verdict on the pre-LOTTO-0006 bucket counts in §4.5, §6, §8 and §13 — no line is built differently at 51 buckets than at 22, so re-measuring is a debt sweep rather than this gate's. **On the second share § At the cap asks for:** across both loops of this run, two of twelve findings fell inside the span the gate was armed on, so this run was mostly an audit of text nobody had re-read rather than a gate on the change that triggered it. Doc grew 618 -> 644 lines. |
 | amend-0051 | 2026-10-15 | none — authoring amendment, no reviewer dispatched | — | — | — | — | **Not a review loop.** Amendment for LOTTO-0051 (user decision 2026-09-28): the current year and month are labelled "so far", and an unscored current month is offered as an option and a row with no money, never a bucket. Adds §3.4, `serve.py::mark_current()` in §4.6, `current_month` in §4.5's model, its rendering in §4.7, INV-71, two cases in §7 and a §10 row. INV-60 unchanged. A `review-contract` gate is owed before this is built. |
 | 5 | 2026-10-15 | 2, cold, via neutral-lane — genre pinned `spec`; new run, armed by the LOTTO-0051 amendment; both lanes held every question | 0 | 3 | 1 | 1 | **Five verified, five fixed; one dismissed.** **Both lanes found the same Q2**: §3.4's heading said the current month is *always* offered and INV-71 rendered `current_month` unconditionally, while §4.7 suppresses it when `buckets` is empty — two builds. Conformed to §4.7: §3.4 and INV-71 now say *when any period has a scored draw*. **One lane found INV-60's second sentence ruling out the very row INV-71 adds** ("the page shows no period whose figures are unknown"); narrowed to buckets. **Q3:** §4.7's row sentence interpolated a "<Month year>" `current_month` does not carry (its label ends "so far"), so renderer and test could disagree; the sentence now names no month, and the label cell carries it. **Q4:** INV-71's "when one does, `current_month` is absent" was asserted by nothing — a `mark_current()` adding it always would show the month twice and pass; the first call now asserts it absent under a new break `current_month_always` (eight breaks for five cases). **Q2:** §11 had no LOTTO-0051 entry, so `.claude/rules/verifiers.md` would keep naming INV-57..INV-60 only; added, with CHANGELOG. **Dismissed:** §11's "five new breaks", a dated record of the original build. Open questions resolved clean, not counted: §7's break count matched `BREAKS` plus one; the period filter's `data-period` match toggles the new row; `clock.today()` is a `date`. Left open, nothing built differs: a server running past a month boundary keeps last month's "so far" label until the next build. Doc 727 -> 733 lines. |
+| 6 | 2026-10-15 | 2, cold, via neutral-lane — identical brief, packet rebuilt from disk; both lanes held every question | 0 | 0 | 0 | 3 | **Three verified, three fixed; one dismissed. Cap reached (2 for a spec); the run ships. A CALM cap: 1 of the 3 landed on text loop 5 wrote** (the empty-buckets condition it added to INV-71), checked against loop 5's ledger. **Both lanes found the same Q4**: INV-71's "ignores `today`" half could not fail — the fixture's `today` was unpinned and its current buckets were the newest, so a `mark_current()` reading the machine clock, or marking the newest bucket, passed. The fixture now passes a fixed `today` (2025-06-15) with newer buckets beside it, under a new break `current_reads_clock`. **One lane found the second call's bucket-count assertion reached by no break**, against §7's observed-failing rule; new break `current_month_as_bucket`. Ten breaks for five cases. **From an open question:** §4.7's rule that `current_month` is not shown when `buckets` is empty is asserted by nothing; §10 now says so rather than adding a case. **Dismissed again:** §11's dated counts ("five new breaks", "three" CI verifiers), a record of the original build. Left open, nothing built differs: a page built on the last day of a month keeps its "so far" label until the next build. **Second share:** 6 of this run's 8 verified findings fell inside the span the LOTTO-0051 amendment added, so this run was mostly the gate on that change. This loop's three fixes are read by no lane; implementation is their reader. |
 
 ## 13. Resource cost
 
