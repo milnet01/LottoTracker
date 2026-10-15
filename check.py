@@ -305,8 +305,12 @@ def uncheckable_report(tickets):
     """
     entries = [(t, pf) for t in tickets for pf, _ in t.pools]
     bad = [(t, pf) for t, pf in entries if not scorable(t, pf)]
-    no_pool = [(t, pf) for t, pf in bad if not all_draws(t.game, pf)]
-    too_old = [(t, pf) for t, pf in bad if all_draws(t.game, pf)]
+    # Decided FIRST (LOTTO-0001 INV-67): the board is the cause whatever the
+    # pool's draws, and filing it under too_old would blame the archive.
+    odd_board = [(t, pf) for t, pf in bad if getattr(t, "oversized", None)]
+    rest = [(t, pf) for t, pf in bad if not getattr(t, "oversized", None)]
+    no_pool = [(t, pf) for t, pf in rest if not all_draws(t.game, pf)]
+    too_old = [(t, pf) for t, pf in rest if all_draws(t.game, pf)]
 
     hurt = [t for t in tickets if any(not scorable(t, pf) for pf, _ in t.pools)]
     partly = [t for t in hurt if any(scorable(t, pf) for pf, _ in t.pools)]
@@ -318,6 +322,11 @@ def uncheckable_report(tickets):
             f"{len(bad)} of {len(entries)} ENTRIES CANNOT BE CHECKED. "
             f"They are not counted below, and are NOT losses."
         )
+        if odd_board:
+            lines.append(
+                f"  {len(odd_board)} on a ticket whose board holds more numbers "
+                f"than one line of its game"
+            )
         if too_old:
             earliest = min(all_draws(t.game, pf)[0]["date"] for t, pf in too_old)
             lines.append(
@@ -342,6 +351,7 @@ def uncheckable_report(tickets):
     counts = {
         "entries": len(entries),
         "uncheckable": len(bad),
+        "odd_board": len(odd_board),
         "too_old": len(too_old),
         "no_pool": len(no_pool),
         "wholly": wholly,
@@ -594,7 +604,10 @@ if __name__ == "__main__":
     # A price matching no known board price means the tiers could not be
     # derived and the ticket fell back to its printed name - the behaviour this
     # scoring replaced. Loud, because the fallback is invisible otherwise.
-    unresolved = [t for t in all_tickets if not t.resolved]
+    # Not an oversized ticket: its price per line is unknown, so it never
+    # resolves, and it is not scored at all - "only the pool their name states
+    # is scored" would be false of it. uncheckable_report() names it instead.
+    unresolved = [t for t in all_tickets if not t.resolved and not t.oversized]
     if unresolved:
         print(
             f"{len(unresolved)} tickets have a price matching no board price on "

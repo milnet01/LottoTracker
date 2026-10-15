@@ -108,6 +108,11 @@ def scorable(ticket, plus_flag):
     another is not. All 11 Daily Lotto Plus tickets are exactly that -- no
     source carries daily/1, but their daily/0 entry scores normally.
     """
+    # A board too big for one line of its game makes every entry of the
+    # ticket unscorable, whatever its draws (LOTTO-0001 INV-67). getattr, so a
+    # stand-in ticket a verifier builds without the attribute is not oversized.
+    if getattr(ticket, "oversized", None):
+        return False
     rows = all_draws(ticket.game, plus_flag)
     return bool(rows) and ticket.start.strftime("%Y-%m-%d") >= rows[0]["date"]
 

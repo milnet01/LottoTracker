@@ -920,7 +920,10 @@ in the project, not the next free number in this file.
 - **A board holds more numbers than one line of its game.** Every entry of the
   ticket is uncheckable and counted as `odd_board` (INV-67); none is scored.
   LOTTO-0009 INV-7's `verify_pools.py::price_counts()` leaves such a ticket
-  out of `unresolved` and counts it apart, so INV-67 is the guard.
+  out of `unresolved` and counts it apart, so INV-67 is the guard. `check.py`'s
+  `__main__` likewise leaves it out of its unresolved-price warning, whose
+  "only the pool their name states is scored" is false of a ticket nothing
+  scores; `uncheckable_report()`'s `odd_board` line names it instead.
 - **No payout SMS parses.** `reconcile()` returns no records (LOTTO-0029
   INV-47), so every win reads `unknown` and keeps its deadline (INV-69).
   Missing data never reads as paid.
@@ -1024,14 +1027,15 @@ is observed red under its own breaks rather than against pre-fix code:
 |------|------|------|-------|
 | `oversized_not_scored` | `tools/verify_boards.py` (new) | CI | INV-67 |
 | `odd_board_counted_first` | `tools/verify_boards.py` (new) | CI | INV-67 |
+| `oversized_not_unresolved` | `tools/verify_boards.py` (new) | CI | LOTTO-0009 INV-7's oversized half, break `oversized_counted_unresolved` |
 | `payment_follows_record` | `tools/verify_payouts.py` | local | INV-69 |
 | `unknown_sender_never_pays` | `tools/verify_senders.py` | CI | INV-77 |
 
 `tools/verify_boards.py` reads neither the dump nor the archive: its fixtures
 are synthetic and its draw record is a seeded `history._cache` (INV-67). LOTTO-0002 INV-68 adds the page's
-case, with breaks `odd_board_unnamed` and `pool_before_board`. LOTTO-0009
-INV-7 adds `oversized_not_unresolved`, over `verify_pools.py::price_counts()`,
-with break `oversized_counted_unresolved`.
+case, with breaks `odd_board_unnamed`, `odd_board_not_in_banner` and
+`pool_before_board`. LOTTO-0009 INV-7 adds `oversized_not_unresolved`, over
+`verify_pools.py::price_counts()`, with break `oversized_counted_unresolved`.
 
 Red-tested against a state that should fail: INV-2's one-liner against the
 pre-Multiplay scorer; INV-6's script against the parser that dropped

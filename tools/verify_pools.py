@@ -58,6 +58,44 @@ CUMULATIVE = {
 }
 
 
+# This file's OWN copy of how many numbers one line holds, the PowerBall
+# counted (LOTTO-0001 INV-67). Not tickets.LINE_SIZE and not Ticket.oversized:
+# both are the thing under test, and reading either would agree with a
+# regression in it. Lotto is absent: over six numbers is Multiplay.
+OWN_LINE_SIZE = {"powerball": 6, "daily": 5}
+
+
+def oversized(ticket):
+    """Whether any board is too big for one line of its game, from the boards.
+
+    A board's size is its mains plus its separately stored PowerBall, so a
+    seven-number PowerBall board reads as seven, never six (LOTTO-0009 s7).
+    """
+    limit = OWN_LINE_SIZE.get(ticket.game)
+    return limit is not None and any(
+        len(b[1]) + (b[2] is not None) > limit for b in ticket.boards
+    )
+
+
+def price_counts(tickets):
+    """-> (unresolved, oversized), the two figures the summary line prints.
+
+    An oversized ticket is left out of `unresolved` (LOTTO-0009 INV-7, the
+    user's decision of 2026-10-15): its price per line is unknown, so it
+    normally matches no tier, and no price row could fix that without
+    inventing one. It is counted apart instead, whether or not its price
+    resolves, and nothing asserts that count - the page says why it cannot be
+    checked.
+    """
+    over = [t for t in tickets if oversized(t)]
+    unresolved = [
+        t for t in tickets
+        if not oversized(t)
+        and expected_pools(t.game, t.bought, t.cost, len(t.boards), t.ndraws) is None
+    ]
+    return len(unresolved), len(over)
+
+
 def expected_pools(game, bought, cost, paid_lines, ndraws):
     """The pools this price paid for, or None when it matches no tier."""
     tiers = CUMULATIVE[(game, "sizekhaya" if bought >= HANDOVER else "ithuba")]
@@ -105,8 +143,11 @@ def reaches(ticket, plus_flag):
 
     Recomputed here rather than imported from history.scorable(): the report
     under test is built on that predicate, so importing it would let a
-    regressed one pass this check as well.
+    regressed one pass this check as well. The size rule included: an
+    oversized ticket is unscorable in every pool (LOTTO-0001 INV-67).
     """
+    if oversized(ticket):
+        return False
     rows = all_draws(ticket.game, plus_flag)
     return bool(rows) and ticket.start.strftime("%Y-%m-%d") >= rows[0]["date"]
 
@@ -114,7 +155,7 @@ def reaches(ticket, plus_flag):
 def main(argv=()):
     tickets = load()
     facts = dump_facts()
-    bad = unresolved = 0
+    bad = 0
     disagree = {"pre": 0, "post": 0}
 
     # An anti-vacuity floor for the ERA check below, which is guarded by
@@ -142,13 +183,14 @@ def main(argv=()):
             print(f"  ERA {t.ref}: parser has {t.bought}, dump says {bought}")
             bad += 1
 
+        if oversized(t):
+            continue  # counted apart by price_counts(); never priced (INV-7)
         want = expected_pools(t.game, t.bought, t.cost, len(t.boards), t.ndraws)
         if want is None:
             print(
                 f"  UNRESOLVED {t.ref}: {t.game} priced over {len(t.boards)} "
                 f"line(s) x {t.ndraws} draw(s) matches no tier total"
             )
-            unresolved += 1
             bad += 1
             continue
         if t.pools != want:
@@ -165,10 +207,12 @@ def main(argv=()):
             disagree["post" if t.bought >= HANDOVER else "pre"] += 1
 
     entries = sum(len(t.pools) for t in tickets)
+    unresolved, n_over = price_counts(tickets)
     print(
         f"{len(tickets)} tickets, {entries} entries, {unresolved} unresolved, "
         f"{disagree['pre'] + disagree['post']} name/price disagreements "
         f"({disagree['pre']} pre-handover, {disagree['post']} post-handover)"
+        + (f", {n_over} oversized (not priced)" if n_over else "")
     )
 
     if "--era-audit" in argv:

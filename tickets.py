@@ -68,6 +68,13 @@ GAME_MAP = {
 # an epoch, and the two types do not compare.
 HANDOVER = datetime(2026, 6, 1)
 
+# How many numbers one line of a game holds, the PowerBall counted. A board
+# holding more cannot be one line, and its price per line is unknown, so the
+# whole ticket is reported not checkable rather than scored (LOTTO-0001
+# INV-67, LOTTO-0007 (d)). Lotto is absent on purpose: a Lotto board over six
+# numbers is Multiplay and expands into lines (INV-2).
+LINE_SIZE = {"powerball": 6, "daily": 5}
+
 # What each tier ADDS to the board price, in whole cents, cheapest tier first,
 # per (game, era). A ticket's price per board per draw is the running sum of
 # the tiers it bought, and every running sum is distinct within a game and era
@@ -115,7 +122,7 @@ def entered_pools(game, bought, cost, paid_lines, ndraws):
 
 class Ticket:
     def __init__(self, game, plus_flag, pool_id, start, ndraws, boards, ref,
-                 cost, pools, bought, resolved):
+                 cost, pools, bought, resolved, oversized=()):
         self.game, self.plus_flag, self.pool_id = game, plus_flag, pool_id
         self.start, self.ndraws, self.boards, self.ref = start, ndraws, boards, ref
         # cost is the total the SMS charged for the whole ticket - every board,
@@ -124,6 +131,10 @@ class Ticket:
         # False when the price matched no tier, so pools fell back to the game
         # name alone. Counted and printed rather than quietly accepted.
         self.resolved = resolved
+        # Labels of boards too big for one line of the game (INV-67). Trailing
+        # and defaulted, so a Ticket built directly - every verifier fixture -
+        # is not oversized.
+        self.oversized = list(oversized)
         # Set by load() from the dump row (LOTTO-0062 s4.2). None means a
         # ticket built outside load() - a fixture - and never "known".
         self.sender = self.sender_known = None
@@ -194,10 +205,14 @@ def parse(body, bought=None):
     # before failing, so one crafted SMS hangs every later run for good - the
     # record stays in the dump. Measured 2026-09-02: 1.2s at 24 digits, and the
     # strict form rejects no board line in the dump.
-    boards = []
+    boards, oversized = [], []
     for line in body.split("\n"):
         if bm := re.match(r"^([A-Z]): (-?\d+(?:\s+-?\d+)*)\s*$", line.strip()):
             label, nums = bm.group(1), bm.group(2).split()
+            # Counted before the split below, so a PowerBall board's size
+            # includes its PowerBall - mains plus special, as INV-67 defines.
+            if len(nums) > LINE_SIZE.get(game, len(nums)):
+                oversized.append(label)
             if game == "powerball":
                 # New format marks the PowerBall with "-"; old format doesn't,
                 # but it is always the final number either way.
@@ -227,7 +242,7 @@ def parse(body, bought=None):
     ref = m.group(0) if (m := re.search(r"Ref:(VAS\d+)", body)) else "?"
     return Ticket(
         game, plus_flag, pool_id, start, ndraws, boards,
-        ref.replace("Ref:", ""), cost, pools, bought, resolved,
+        ref.replace("Ref:", ""), cost, pools, bought, resolved, oversized,
     )
 
 

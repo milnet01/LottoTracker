@@ -129,6 +129,28 @@ def write_settings(changes):
 # ----------------------------------------------------------------- the model
 
 
+def entry_reason(ticket, rows):
+    """Why an entry cannot be scored, or None (LOTTO-0002 s4.5, INV-68).
+
+    `rows` is history.all_draws(ticket.game, plus_flag), passed in so a case
+    can call this with no dump and no archive. The same split
+    check.uncheckable_report() makes, in the same order: the oversized board
+    FIRST, because such a ticket is unscorable in every pool whatever its
+    draws - checking the pool first would blame a pool for what the board
+    caused. The labels are line letters, never numbers, so the reason carries
+    no ticket data.
+    """
+    if getattr(ticket, "oversized", None):
+        labels = ", ".join(ticket.oversized)
+        board = "board" if len(ticket.oversized) == 1 else "boards"
+        return f"{board} {labels}: more numbers than one line of this game holds"
+    if not rows:
+        return "no results source carries this pool"
+    if ticket.start.strftime("%Y-%m-%d") < rows[0]["date"]:
+        return f"predates all draw data for this pool (earliest {rows[0]['date']})"
+    return None
+
+
 def tier_increments(game, era):
     """The INCREMENT column of TIER_PRICES, keyed by plus_flag.
 
@@ -278,15 +300,7 @@ def build_model():
             ok = history.scorable(t, plus_flag)
             if ok and t.resolved:
                 spend_cmp += cost_cents
-            rows = history.all_draws(t.game, plus_flag)
-            reason = None
-            if not rows:
-                reason = "no results source carries this pool"
-            elif t.start.strftime("%Y-%m-%d") < rows[0]["date"]:
-                reason = (
-                    "predates all draw data for this pool "
-                    f"(earliest {rows[0]['date']})"
-                )
+            reason = entry_reason(t, history.all_draws(t.game, plus_flag))
             covered = len(history.covered(t, plus_flag)) if ok else None
             # covered() re-runs scorable() and re-walks the pool's draw list,
             # so it is called once here rather than twice.
@@ -351,6 +365,7 @@ def build_model():
         "uncheckable": {
             "entries": counts["entries"],
             "uncheckable": counts["uncheckable"],
+            "odd_board": counts["odd_board"],
             "too_old": counts["too_old"],
             "no_pool": counts["no_pool"],
             "wholly": len(counts["wholly"]),
