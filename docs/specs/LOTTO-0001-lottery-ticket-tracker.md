@@ -7,7 +7,9 @@
 fixed, one dismissed. It reached the 2-loop cap for a spec, a calm one;
 implementation is the third reviewer. See §13. **Amended again 2026-10-15**
 with the user's decision that an unknown sender's payout never pays a win:
-§4.4 and INV-77. A gate is owed before building.
+§4.4 and INV-77. Gated the same day (§13 loops 12–13): seven verified
+findings, six fixed, one filed (§6's terminal unresolved notice and oversized
+tickets); calm cap.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0001 (user request, 2026-08-01).
 
@@ -849,13 +851,18 @@ in the project, not the next free number in this file.
   `sender_known is True`, and the records `payment_status()` reads are built
   from that list alone. Added 2026-10-15 (LOTTO-0062, the user's decision).
   *Test:* `tools/verify_senders.py`, case `unknown_sender_never_pays`: one
-  ticket carrying the reference, scorable in its pool, one win on it, and one
-  payout matching that win in full from a sender with `sender_known` `False`. `trusted_payouts()` drops it, and `payment_status()` over
-  `reconcile()` of the trusted list gives `unknown`; the same payout with
-  `sender_known` `True` gives `paid`, so the case can tell the two apart. Break
-  `trust_unknown_sender`, which makes `trusted_payouts()` return every payout.
-  *Breaks when:* the payment records are built from every payout, so one
-  forged "winnings paid" text removes a real unpaid win's claim deadline.
+  ticket carrying the reference, one win on it, and one payout matching that
+  win in full. With the payout's `sender_known` `False`, and again with it
+  `None`, `trusted_payouts()` drops it and `payment_status()` over
+  `reconcile()` of the trusted list gives `unknown`; with it `True` the result
+  is `paid`, so the case can tell them apart. Breaks `trust_unknown_sender`,
+  which makes `trusted_payouts()` return every payout, and
+  `trust_unset_sender`, which keeps every payout whose `sender_known is not
+  False`.
+  *Breaks when:* `trusted_payouts()` passes a payout whose `sender_known` is
+  `False` or `None`, so one forged "winnings paid" text removes a real unpaid
+  win's claim deadline. A caller that skips `trusted_payouts()` breaks it too,
+  and §11 records that nothing checks the callers.
 
 ## 6. Failure modes
 
@@ -1179,6 +1186,7 @@ README.md (usage), ROADMAP.md (LOTTO-0002 onward), CHANGELOG.md, and:
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 13 | 2026-10-15 | 2, cold — identical brief, packet rebuilt from disk at HEAD 61929db | Q1 0 | Q2 1 | Q3 0 | Q4 3 | **Columns this row: Q1–Q4, not severity.** Four verified, three fixed, one filed out of radius; none dismissed. **Cap reached (2 for a spec); the run ships, and the cap is calm**: 1 of the 4 landed on text loop 12 wrote. Q4: INV-77 covers `sender_known` `None` but its case tried only `False` and `True`, so a `trusted_payouts()` keeping everything not `False` passed; a `None` leg and break `trust_unset_sender` added. Q4: INV-77's *Breaks when* named a caller breach its own case cannot see; narrowed to what the case catches, with the caller half pointed at §11's Partial row. Q4, from a lane's open question, verified against `reconcile()`: the fixture's "scorable in its pool" was loop 12's own wording and is unneeded — `reconcile()` reads no scorability for a reference with a win — and it invited a CI-lane case to reach real draw data; deleted. **Filed, not fixed** (outside 9643da3's radius; its root is INV-67): §6's unresolved-price bullet says `check.py` prints the unresolved count with "only the pool their name states is scored", which is false of an oversized ticket, and that count now differs from `verify_pools.py`'s, which leaves oversized tickets out. One open question resolved clean: LOTTO-0062's `sender`/`sender_known` are attributes, not constructor parameters, so they do not clash with `Ticket.oversized`'s trailing parameter. **These fixes were read by no lane.** Whole run: 5 of 7 verified findings inside the armed span's text. |
 | 12 | 2026-10-15 | 2, cold, via `neutral-lane` — genre pinned `spec`, every lane held every question; new run, trigger commit 9643da3 (INV-77) | Q1 0 | Q2 1 | Q3 0 | Q4 2 | **Columns this row: Q1–Q4, not severity.** Three verified, three fixed, none dismissed. Packet code windows were cut from HEAD copies, because the working tree held another session's uncommitted LOTTO-0062 build. **Both lanes found the same Q4**: INV-77's fixture named one win and one payout but no ticket, so `reconcile()` files the reference `no_ticket` (→ `unknown`) and the case's `paid` half could never pass on correct code; the fixture now carries a scorable ticket. Q4, one lane: §11 credited `unknown_sender_never_pays` with the whole of INV-77 while the breach it names happens in the two callers, which no verifier runs; the row is now **Partial** and says so. Q2, one lane: §6 and §11's INV-67 row still said LOTTO-0009 INV-7 fires on an oversized ticket, which the arming commit's own LOTTO-0009 change reversed — an unpropagated consequence of the armed change, so inside its radius; both now point at the new behaviour. Open questions resolved clean, not counted: the `<m>` count in the terminal heading binds nothing; `low` mapping to `paid` is the user's 2026-10-08 design; the INV-69 breaks needing to patch `payment_status()` is local detail. Inside the armed span's text: 2 of 3; the third is its unpropagated consequence. |
 | 11 | 2026-10-15 | 2, cold — identical brief, packet rebuilt from disk | Q1 0 | Q2 0 | Q3 1 | Q4 1 | **Columns this row: Q1–Q4, not severity.** Two verified, two fixed, none dismissed; one lane returned no findings. **Cap reached (2 for a spec); the run ships, and the cap is calm**: 0 of the 2 landed on text loop 10 wrote. Q3: §4.2 said `parse()` keeps an oversized board "as it reads" it, and §4.4 told `tools/verify_coverage.py` to use "the board lengths" — read as `len(mains)`, a seven-number PowerBall board counts six and is never flagged, so the two copies of the size rule disagree; both now define size as `len(mains) + (special is not None)` over the usual split. The LOTTO-0009 gate's lanes raised the same defect from the other side. Q4: INV-67's two breaks would both redden `odd_board_counted_first` unless scoped, failing `verify_payouts.py`'s exactly-one red-test rule; the clause now scopes each break to its own case as `ACTIVE_CASE` does. Collateral from the LOTTO-0002 gate, not counted: §7 now names that spec's second break, `pool_before_board`. Open questions resolved clean: LOTTO-0009 INV-11's zero-term compares partly-checkable tickets against the wholly list, not a total, so an oversized ticket does not redden it; no ticket is built duck-typed. **These fixes were read by no lane.** Whole run: 6 of 8 verified findings inside the armed span. |
 | 10 | 2026-10-15 | 2, cold — genre pinned `spec`, every lane held every question; new run, trigger commit 5d5c401 | Q1 2 | Q2 0 | Q3 1 | Q4 3 | **Columns this row: Q1–Q4, not severity.** Six verified, six fixed; one dismissed as immaterial and corrected by deletion. **Both lanes found the same three.** Q1: §4.2 called `GAME_MAP` "exactly this table" while the table lacked the LOTTO-0031 aliases `Lotto 5 Max` and `PowerBall XTRA` — a rebuild from it would drop every post-rebrand purchase; rows added (exempt record, existing code). Q1: §4.4's win-dict contract omitted `numbers`, `special`, `drawn_main` and `drawn_special`, which `check()` emits for LOTTO-0035; added (exempt record). Q3: `Ticket.oversized` had no stated construction while three verifiers build `Ticket` positionally; now a trailing parameter defaulting to an empty list. Q4, one lane: INV-69's case never fed `no_ticket`, `unexplained` or `unscored`, so "paid only for agree or low" could not fail for them; fixture rows and break `other_category_reads_paid` added. Q4, one lane: INV-67's `check()` returns-no-win term could not fail on its own; deleted. Q4, from a lane's open question, orchestrator-verified by running it: "installs an `all_draws()` double" read as a name patch does not reach `check.py`, which imports the function — seeding `history._cache` does; the clause and §7 now say so. Dismissed: §4.3 cited §4.4 for the rebrand names, which §4.4 does not discuss; the citation deleted. Two open questions resolved clean (the `<m>` count in the terminal heading binds nothing; per-case break scoping is `verify_payouts.py`'s existing pattern). Inside the armed span: 4 of 6. Packet: every citation windowed, no 1b defect. `doc_integrity` clean after fixes. |
