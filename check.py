@@ -359,7 +359,7 @@ def reconcile(tickets, wins, payouts):
     read and returned untouched (LOTTO-0029 INV-43, user decision 2026-08-13).
 
     `wins` is the WHOLE of check()'s output, expired lines included - not the
-    unexpired `live` subset sitting beside it in __main__ - because the bank's
+    unexpired lines alone - because the bank's
     payouts are lifetime and a prize paid in 2025 is still money it paid.
 
     Each record: ref, paid_cents, computed_cents, category, first_win.
@@ -445,6 +445,45 @@ def reconcile(tickets, wins, payouts):
             "category": category,
             "first_win": first.get(ref),
         })
+    return out
+
+
+def trusted_payouts(bank_paid):
+    """The payouts from a sender the bank is known to use (LOTTO-0001 INV-77).
+
+    `is True`, not truthiness: None means a payout built outside load_payouts()
+    - nobody checked who sent it - and that must count as unknown, never as
+    trusted. Only payment_status()'s records are built from this list; the
+    reconciliation report still runs over every payout, and LOTTO-0062 still
+    lists the unknown ones.
+    """
+    return [p for p in bank_paid if p.sender_known is True]
+
+
+# Category -> payment state (LOTTO-0001 s4.4, INV-69). Every category not
+# named here reads "unknown", so a reordering of reconcile() can never make a
+# win read as paid.
+PAYMENT_OF = {"agree": "paid", "low": "paid", "high": "partly paid", "unpaid": "unpaid"}
+
+
+def payment_status(wins, records):
+    """-> a copy of each win, in order, with payment, ref_paid_cents and
+    ref_computed_cents added (LOTTO-0011). Pure; neither input is modified.
+
+    The unit is the REFERENCE (LOTTO-0029 INV-41): every win on one reference
+    shares its answer. No record for the reference - including every reference
+    when `records` is empty, INV-47's no-payout-data case - reads "unknown":
+    missing data never reads as paid.
+    """
+    by_ref = {r["ref"]: r for r in records}
+    out = []
+    for w in wins:
+        r = by_ref.get(w["ref"])
+        d = dict(w)
+        d["payment"] = PAYMENT_OF.get(r["category"], "unknown") if r else "unknown"
+        d["ref_paid_cents"] = r["paid_cents"] if r else None
+        d["ref_computed_cents"] = r["computed_cents"] if r else None
+        out.append(d)
     return out
 
 
@@ -589,7 +628,6 @@ if __name__ == "__main__":
     # Not `payouts`: that name is backfill's scraper, which amount() calls.
     bank_paid = load_payouts()
     wins = check(all_tickets)
-    live = [w for w in wins if not w["expired"]]
 
     # A price matching no known board price means the tiers could not be
     # derived and the ticket fell back to its printed name - the behaviour this
@@ -621,7 +659,7 @@ if __name__ == "__main__":
         print("\n".join(gone_lines))
         print()
 
-    # The bank's own record, against ours (LOTTO-0029). `wins`, not `live`:
+    # The bank's own record, against ours (LOTTO-0029). Every win, expired ones too:
     # the payouts are lifetime, so a prize paid in 2025 is still money paid.
     # No guard here on purpose. load() above reads the same dump and raises if
     # it is missing, so the only OSError this could catch is a real I/O
@@ -632,15 +670,29 @@ if __name__ == "__main__":
         print("\n".join(paid_lines))
         print()
 
-    print(f"{len(wins)} winning lines total; {len(live)} still claimable\n")
-    for w in live:
+    # LOTTO-0011: only a win the bank has no record of paying in full keeps
+    # its deadline. The records here are a SECOND reconcile() over the trusted
+    # payouts alone, so a forged "winnings paid" text cannot hide an unpaid win
+    # (LOTTO-0001 INV-77); the report above still covered every payout.
+    status = payment_status(wins, reconcile(all_tickets, wins, trusted_payouts(bank_paid)))
+    waiting = sorted((w for w in status if not w["expired"] and w["payment"] != "paid"),
+                     key=lambda w: w["expires"])
+    print(f"{len(wins)} winning lines total; {len(waiting)} not yet paid")
+    print("NOT YET PAID - wins the bank has no record of paying in full, "
+          "soonest deadline first:")
+    for w in waiting:
         # ref comes from an SMS and division from the feed; both are outside
         # this project's control and go straight to a terminal (CWE-150).
-        print(
+        line = (
             f"  {w['date']}  {terminal_safe(w['ref'])}  "
             f"{w['game']}/{w['plus_flag']}  line {w['line']:3}  "
             f"{terminal_safe(w['division']):6} (match {w['matched']})  "
-            f"R{w['amount']:>9,.2f}  expires {w['expires']}"
+            f"R{w['amount']:>9,.2f}  {w['payment']}  expires {w['expires']}"
         )
-    print(f"\nSTILL CLAIMABLE: R{sum(w['amount'] for w in live):,.2f}")
+        if w["payment"] == "partly paid":
+            line += (f"  (the bank paid R{w['ref_paid_cents'] / 100:,.2f} of "
+                     f"R{w['ref_computed_cents'] / 100:,.2f} on this ticket)")
+        print(line)
+    # No sum of the not-yet-paid amounts: a partly paid reference's unpaid
+    # share is unknown, so any total would be a guess (LOTTO-0001 s4.4).
     print(f"(lifetime total incl. expired: R{sum(w['amount'] for w in wins):,.2f})")

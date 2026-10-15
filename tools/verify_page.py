@@ -156,7 +156,6 @@ def fixture_model(**over):
         "won": {
             "compared_cents": 5000,
             "lifetime_cents": 5000,
-            "unexpired_cents": 5000,
         },
         # LOTTO-0036. Present so the period control is IN the bytes
         # nothing_in_the_url scans; without it that case covers a control it
@@ -651,6 +650,53 @@ def counts_read_as_english():
              f"the {head} heading is not right-aligned over its figures")
 
 
+def deadline_only_when_unpaid():
+    """LOTTO-0002 INV-70: a deadline only on an unexpired win the bank has not
+    paid, and every win shown names its payment state in words (LOTTO-0011).
+
+    Five wins differing only in payment and expiry. Each carries its own
+    expiry date, which is what places it in section 1's rows.
+    """
+    base = fixture_model()["wins"][0]
+
+    def win(payment, expires, expired=False, **extra):
+        return dict(base, payment=payment, expires=expires, expired=expired,
+                    expires_in_days=-1 if expired else 200, **extra)
+
+    wins = [
+        win("paid", "2027-01-01"),
+        win("partly paid", "2027-02-01", ref_paid_cents=3000, ref_computed_cents=5000),
+        win("unpaid", "2027-03-01"),
+        win("unknown", "2027-04-01"),
+        win("unpaid", "2026-01-01", expired=True),
+    ]
+    html = render_pure(fixture_model(wins=wins))
+    sec = re.search(r"<h2>Not yet paid</h2>.*?</section>", html, re.S)
+    if sec is None:
+        raise Fail("section 1 is not headed 'Not yet paid'")
+    rows = re.findall(r"<tr class=.*?</tr>", sec.group(0), re.S)
+
+    def row(date):
+        hits = [r for r in rows if date in r]
+        return hits[0] if hits else None
+
+    for date, label in (
+        ("2027-02-01", "partly paid — the bank paid R30.00 of R50.00 on this ticket"),
+        ("2027-03-01", "<td>unpaid</td>"),
+        ("2027-04-01", "payment unknown"),
+    ):
+        r = row(date)
+        need(r is not None, f"the win expiring {date} is missing from section 1")
+        need(label in r, f"the win expiring {date} lacks its label {label!r}")
+    need(row("2027-01-01") is None, "a paid win is listed with a deadline")
+    need(row("2026-01-01") is None, "an expired win is listed")
+    need("Claimable" not in html, "the retired 'Claimable' wording is still on the page")
+
+    only_paid = render_pure(fixture_model(wins=[win("paid", "2027-01-01")]))
+    need("No unexpired win is waiting on the bank" in only_paid,
+         "a model whose only win is paid does not render the empty state")
+
+
 def render_pure(model, token="tok"):
     """Render with all_draws replaced by a double that RAISES.
 
@@ -726,7 +772,7 @@ def spend_over_checkable():
         entries=entries, wins=[],
         spend={"compared_cents": expected_cmp, "lifetime_cents": spend_life,
                "unresolved_cents": unresolved_cents, "unresolved_tickets": 1},
-        won={"compared_cents": 0, "lifetime_cents": 0, "unexpired_cents": 0},
+        won={"compared_cents": 0, "lifetime_cents": 0},
         uncheckable={"entries": len(entries), "uncheckable": 2, "too_old": 2,
                      "no_pool": 0, "wholly": 1, "partly": 1},
     )
@@ -2028,7 +2074,7 @@ def numbers_chosen_and_drawn():
 
         # 4. The chosen and drawn sets must not be conflated: they differ here,
         #    so rendering one twice would pass every assertion above.
-        wins_tbl = re.search(r"<h2>Claimable now</h2>.*?</table>", html, re.S)
+        wins_tbl = re.search(r"<h2>Not yet paid</h2>.*?</table>", html, re.S)
         if wins_tbl is None:
             raise Fail("the wins table is missing entirely")
         cells = re.findall(r'<td class="nums">(.*?)</td>', wins_tbl.group(0), re.S)
@@ -2192,6 +2238,7 @@ CASES = [
     ("numbers_chosen_and_drawn", "INV-48", numbers_chosen_and_drawn),
     ("theme_is_dark_and_readable", "INV-62", theme_is_dark_and_readable),
     ("counts_read_as_english", "0007(w)", counts_read_as_english),
+    ("deadline_only_when_unpaid", "INV-70", deadline_only_when_unpaid),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -2233,6 +2280,7 @@ BREAKS = {
     "ball_without_colour": "theme_is_dark_and_readable",
     "theme_unreadable_palette": "theme_is_dark_and_readable",
     "plural_ignored": "counts_read_as_english",
+    "deadline_on_paid_win": "deadline_only_when_unpaid",
 }
 
 
@@ -2257,6 +2305,9 @@ def apply_render_breaks():
             return real(m)
 
         page._entries_section = only_scorable
+    if broken("deadline_on_paid_win"):
+        # The "Claimable now" page INV-70 replaces: section 1 on expiry alone.
+        page._waiting = lambda wins: [w for w in wins if not w.get("expired")]
     if broken("plural_ignored"):
         page._count = lambda n, one, many: f"{n:,} {many}"
     if broken("url_pushstate"):
