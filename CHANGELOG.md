@@ -287,6 +287,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The page and the terminal now say which wins the bank hasn't paid, instead of "still claimable"** (LOTTO-0011)
+  The bank pays winnings into your account by itself, so "still claimable" was sending you after money you already had. Each win is now checked against the bank's own "winnings paid" messages. A win the bank paid in full is simply paid and carries no deadline. Every other win is listed under **Not yet paid** with its claim deadline, marked *unpaid*, *partly paid* (with what the bank paid out of what the app worked out for that ticket), or *payment unknown* when there is no payment message to check it against. Missing payment data never counts as paid. A "winnings paid" text from a sender the bank doesn't use never counts either, so a fake one can't hide a real unpaid win. There is no longer a total: for a partly paid ticket, what is still owed isn't known.
+
+- **The current year and month now say "so far", and this month is always offered** (LOTTO-0051)
+  The period list used to show "2026" right above "2025" as if both were whole years, and the current month didn't appear until a draw in it had been checked. Now the current year and month read "2026 so far" and "October 2026 so far". This month is offered even before anything in it is checked, with a note saying so and no money shown, so an unchecked month can never look like "checked, won nothing".
+
 - **The Python requirement is now 3.9 or newer, instead of 3.8** (LOTTO-0065)
   The old claim could not be checked. Python 3.8 reached end of life, so no
   automated runner offers it any more — which meant the project promised to work
@@ -365,6 +371,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   was never quite true and is now measurably not.
 
 ### Fixed
+
+- **A ticket with a board too big for one line is reported as not checkable, never scored wrongly** (LOTTO-0007)
+  A PowerBall board with more than six numbers (counting the PowerBall), or a Daily Lotto board with more than five, can't be a single line, and the price of each line is unknown. Before, the app would have scored such a board as one line anyway. Now every entry of that ticket is marked not checkable, and the page explains why: *on a ticket whose board holds more numbers than one line of its game*. That reason is checked first, so it is never blamed on missing draw data. The banner now says "none of them could be scored", which is true for every reason. None of your current tickets has such a board. Checked by `tools/verify_boards.py`. This is LOTTO-0007 (d).
+
+- **The tray no longer crashes when it cannot save its reminder list, and a damaged ticket is named as damaged** (LOTTO-0007)
+  If your settings folder can't be written to (a full disk, or a folder you aren't allowed to write in), the app used to crash its tray icon. Now it carries on and tells you once that re-buy reminders are paused until you restart it, so you are never told the same thing twice. A ticket whose text message lists no draws now gets its own notice saying the message may be damaged; before, the app wrongly said the draw calendar needed updating. These problem notices now show the warning icon, not the tick. This is LOTTO-0007 (p) and (q).
 
 - **An abbreviated month in an archive link no longer stops the results download** (LOTTO-0007)
   `backfill.py` now reads "sep" or "sept" as September. A month it cannot

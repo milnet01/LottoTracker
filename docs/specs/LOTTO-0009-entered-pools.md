@@ -11,7 +11,9 @@ dismissed; the cap was reached, which is the normal exit. See §13. The
 surfaced finding was decided by the user later that day: INV-7, §6, §11 and
 §12 now report an oversized ticket apart from `unresolved`, gated by a second
 `review-contract` run (§13 loops 8–9): five verified findings, all fixed;
-cap reached, middling. Ready to build.
+cap reached, middling. **Implemented and verified 2026-10-15**:
+`tools/verify_boards.py::oversized_not_unresolved` passes and fails under
+`oversized_counted_unresolved`.
 **Kind:** fix.
 **Source:** ROADMAP LOTTO-0009 (in-session-2026-08-01, found while sizing LOTTO-0008).
 **Covers:** LOTTO-0008 (record what each ticket cost), LOTTO-0009 (entered pools).

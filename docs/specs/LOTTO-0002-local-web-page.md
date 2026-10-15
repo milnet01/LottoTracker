@@ -18,6 +18,11 @@ total, §4.1's builder reconciles payment over trusted payouts only (LOTTO-0001
 INV-77), and §3's board size is confirmed. Gated the same day (§13 loop 10):
 converged at one loop, nothing fixed; one finding surfaced to the user (§4.6's
 "Winnings lifetime" line, which the page has never rendered) and two filed.
+**Implemented and verified 2026-10-15**: the row is struck and the two filed
+findings were folded into the build. INV-68
+(`tools/verify_boards.py::odd_board_is_named`, three breaks) and INV-70
+(`tools/verify_page.py::deadline_only_when_unpaid`) pass, each observed
+failing under its own breaks.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0002 (user-request-2026-08-01; three further choices
 taken with the user 2026-08-02, recorded in §3).

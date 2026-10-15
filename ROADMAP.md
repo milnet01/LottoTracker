@@ -281,7 +281,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   reference was the join, exactly as it argued.
   Source: user-correction-2026-08-02.
 
-- 📋 [LOTTO-0011] **Stop saying "still claimable" — the bank pays automatically.**
+- ✅ [LOTTO-0011] **Stop saying "still claimable" — the bank pays automatically.**
   Kind: fix. Source: user-correction-2026-08-02.
   Layman: the wording implies you have to go and collect money that is already
   in your account.
@@ -330,6 +330,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   INV-70 (deadline only when not paid; tools/verify_page.py case with break
   deadline_on_paid_win). Specs to amend: LOTTO-0001 s4.4 and s5; LOTTO-0002
   title, s1, s2, s4.1, s4.5 item 1, s7, s11; README wording. LOTTO-0058 after.
+  Shipped 2026-10-15. check.payment_status() and trusted_payouts(); the
+  terminal's NOT YET PAID list; the page's section 1 is "Not yet paid";
+  won.unexpired_cents removed (the user, 2026-10-15). A payout from an
+  unknown sender never marks a win paid (LOTTO-0001 INV-77, the user's
+  decision). On the live data: 330 winning lines, 7 not yet paid, all
+  partly paid. LOTTO-0058 and the hub screenshot follow.
   Source: user-correction-2026-08-02.
 
 - ✅ [LOTTO-0003] **Pick up new tickets automatically as the SMS arrives.**
@@ -1272,7 +1278,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: chore.
   Source: user-request-2026-08-20.
 
-- 📋 [LOTTO-0051] **Two of sign 4's four promised period kinds are not really on offer.**
+- ✅ [LOTTO-0051] **Two of sign 4's four promised period kinds are not really on offer.**
   Found by RUNNING the page against real data on 2026-09-01, not by reading.
   README s4 promises four kinds: a given year, year to date, a given month,
   month to date. The dropdown offers 5 years and 46 months, and two of the
@@ -1309,6 +1315,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   current year gets nothing. LOTTO-0036 INV-71 (tools/verify_periods.py case,
   break current_unlabelled) plus a tools/verify_page.py case with break
   unscored_month_shows_zero. Specs: LOTTO-0036 s3, s4.5 to s4.7, s5, s7, s10.
+  Shipped 2026-10-15. serve.mark_current() labels the current year and
+  month "so far"; an unscored current month is offered with a no-money
+  row (LOTTO-0036 INV-71). With nothing scored at all, only the
+  no-period notice shows (the user, 2026-10-15).
   **Layman:** The page cannot show you this month so far, and last year sits next to a part-year labelled as if it were whole.
   Kind: fix.
   Source: verify-delivery-2026-09-01 sign 4.
@@ -1764,7 +1774,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   bank; see the "Adding your bank" section of README.md.
   Source: user-request-2026-08-01.
 
-- 📋 [LOTTO-0007] **Close the cold-eyes deferred tail.**
+- ✅ [LOTTO-0007] **Close the cold-eyes deferred tail.**
   Kind: review-fix. Source: cold-eyes-2026-08-01 loop 3.
   Layman: a short list of known rough edges, written down so they are not
   rediscovered by another expensive review.
@@ -2141,6 +2151,13 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   s4.6 counts, INV-7, s9; LOTTO-0002 s4.1 model and s4.5.
   (p) and (q): written into LOTTO-0034 2026-10-08 as INV-65 and INV-66; gate
   owed, then build.
+  Closed 2026-10-15: the last three open letters shipped. (d) oversized
+  boards - LOTTO-0001 INV-67, LOTTO-0002 INV-68, LOTTO-0009 INV-7's
+  oversized half; tools/verify_boards.py (CI lane, four cases, six
+  breaks). (p) and (q) - LOTTO-0034 INV-65 and INV-66 in
+  tools/verify_expiry.py. The user's 2026-10-15 decisions: per-game
+  board size confirmed; an oversized ticket is reported apart from
+  verify_pools' unresolved count.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**

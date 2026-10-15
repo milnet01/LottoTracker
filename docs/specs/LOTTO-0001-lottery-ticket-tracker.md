@@ -9,7 +9,11 @@ implementation is the third reviewer. See §13. **Amended again 2026-10-15**
 with the user's decision that an unknown sender's payout never pays a win:
 §4.4 and INV-77. Gated the same day (§13 loops 12–13): seven verified
 findings, six fixed, one filed (§6's terminal unresolved notice and oversized
-tickets); calm cap.
+tickets, since fixed in the build); calm cap. **Implemented and verified
+2026-10-15**: INV-67 (`tools/verify_boards.py`, two cases), INV-69
+(`tools/verify_payouts.py::payment_follows_record`) and INV-77
+(`tools/verify_senders.py::unknown_sender_never_pays`) pass, each observed
+failing under its own breaks.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0001 (user request, 2026-08-01).
 
