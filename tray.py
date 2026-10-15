@@ -229,7 +229,10 @@ class LottoTray(QSystemTrayIcon):
             return
         self.expiry_checked_on = today
         for body in supervise.expiry_notices(today):
-            self.note(body)
+            # Which strings report a fault is supervise's decision, not this
+            # file's (LOTTO-0034 s4.6): a paused or defect notice shows the
+            # failure icon, a re-buy notice the ordinary one.
+            self.note(body, bad=body in supervise.FAULT_NOTICES)
 
     def note(self, body, bad=False):
         """A desktop notification. `bad=True` for anything that FAILED.
@@ -375,11 +378,11 @@ def main():
     # Connected HERE, immediately after the children exist, and not further
     # down. A session logout never clicks Quit, and that is the commonest way
     # an orphan would be created - but it is not the only one. tray.sync()
-    # below reaches supervise.expiry_notices(), whose write path §4.5 states
-    # is unguarded, and expiry.DISPLAY_NAME[t.game] is an unguarded subscript
-    # §4.7 records as checked by nothing. An unwritable $XDG_CONFIG_HOME, a
-    # read-only home or a game missing from that table therefore raises
-    # BEFORE app.exec(), and with these connected later the server child
+    # below reaches supervise.expiry_notices(), and expiry.DISPLAY_NAME[t.game]
+    # there is an unguarded subscript §4.7 records as checked by nothing. Its
+    # state-file write no longer raises (LOTTO-0034 INV-65 pauses the warnings
+    # instead), but a game missing from that table still raises BEFORE
+    # app.exec(), and with these connected later the server child
     # spawned two lines up was orphaned holding the port - INV-20, by a route
     # neither spec's failure-mode list predicts. Connecting first costs
     # nothing and closes the whole window.

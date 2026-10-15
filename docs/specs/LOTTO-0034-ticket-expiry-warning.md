@@ -13,7 +13,10 @@ implementation is the third reviewer. See §12.
 **Amended 2026-10-08** for LOTTO-0007 (p) and (q): §3.5, §3.6, §4.1, §4.5,
 §4.6, §4.7, INV-54, INV-65, INV-66, §6, §7 and §10. Gated 2026-10-15 by
 `review-contract` (genre spec): two loops, two cold lanes each, three verified
-findings, all fixed; the 2-loop cap for a spec. See §12.
+findings, all fixed; the 2-loop cap for a spec. See §12. **Built and verified
+2026-10-15**: all twelve cases pass, and each of the fourteen breaks reddens
+exactly the cases `ALSO_RED` declares for it. INV-65's case failed on the
+pre-build code with the escaping `OSError` the amendment describes.
 **Kind:** feature.
 **Source:** ROADMAP LOTTO-0034 — the project's primary job, settled with the
 user during discovery on 2026-08-20 and recorded as sign of success 1 in
