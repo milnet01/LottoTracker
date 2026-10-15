@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # LOTTO-0062 — Flag a lottery SMS from a sender not seen before
 
-**Status:** spec draft (2026-10-15).
+**Status:** accepted (2026-10-15).
 **Kind:** security.
 **Source:** ROADMAP LOTTO-0062 (in-session-2026-09-02, found while building
 LOTTO-0061's import filter). The scope decisions in §3 were taken with the
@@ -56,7 +56,7 @@ print(sorted(c.items()))
 EOF
 ```
 
-- **Since 2024-09-06** every record comes from an alphanumeric sender ID. Its
+- **Since 2024-09-06** records come from an alphanumeric sender ID. Its
   three spellings in the dump differ only by a trailing space or newline, and
   all collapse to the one token `STDBANK` once uppercased with every
   non-alphanumeric character removed.
