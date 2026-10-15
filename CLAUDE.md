@@ -49,7 +49,8 @@ python3 tray.py                # the tray icon: starts serve.py, opens the page,
 ```
 
 **`./local-CI.sh` is the pre-push gate — run it before every `git push`.** It
-runs the verifiers below plus `ruff` and a syntax pass — but none of the
+runs the verifiers below plus `ruff` and a syntax pass, and on the local lane
+`yamllint`, `typos`, `pyright` and `mypy` (LOTTO-0059) — but none of the
 `python3 -c` invariant commands at the end of this section, which stay
 hand-run. It is what
 `.github/workflows/ci.yml` invokes (as `./local-CI.sh --ci`), so the runner and

@@ -137,7 +137,8 @@ class Ticket:
         self.oversized = list(oversized)
         # Set by load() from the dump row (LOTTO-0062 s4.2). None means a
         # ticket built outside load() - a fixture - and never "known".
-        self.sender = self.sender_known = None
+        self.sender: "str | None" = None
+        self.sender_known: "bool | None" = None
 
     def __repr__(self):
         return f"<{self.ref} {self.game} x{self.ndraws} from {self.start.date()}>"
@@ -258,7 +259,8 @@ class Payout:
         # is compared against, and money compared in rands disagrees with
         # itself (LOTTO-0029 INV-42).
         self.ref, self.cents, self.received = ref, cents, received
-        self.sender = self.sender_known = None  # load_payouts() sets both
+        self.sender: "str | None" = None         # load_payouts() sets both
+        self.sender_known: "bool | None" = None
 
     def __repr__(self):
         return f"<paid {self.ref} {self.cents}c>"

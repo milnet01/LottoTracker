@@ -147,27 +147,27 @@ def _apply_break(name):
     if name == "oversized_scored_as_line":
         real = tickets.parse
 
-        def broken(body, bought=None):       # parse() stops recording the label
+        def broken_parse(body, bought=None):   # parse() stops recording the label
             t = real(body, bought)
             if t is not None:
                 t.oversized = []
             return t
-        tickets.parse = scoped(real, broken)
+        tickets.parse = scoped(real, broken_parse)
     elif name == "oversized_misfiled":
         real = check.uncheckable_report
 
-        def broken(tk):                      # the odd_board split dropped
+        def broken_report(tk):               # the odd_board split dropped
             lines, counts = real(tk)
             counts["too_old"] += counts["odd_board"]
             counts["odd_board"] = 0
             return [ln for ln in lines if "one line of its game" not in ln], counts
-        check.uncheckable_report = scoped(real, broken)
+        check.uncheckable_report = scoped(real, broken_report)
     elif name == "oversized_counted_unresolved":
         verify_pools.oversized = scoped(verify_pools.oversized, lambda t: False)
     elif name in ("odd_board_unnamed", "pool_before_board"):
         real = serve.entry_reason
 
-        def broken(ticket, rows):
+        def broken_reason(ticket, rows):
             if name == "pool_before_board" and not rows:
                 return "no results source carries this pool"
             if name == "odd_board_unnamed" and getattr(ticket, "oversized", None):
@@ -176,7 +176,7 @@ def _apply_break(name):
                 return None if ticket.start.strftime("%Y-%m-%d") >= rows[0]["date"] \
                     else "predates all draw data for this pool"
             return real(ticket, rows)
-        serve.entry_reason = scoped(real, broken)
+        serve.entry_reason = scoped(real, broken_reason)
     elif name == "odd_board_not_in_banner":
         real = page._uncheckable_banner
         page._uncheckable_banner = scoped(real, lambda u: real({**u, "odd_board": 0}))

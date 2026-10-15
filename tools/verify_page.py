@@ -687,7 +687,7 @@ def deadline_only_when_unpaid():
     ):
         r = row(date)
         need(r is not None, f"the win expiring {date} is missing from section 1")
-        need(label in r, f"the win expiring {date} lacks its label {label!r}")
+        need(label in (r or ""), f"the win expiring {date} lacks its label {label!r}")
     need(row("2027-01-01") is None, "a paid win is listed with a deadline")
     need(row("2026-01-01") is None, "an expired win is listed")
     need("Claimable" not in html, "the retired 'Claimable' wording is still on the page")
@@ -715,9 +715,10 @@ def unscored_month_not_zero():
          "the current month is not first among the months")
     row = re.search(r'<tr data-period="2026-08"[^>]*>.*?</tr>', html, re.S)
     need(row is not None, "the current month has no row")
-    need("August 2026" in row.group(0), "the row does not name the month")
-    need(not re.search(r"R\d", row.group(0)),
-         f"the unscored month's row carries a money figure: {row.group(0)!r}")
+    text = row.group(0) if row else ""
+    need("August 2026" in text, "the row does not name the month")
+    need(not re.search(r"R\d", text),
+         f"the unscored month's row carries a money figure: {text!r}")
     # §4.7: with no bucket at all, the no-period notice stands alone.
     empty = render_pure(fixture_model(periods={"buckets": [], "no_result_cents": 0,
                                                "current_month": cur}))

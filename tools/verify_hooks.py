@@ -109,7 +109,7 @@ def hook_refuses_commit():
     clean commit is not."""
     with tempfile.TemporaryDirectory() as tmp:
         scratch_repo(tmp)
-        if ACTIVE_CASE == BREAKS.get(BROKEN):
+        if ACTIVE_CASE == BREAKS.get(BROKEN or ""):
             write(tmp, os.path.join(".githooks", "pre-commit"),
                   "#!/bin/sh\nexit 0\n")
 

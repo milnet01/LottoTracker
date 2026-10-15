@@ -220,6 +220,15 @@ if [ "$CI_ONLY" -eq 0 ]; then
              "verify_privacy.py degraded to pattern-only - lotto_sms_raw.txt is missing, so the content comparison never ran."
     fi
 
+    # LOTTO-0059, the user's decision of 2026-09-28: the four linters LOTTO-0007
+    # (u) brought to zero join the gate, so they stay there. Local lane only:
+    # the runner installs ruff alone (ci.yml). A linter that is not installed
+    # exits 127 here and FAILS - never a silent pass. Each reads its own
+    # config: .yamllint, _typos.toml, pyrightconfig.json, mypy.ini.
+    run "yamllint"           yamllint .
+    run "typos"              typos
+    run "pyright"            pyright
+    run "mypy"               mypy .
     run "verify_sources.py"  python3 tools/verify_sources.py
     run "verify_coverage.py" python3 tools/verify_coverage.py
     run "verify_pools.py"    python3 tools/verify_pools.py
