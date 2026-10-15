@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=78 -->
+<!-- ants-roadmap-id-high-water: LOTTO=79 -->
 
 # ROADMAP — LottoTracker
 
@@ -1606,6 +1606,37 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** The page opened white and was painful to look at; it now opens dark and you can pick from thirteen colour schemes.
   Kind: accessibility.
   Source: user-request-2026-09-06.
+
+- 📋 [LOTTO-0079] **Ask contributors for their own bank's lottery SMSes, so banks other than Standard Bank can be read.**
+  Requested by the user 2026-10-15. Today the parser, the admission filter
+  (watch_sms.py::INCLUDE and LOTTO-0001 s4.1's adb clause) and LOTTO-0062's
+  sender rule all know only Standard Bank (README.md says so).
+
+  Two parts, in order:
+  1. A way to ask. A GitHub issue template (.github/ISSUE_TEMPLATE/) and a
+     README section saying which messages are needed: a purchase and a
+     payout, per era if the bank changed its wording.
+  2. Per-bank reading. Each bank gets its own parser, admission terms and
+     sender names. Likely three or more subsystems, so it needs a spec.
+
+  Privacy is the hard part, because the repo is public. A real SMS identifies
+  a ticket by its numbers, date and amount alone (CLAUDE.md s Privacy). The
+  template must ask for a REDACTED sample: reference replaced by the
+  sentinel VAS00000000000 (or that bank's equivalent shape), numbers,
+  dates and amounts changed, account digits removed. Keep the wording and
+  layout exactly, since that is what the parser needs. A maintainer still
+  runs tools/verify_privacy.py on any sample before it is tracked, and
+  never pastes an unredacted one.
+
+  Not yet decided: whether samples land as test fixtures in the repo or stay
+  in issues only; and how a bank's sender name is confirmed as genuine
+  before it joins LOTTO-0062's known list.
+  Scoped by the user 2026-10-15: South African banks only. The app scores
+  South Africa's National Lottery games, so a bank outside SA has nothing
+  for it to read. The template and README say so up front.
+  **Layman:** People who bank elsewhere could send in their bank's lottery texts, so the app can learn to read those too.
+  Kind: feature.
+  Source: user-request-2026-10-15.
 
 ## Hardening
 
