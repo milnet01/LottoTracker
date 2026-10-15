@@ -35,9 +35,10 @@ that shows one at a time. The user can answer "did August pay for itself?" and
 `serve.py::build_model()` computes six money figures; the three
 `page.py::_spend_section()` draws its comparison from are
 `spend.compared_cents`, `won.compared_cents` and `spend.lifetime_cents`, and all
-three are lifetime totals. (The other three — `spend.unresolved_cents`,
-`won.lifetime_cents` and `won.unexpired_cents` — are lifetime figures too; §4.4
-relies on the first of them.)
+three are lifetime totals. (The other two — `spend.unresolved_cents` and
+`won.lifetime_cents` — are lifetime figures too; §4.4 relies on the first of
+them. `won.unexpired_cents` was removed from the model on 2026-10-15,
+LOTTO-0011.)
 There is no period concept anywhere in the pipeline — verified 2026-08-27. The
 one match is a comment on the claim deadline, not a period computation:
 

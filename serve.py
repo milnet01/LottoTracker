@@ -333,14 +333,20 @@ def build_model():
             )
 
     won_life = sum(round(w["amount"] * 100) for w in wins)
-    won_live = sum(round(w["amount"] * 100) for w in wins if not w["expired"])
     resolved_refs = {t.ref for t in all_tickets if t.resolved}
     won_cmp = sum(
         round(w["amount"] * 100) for w in wins if w["ref"] in resolved_refs
     )
 
+    # LOTTO-0011: the model's wins are payment_status()'s, which adds the
+    # reference's payment state. The records come from the TRUSTED payouts
+    # alone, so a forged "winnings paid" text cannot clear a real deadline
+    # (LOTTO-0001 INV-77). No reference join of our own here (LOTTO-0002 s4.1).
+    status = check.payment_status(
+        wins, check.reconcile(all_tickets, wins, check.trusted_payouts(bank_paid))
+    )
     out_wins = []
-    for w in wins:
+    for w in status:
         d = dict(w)
         d["amount_cents"] = round(d.pop("amount") * 100)  # drop the rands key
         expires = datetime.date.fromisoformat(d["expires"])
@@ -394,7 +400,6 @@ def build_model():
         "won": {
             "compared_cents": won_cmp,
             "lifetime_cents": won_life,
-            "unexpired_cents": won_live,
         },
         # LOTTO-0062 s4.4: records from a sender the bank is not known to use.
         # Still counted everywhere above; listed so a forgery is visible.

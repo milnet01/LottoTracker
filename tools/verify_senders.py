@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""LOTTO-0062 INV-72..INV-75: who sent a lottery SMS, and that it is shown.
+"""LOTTO-0062 INV-72..INV-75, LOTTO-0001 INV-77: who sent a lottery SMS, that
+it is shown, and that only a known sender's payout can mark a win paid.
 
     python3 tools/verify_senders.py            # every case
     python3 tools/verify_senders.py --list
@@ -124,11 +125,36 @@ def unknown_is_shown():
     return "listed oldest first; page and terminal name each; empty renders nothing"
 
 
+def unknown_sender_never_pays():
+    """LOTTO-0001 INV-77: only a payout from a known sender can mark a win paid.
+
+    One ticket on the reference, one win on it, one payout matching it in
+    full. Only the payout's sender_known varies, so only trusted_payouts()
+    decides the answer - True must give "paid", or the case could not tell a
+    working filter from one that drops everything.
+    """
+    ticket = tickets.parse(PURCHASE, datetime(2026, 7, 1))
+    win = {"ref": SENTINEL, "amount": 50.0, "date": "2026-07-01"}
+
+    def payment(known):
+        p = _flagged(tickets.Payout(SENTINEL, 5000, datetime(2026, 7, 2)), known)
+        trusted = check.trusted_payouts([p])
+        recs = check.reconcile([ticket], [win], trusted)
+        return check.payment_status([win], recs)[0]["payment"]
+
+    got = {known: payment(known) for known in (True, False, None)}
+    assert got[True] == "paid", f"a known sender's full payout read {got[True]!r}"
+    assert got[False] == "unknown", f"an unknown sender's payout read {got[False]!r}"
+    assert got[None] == "unknown", f"an unchecked payout read {got[None]!r}"
+    return "known -> paid; unknown and unchecked -> unknown"
+
+
 CASES = [
     ("spellings_collapse", "INV-72", spellings_collapse),
     ("accept_rule_is_exact", "INV-73", accept_rule_is_exact),
     ("unknown_is_kept", "INV-74", unknown_is_kept),
     ("unknown_is_shown", "INV-75", unknown_is_shown),
+    ("unknown_sender_never_pays", "INV-77", unknown_sender_never_pays),
 ]
 
 ACTIVE_CASE = None  # set by main(); a break fires only in its own case
@@ -139,6 +165,8 @@ BREAKS = {
     "prefix_only": "accept_rule_is_exact",
     "drop_unknown": "unknown_is_kept",
     "section_silent": "unknown_is_shown",
+    "trust_unknown_sender": "unknown_sender_never_pays",
+    "trust_unset_sender": "unknown_sender_never_pays",
 }
 
 
@@ -166,6 +194,12 @@ def _apply_break(name):
         tickets.load_payouts = scoped(real_p, lambda p: [x for x in real_p(p) if x.sender_known])
     elif name == "section_silent":
         page._senders_section = scoped(page._senders_section, lambda m: "")
+    elif name == "trust_unknown_sender":
+        check.trusted_payouts = scoped(check.trusted_payouts, lambda ps: list(ps))
+    elif name == "trust_unset_sender":
+        check.trusted_payouts = scoped(
+            check.trusted_payouts,
+            lambda ps: [p for p in ps if p.sender_known is not False])
 
 
 def main(argv):

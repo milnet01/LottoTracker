@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """LOTTO-0029 INV-40..INV-47: the bank's payout SMSes, reconciled against wins.
 
-    python3 tools/verify_payouts.py            # all eight
+    python3 tools/verify_payouts.py            # every case
     python3 tools/verify_payouts.py --list
     python3 tools/verify_payouts.py --break accept_debits   # RED-TEST: must FAIL
 
@@ -12,7 +12,7 @@ verify_pools.py compares a price against a transcribed table - all of them
 verify the code against the code's own inputs. The bank's messages are the
 only record of what this user was actually paid.
 
-Three constraints, from LOTTO-0029 §7 and binding on all eight cases:
+Three constraints, from LOTTO-0029 §7 and binding on every case:
 
   * NO MESSAGE CONTENT, and no amount against a reference. The census is
     counts and totals only. verify_privacy.py compares tracked files against
@@ -37,7 +37,8 @@ What IS asserted: 0 purchase debits accepted as payouts, 0 references dropped
 by the partition, and the synthetic fixtures below. Exit code is the signal.
 
 RED-TESTING. `--break accept_debits` patches the real production regex. The
-other seven patch reconcile()'s OUTPUT to produce exactly what the named
+rest patch the OUTPUT of reconcile() or, for INV-69, payment_status() to
+produce exactly what the named
 defect would produce, which is indistinguishable from the buggy code at the
 boundary the case observes. Said plainly rather than implied: only the first
 exercises the production code path itself.
@@ -335,6 +336,36 @@ def no_payouts_is_not_agreement():
     return "absence named, no census"
 
 
+def payment_follows_record():
+    """LOTTO-0001 INV-69: each win's payment state, from its reference's record.
+
+    Hand-built wins and records, one reference per category plus one with no
+    record, so every row of LOTTO-0001 s4.4's table is reached. References
+    here are opaque names, not VAS-shaped (see SYNTH_B above).
+    """
+    want = {"agree": "paid", "low": "paid", "high": "partly paid",
+            "unpaid": "unpaid", "no_ticket": "unknown",
+            "unexplained": "unknown", "unscored": "unknown"}
+    wins = [{"ref": f"SYNTH-{c}", "line": 1} for c in want] + [{"ref": "SYNTH-none", "line": 1}]
+    records = [{"ref": f"SYNTH-{c}", "paid_cents": 700, "computed_cents": 900,
+                "category": c, "first_win": "2026-07-01"} for c in want]
+    before = [dict(w) for w in wins]
+    got = {d["ref"]: d for d in check.payment_status(wins, records)}
+    assert wins == before, "payment_status() modified its input"
+    wrong = {c: got[f"SYNTH-{c}"]["payment"] for c in want
+             if got[f"SYNTH-{c}"]["payment"] != want[c]}
+    assert not wrong, f"wrong payment state per category: {wrong}"
+    none = got["SYNTH-none"]
+    assert (none["payment"], none["ref_paid_cents"], none["ref_computed_cents"]) \
+        == ("unknown", None, None), f"a reference with no record read {none}"
+    high = got["SYNTH-high"]
+    assert (high["ref_paid_cents"], high["ref_computed_cents"]) == (700, 900), \
+        "the reference's two figures were not carried"
+    empty = {d["payment"] for d in check.payment_status(wins, [])}
+    assert empty == {"unknown"}, f"with no payout data, wins read {sorted(empty)}"
+    return f"{len(want)} categories and a missing record mapped; no data reads unknown"
+
+
 CASES = [
     ("purchase_is_not_a_payout", "INV-40", purchase_is_not_a_payout),
     ("multiple_payouts_sum", "INV-41", multiple_payouts_sum),
@@ -344,6 +375,7 @@ CASES = [
     ("categories_partition", "INV-45", categories_partition),
     ("unpaid_carries_draw_date", "INV-46", unpaid_carries_draw_date),
     ("no_payouts_is_not_agreement", "INV-47", no_payouts_is_not_agreement),
+    ("payment_follows_record", "INV-69", payment_follows_record),
 ]
 
 ACTIVE_CASE = None  # set by main(); a break fires only in its own case
@@ -358,6 +390,9 @@ BREAKS = {
     "drop_no_ticket": "categories_partition",
     "no_first_win": "unpaid_carries_draw_date",
     "census_without_payouts": "no_payouts_is_not_agreement",
+    "short_paid_reads_paid": "payment_follows_record",
+    "no_records_reads_paid": "payment_follows_record",
+    "other_category_reads_paid": "payment_follows_record",
 }
 
 
@@ -367,6 +402,28 @@ def _apply_break(name):
         # The real production regex, widened toward "paid" as the docstring
         # warns against. This is the only break on the production path.
         tickets.PAYOUT = re.compile(r"R([\d,]+\.?\d*).*?(VAS\d+)", re.I | re.S)
+        return
+    if name in ("short_paid_reads_paid", "no_records_reads_paid",
+                "other_category_reads_paid"):
+        real_ps = check.payment_status
+
+        def broken_ps(wins, records):
+            out = real_ps(wins, records)
+            if ACTIVE_CASE != BREAKS[name]:
+                return out
+            cat = {r["ref"]: r["category"] for r in records}
+            for d in out:
+                c = cat.get(d["ref"])
+                if name == "short_paid_reads_paid" and c == "high":
+                    d["payment"] = "paid"
+                elif name == "no_records_reads_paid" and not records:
+                    d["payment"] = "paid"
+                elif name == "other_category_reads_paid" and c is not None \
+                        and c not in ("agree", "low", "high", "unpaid"):
+                    d["payment"] = "paid"
+            return out
+
+        check.payment_status = broken_ps
         return
     real = check.reconcile
 

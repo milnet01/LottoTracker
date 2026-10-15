@@ -806,10 +806,11 @@ won lifetime R2,651.60, unexpired R2,418.90, unresolved tickets 0
 |---|---|---|
 | Spend on entries that could be scored | R10,603.50 | the comparison |
 | Winnings on those entries (`won.compared_cents`) | R2,651.60 | the comparison |
-| Winnings lifetime | R2,651.60 | a separate, labelled line — **not** the comparison (below) |
 | Lifetime spend, all 1,233 entries | R28,244.50 | a separate, labelled line |
 
-The unexpired total the command prints is not shown and is not in the model:
+`won.lifetime_cents` stays in the model and the page does not show it:
+`page.py::_spend_section()` renders the two comparison figures and lifetime
+spend only. The unexpired total the command prints is not shown and is not in the model:
 it counts wins the bank already paid, so it would read as money still owed
 (LOTTO-0011). `won.unexpired_cents` was removed by the user's decision of
 2026-10-15.

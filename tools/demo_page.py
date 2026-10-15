@@ -46,13 +46,16 @@ wins = [
      "amount_cents": 5000, "expires": "2027-07-18", "expires_in_days": 296,
      "expired": False, "source": "api",
      "numbers": [4, 11, 19, 27, 38, 52], "drawn_main": [4, 11, 19, 30, 46, 49],
-     "drawn_special": 21},
+     "drawn_special": 21,
+     # Paid by the bank, so section 1 does not list it (LOTTO-0011).
+     "payment": "paid", "ref_paid_cents": 5000, "ref_computed_cents": 5000},
     {"ref": "demo-powerball", "game": "powerball", "plus_flag": 0, "pool_id": 0,
      "date": "2026-09-05", "division": "Division 9", "matched": "MATCH 1 + PB",
      "amount_cents": 1500, "expires": "2027-09-05", "expires_in_days": 345,
      "expired": False, "source": "api",
      "numbers": [7, 14, 22, 35, 41], "special": 12,
-     "drawn_main": [5, 14, 28, 39, 48], "drawn_special": 12},
+     "drawn_main": [5, 14, 28, 39, 48], "drawn_special": 12,
+     "payment": "unpaid", "ref_paid_cents": None, "ref_computed_cents": 1500},
 ]
 
 model = verify_page.fixture_model()
@@ -71,7 +74,7 @@ model.update({
                     "wholly": 0, "partly": 1},
     "spend": {"compared_cents": 8000, "lifetime_cents": 8750,
               "unresolved_cents": 0, "unresolved_tickets": 0},
-    "won": {"compared_cents": 6500, "lifetime_cents": 6500, "unexpired_cents": 6500},
+    "won": {"compared_cents": 6500, "lifetime_cents": 6500},
     "periods": {"buckets": [
         {"key": "2026", "kind": "year", "label": "2026", "spend_cents": 8000, "won_cents": 6500},
         {"key": "2026-09", "kind": "month", "label": "September 2026", "spend_cents": 3750, "won_cents": 1500},

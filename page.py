@@ -200,15 +200,45 @@ def _uncheckable_banner(u):
     )
 
 
+def _payment_cell(w):
+    """The win's payment state in words (LOTTO-0002 s4.5 item 1, INV-70).
+
+    A win with no `payment` key reads as unknown: missing data never reads as
+    paid, and a deadline with no state beside it would hide that it is missing.
+    """
+    state = w.get("payment", "unknown")
+    if state == "partly paid":
+        p, c = w.get("ref_paid_cents"), w.get("ref_computed_cents")
+        if p is not None and c is not None:
+            return (f"<td>partly paid — the bank paid {_e(_rands(p))} of "
+                    f"{_e(_rands(c))} on this ticket</td>")
+        return "<td>partly paid</td>"
+    if state == "unpaid":
+        return "<td>unpaid</td>"
+    return "<td>payment unknown</td>"
+
+
+def _waiting(wins):
+    """The wins section 1 lists (LOTTO-0011, INV-70).
+
+    A win the bank paid carries no deadline anywhere on the page. Every other
+    unexpired win is here, "unknown" included - which is what keeps the
+    empty-state sentence true when no payout data parsed at all.
+    """
+    return [w for w in wins
+            if not w.get("expired") and w.get("payment", "unknown") != "paid"]
+
+
 def _wins_section(model):
-    live = [w for w in model.get("wins", []) if not w.get("expired")]
+    live = _waiting(model.get("wins", []))
     # A win with no expiry date sorts LAST, not first: "" compares below every
     # real date, so an absent value was reading as the most urgent line here.
     live.sort(key=lambda w: (not w.get("expires"), w.get("expires") or ""))
     if not live:
         body = (
-            '<p class="muted">No unexpired winning lines. This counts only the '
-            "entries that could be checked &mdash; see the banner above.</p>"
+            '<p class="muted">No unexpired win is waiting on the bank. This '
+            "counts only the entries that could be checked &mdash; see the "
+            "banner above.</p>"
         )
     else:
         rows = []
@@ -238,16 +268,18 @@ def _wins_section(model):
                 + f'<td>{_e(w.get("division"))}</td><td>{_e(w.get("matched"))}</td>'
                 f'<td>{_e(w.get("date"))}</td>'
                 f'<td class="money">{_e(_rands(w["amount_cents"]))}</td>'
-                f"<td>{when}</td></tr>"
+                + _payment_cell(w)
+                + f"<td>{when}</td></tr>"
             )
         body = (
             "<table><thead><tr><th>Pool</th><th>Your numbers</th><th>Drawn</th>"
             "<th>Division</th><th>Matched</th>"
-            "<th>Draw</th><th>Amount</th><th>Expires</th></tr></thead><tbody>"
+            "<th>Draw</th><th>Amount</th><th>Payment</th><th>Expires</th>"
+            "</tr></thead><tbody>"
             + "".join(rows)
             + "</tbody></table>"
         )
-    return f"<section><h2>Claimable now</h2>{body}</section>"
+    return f"<section><h2>Not yet paid</h2>{body}</section>"
 
 
 def _outstanding_section(model):
