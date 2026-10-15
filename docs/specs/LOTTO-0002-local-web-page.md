@@ -666,8 +666,9 @@ builder calls, so a case can call it with no dump and no archive:
 ```python
 def entry_reason(ticket, rows) -> str | None:     # in serve.py
     """`rows` is history.all_draws(ticket.game, plus_flag), passed in."""
-    # 1. ticket.oversized (LOTTO-0001 INV-67) -> a reason naming the board(s)
-    #    and saying one line of this game holds fewer numbers
+    # 1. ticket.oversized (LOTTO-0001 INV-67)
+    #    -> "board A: more numbers than one line of this game holds"
+    #       ("boards A, B: ..." for more than one; labels joined by ", ")
     # 2. not rows -> "no results source carries this pool"
     # 3. ticket.start before rows[0]["date"]
     #    -> f"predates all draw data for this pool (earliest {rows[0]['date']})"
@@ -696,7 +697,11 @@ The page renders per entry:
   reason that has a non-zero count, `odd_board` included, and its explanation
   is worded to hold for all three: the entries are not losses because none of
   them could be scored — never "nothing exists to score them against", which
-  is false of an oversized board whose pool has draws (INV-68).
+  is false of an oversized board whose pool has draws (INV-68). As built: the
+  sentence reads *They are not losses — none of them could be scored.*, and
+  the oversized reason's part reads the count, then *is* or *are*, then *on a
+  ticket whose board holds more numbers than one line of its game* —
+  LOTTO-0009 §4.6's report wording.
 
 INV-15 asserts this against a fixture built for it, because it is the one rule
 here that no compiler, linter or type check can see.
@@ -1205,7 +1210,13 @@ them unqualified.
   Then renders `page._uncheckable_banner()` over a counts dict with
   `uncheckable` and `odd_board` non-zero and the other two reasons zero, and
   asserts the reason and the count appear and "nothing exists" does not.
-  Break `odd_board_unnamed`, which drops the oversized branch from both, and
+  It asserts the exact wording §4.5 pins — `entry_reason()` equal to
+  `"board A: more numbers than one line of this game holds"`, and the banner
+  containing `"2 are on a ticket whose board holds more numbers than one line
+  of its game"` — so the case and the page cannot be built to different
+  strings. Breaks `odd_board_unnamed`, which drops the oversized branch from
+  `entry_reason()` alone; `odd_board_not_in_banner`, which drops it from the
+  banner alone, so each half is seen failing on its own; and
   `pool_before_board`, which checks the pool first.
   *Breaks when:* the oversized branch is missing, so an oversized ticket in a
   carried pool returns `None` and renders as not checkable with nothing after
@@ -1358,7 +1369,7 @@ share their fixtures, their temporary-directory setup and their stub builder.
 CI-lane `tools/verify_boards.py` that LOTTO-0001 INV-67 also uses, because it
 calls `serve.entry_reason()` — a builder-side function, which this file's
 cases deliberately never reach (INV-15's *Test* clause says why). Its breaks
-are `odd_board_unnamed` and `pool_before_board`. **One existing case moves with the rename:**
+are `odd_board_unnamed`, `odd_board_not_in_banner` and `pool_before_board`. **One existing case moves with the rename:**
 `numbers_chosen_and_drawn` finds section 1 by its `Claimable now` heading; it
 must look for `Not yet paid`. Its fixture win carries no `payment`, so it
 renders as *payment unknown* (§4.5). `tools/demo_page.py`'s fixture wins carry
@@ -1507,7 +1518,7 @@ LOTTO-0014 §8.)
 | INV-24's `$LOTTO_PORT` and bare-4322 legs reaching the **bind** | **nothing** — both are asserted at `resolve_port()` level only; the three children cover the `$PORT` leg, the rejected leg and the supervised one. A `main()` that resolved correctly and then bound `DEFAULT_PORT` on the `$LOTTO_PORT` path alone would pass |
 | INV-62 dark before any script; every theme complete and readable | `tools/verify_page.py::theme_is_dark_and_readable` — reads `page.THEMES` and one pure render; red-tested by `--break theme_default_light`, `--break ball_without_colour` and `--break theme_unreadable_palette` |
 | INV-63 the theme reaches no URL and writes one browser key | `tools/verify_page.py::theme_is_dark_and_readable` — the same case; it counts `setItem(` and re-checks INV-21's forbidden calls against the pure render |
-| INV-68 an oversized board named as the reason, on the entry and in the banner | `tools/verify_boards.py::odd_board_is_named` — red-tested by `--break odd_board_unnamed` and `--break pool_before_board` |
+| INV-68 an oversized board named as the reason, on the entry and in the banner | `tools/verify_boards.py::odd_board_is_named` — red-tested by `--break odd_board_unnamed`, `--break odd_board_not_in_banner` and `--break pool_before_board` |
 | INV-70 a deadline only on an unexpired win the bank has not paid, its payment state in words | `tools/verify_page.py::deadline_only_when_unpaid` — red-tested by `--break deadline_on_paid_win`. It renders a hand-authored model, so a wrong mapping is LOTTO-0001 INV-69's to catch, not this case's |
 | INV-48 the numbers chosen beside the numbers drawn, absence said in words | `tools/verify_page.py::numbers_chosen_and_drawn` — two disjoint fixture sets, so a renderer echoing the chosen numbers into both columns fails; red-tested by `--break no_drawn_numbers` and `--break blank_numbers_cell` |
 | §4.1 the *resolved* port being what builds LOTTO-0014 §4.2's `Host` allowlist, not either variable read again | **nothing** — and the gap is structural rather than an omission: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because the question they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes both. The breach is loud to a *user* — every request fails — and invisible to the suite |

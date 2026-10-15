@@ -172,6 +172,10 @@ def _uncheckable_banner(u):
     if not u or not u.get("uncheckable"):
         return ""
     bits = []
+    if u.get("odd_board"):
+        n = u["odd_board"]
+        bits.append(f"{n:,} {'is' if n == 1 else 'are'} on a ticket whose board "
+                    "holds more numbers than one line of its game")
     if u.get("too_old"):
         n = u["too_old"]
         bits.append(f"{n:,} predate{'s' if n == 1 else ''} all draw data "
@@ -185,8 +189,10 @@ def _uncheckable_banner(u):
         '<div class="notice"><strong>'
         f"{u['uncheckable']:,} of {_count(u['entries'], 'entry', 'entries')} "
         "cannot be checked."
-        "</strong> They are <strong>not losses</strong> &mdash; nothing exists "
-        f"to score them against. {_e(detail)}. This affects "
+        # Worded to hold for all three reasons: "nothing exists to score them
+        # against" is false of an oversized board whose pool has draws (INV-68).
+        "</strong> They are <strong>not losses</strong> &mdash; none of them "
+        f"could be scored. {_e(detail)}. This affects "
         f"{_count(u.get('wholly', 0), 'ticket', 'tickets')} wholly and "
         f"{u.get('partly', 0):,} "
         "partly; a partly-checkable ticket is still scored on its other pools."

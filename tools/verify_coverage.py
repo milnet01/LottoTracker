@@ -35,6 +35,11 @@ from tickets import load  # noqa: E402
 
 DUMP = os.path.join(os.path.dirname(__file__), "..", "lotto_sms_raw.txt")
 
+# This file's OWN copy of one line's size, the PowerBall counted (LOTTO-0001
+# §4.4): tickets.LINE_SIZE is under test, so reading it would agree with a
+# regression in it. Lotto is absent: over six numbers is Multiplay.
+OWN_LINE_SIZE = {"powerball": 6, "daily": 5}
+
 
 def main():
     tickets = load()
@@ -68,7 +73,14 @@ def main():
         # under test makes the check agree with the bug: a scorable() that
         # regressed to `bool(rows)` would hand a 2022 ticket the first draws of
         # 2025 and every property below would still pass.
-        if not known or start < known[0]["date"]:
+        # The size rule too (LOTTO-0001 INV-67), from the boards and this
+        # file's own copy of the line sizes - never Ticket.oversized, which is
+        # under test. A PowerBall board's size counts its PowerBall.
+        limit = OWN_LINE_SIZE.get(t.game)
+        too_big = limit is not None and any(
+            len(b[1]) + (b[2] is not None) > limit for b in t.boards
+        )
+        if too_big or not known or start < known[0]["date"]:
             unscorable += 1
             if rows:
                 print(f"  {who}: predates all draw data but got {len(rows)} draws")

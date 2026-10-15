@@ -134,8 +134,9 @@ tool; an Ants-verb read does not load it.
 ## Load-bearing decisions — do not "simplify" these
 
 - **An entry nothing can score is *uncheckable*, not a loss.** `history.py::scorable()`
-  gates it out and `check.py::uncheckable_report()` reports the two reasons
-  separately (predates all draw data / pool no source publishes). Silently
+  gates it out and `check.py::uncheckable_report()` reports the three reasons
+  separately (oversized board, decided first / predates all draw data / pool
+  no source publishes). Silently
   scoring such an entry against the wrong draws is the bug this project was
   built after hitting. **The unit is the entry**: a ticket checkable in one
   pool and not another is *partly* uncheckable, still scored on the rest, and
@@ -151,8 +152,13 @@ tool; an Ants-verb read does not load it.
   with `-` only in the new format. Treating it as a main number scores every
   PowerBall ticket one match high and never matches the PB (INV-1).
 - **A Lotto board with >6 numbers is Multiplay** and expands to one line per
-  6-number combination, each winning independently (INV-2). Currently
-  Lotto-only — see LOTTO-0007(d).
+  6-number combination, each winning independently (INV-2). **On PowerBall
+  and Daily Lotto a board bigger than one line — six numbers counting the
+  PowerBall, five on Daily — is oversized, not Multiplay** (INV-67,
+  `tickets.LINE_SIZE`): its price per line is unknown, so every entry of the
+  ticket is uncheckable, reported first as `odd_board` and named by
+  `serve.entry_reason()`. `verify_coverage.py` and `verify_pools.py` keep their
+  own copy of the line sizes on purpose; do not point them at `LINE_SIZE`.
 - **The bank's payout SMS never replaces a computed figure.** `check.py::reconcile()`
   joins the bank's own record to tickets on the `VAS` reference and reports both
   figures side by side; a disagreement is flagged, never resolved in the SMS's
