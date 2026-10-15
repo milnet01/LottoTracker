@@ -47,7 +47,7 @@ exercises the production code path itself.
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -366,6 +366,29 @@ def payment_follows_record():
     return f"{len(want)} categories and a missing record mapped; no data reads unknown"
 
 
+def claim_deadline_boundary():
+    """LOTTO-0058: the 365-day claim deadline, a day either side and on it.
+
+    `expires` is the last day a claim is accepted, so a win reads unexpired on
+    that day - late in the day included, since check() passes clock.now() -
+    and expired from the next. Both sides are asserted: a one-sided test goes
+    green against a defect arriving from the other direction (INV-61's
+    reasoning in verify_expiry.py).
+    """
+    drawn = datetime(2025, 3, 10)
+    last = drawn + timedelta(days=check.CLAIM_DAYS)
+    cases = [
+        ("day before the deadline", last - timedelta(days=1), False),
+        ("the deadline, late in the day", last.replace(hour=23, minute=59), False),
+        ("the day after", last + timedelta(days=1), True),
+    ]
+    for label, today, want in cases:
+        expired, expires = check.claim_deadline(drawn, today)
+        assert expires == last.date().isoformat(), f"expires {expires}, want {last.date()}"
+        assert expired is want, f"{label}: expired={expired}, want {want}"
+    return f"expires {last.date()}; unexpired on it, expired the day after"
+
+
 CASES = [
     ("purchase_is_not_a_payout", "INV-40", purchase_is_not_a_payout),
     ("multiple_payouts_sum", "INV-41", multiple_payouts_sum),
@@ -376,6 +399,7 @@ CASES = [
     ("unpaid_carries_draw_date", "INV-46", unpaid_carries_draw_date),
     ("no_payouts_is_not_agreement", "INV-47", no_payouts_is_not_agreement),
     ("payment_follows_record", "INV-69", payment_follows_record),
+    ("claim_deadline_boundary", "LOTTO-0058", claim_deadline_boundary),
 ]
 
 ACTIVE_CASE = None  # set by main(); a break fires only in its own case
@@ -393,6 +417,8 @@ BREAKS = {
     "short_paid_reads_paid": "payment_follows_record",
     "no_records_reads_paid": "payment_follows_record",
     "other_category_reads_paid": "payment_follows_record",
+    "deadline_day_expired": "claim_deadline_boundary",
+    "deadline_never_expires": "claim_deadline_boundary",
 }
 
 
@@ -424,6 +450,19 @@ def _apply_break(name):
             return out
 
         check.payment_status = broken_ps
+        return
+    if name in ("deadline_day_expired", "deadline_never_expires"):
+        real_cd = check.claim_deadline
+
+        def broken_cd(drawn, today):
+            expired, expires = real_cd(drawn, today)
+            if ACTIVE_CASE != BREAKS[name]:
+                return expired, expires
+            if name == "deadline_day_expired":     # `>=`: the last day lost
+                return (today - drawn).days >= check.CLAIM_DAYS, expires
+            return False, expires                  # the far side never fires
+
+        check.claim_deadline = broken_cd
         return
     real = check.reconcile
 

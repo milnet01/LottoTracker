@@ -402,7 +402,8 @@ calling `scorable()` (INV-6's rule against importing the predicate under test).
 Without it the script counts an oversized entry as scorable, finds it covered
 by no draws, and reports a coverage fault that is not one.
 
-Prize expiry uses `check.py::CLAIM_DAYS = 365`, the SA claim deadline. A win
+Prize expiry uses `check.py::CLAIM_DAYS = 365`, the SA claim deadline, through
+`check.py::claim_deadline()`: `expires` is the last day a claim is accepted. A win
 older than that is counted in the lifetime total but not listed individually.
 There is no claimable total (LOTTO-0011).
 
@@ -1153,7 +1154,7 @@ the figure is a lower bound until it is re-measured.
 | INV-5 | §5 grep, production modules only — labels only; **nothing** catches a hardcoded prize *amount*, and nothing checks the `tools/` literals the glob deliberately excludes. It also cannot see a feed-side **rename**, and no widening fixes that: `api_label()` builds three of its four forms with f-strings and the fourth as the plain literal `"MATCH POWERBALL"`, so a pattern broad enough to see them fires on correct code — and since LOTTO-0027 the widened glob also matches the comments quoting the old labels. INV-26 is what catches a rename, and closes LOTTO-0007(c) in place of a wider glob |
 | INV-6 | `tools/verify_coverage.py` |
 | §4.3 special-ball-is-last | `tools/verify_sources.py` — catches a change on either source alone; blind only if both change the same way together |
-| §4.4 expiry / `CLAIM_DAYS` | **nothing** — no test covers the 365-day boundary, and nothing tracks the gap |
+| §4.4 expiry / `CLAIM_DAYS` | `tools/verify_payouts.py::claim_deadline_boundary` (LOTTO-0058) — `check.claim_deadline()` a day either side of the deadline and late on it; red under `deadline_day_expired` and `deadline_never_expires` |
 | INV-31 §4.4 current-era pay gate | `check.py::retired_divisions()`, swept per live pool by `tools/verify_pools.py` with three probes driving both failure directions. Was **nothing** until 2026-08-12 (LOTTO-0023). What remains unchecked is narrower: the sample is one archive page per pool, so a division retired *within* the archive era rather than at the handover is seen only if the sampled draw carries it |
 | INV-26 §4.4 label grammar reachable | `check.py::paying_combinations()`, which raises on a division no label `api_label()` builds can equal, and `tools/verify_pools.py`, which sweeps the same rule ahead of a run plus three probes driving the raise itself. The sweep reads only the pools the dump reaches; the raise covers whatever pool a run scores, so a pool nobody holds a ticket in is checked from the moment one is. That division of labour is the design |
 | INV-22 unpriceable win raises | `tools/verify_pools.py` — four blind-lookup probes (empty and unrecognised division tables, both branches), plus the converse that a source-stated R0.00 still prices as 0.0 |

@@ -3159,7 +3159,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: review-fix.
   Source: review-code-2026-09-01.
 
-- 📋 [LOTTO-0058] **Nothing tests the 365-day claim boundary, and nothing tracked that.**
+- ✅ [LOTTO-0058] **Nothing tests the 365-day claim boundary, and nothing tracked that.**
   `docs/specs/LOTTO-0001-lottery-ticket-tracker.md` §11 carries the row
   `§4.4 expiry / CLAIM_DAYS | **nothing** - no test covers the 365-day
   boundary, and nothing tracks the gap`. The second clause was true when
@@ -3185,6 +3185,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   saying nothing tracks the gap.
   Unblocked 2026-09-25: LOTTO-0011 keeps the deadline for unpaid wins,
   so the boundary test is owed. Write it with or after LOTTO-0011.
+  Shipped 2026-10-15. The deadline moved into the pure
+  check.claim_deadline(drawn, today), which check() calls; the case
+  tools/verify_payouts.py::claim_deadline_boundary asserts the day before,
+  the deadline late in the day (unexpired) and the day after (expired), red
+  under deadline_day_expired and deadline_never_expires. LOTTO-0001 s11's
+  row now names it.
   **Layman:** The app works out when a prize can no longer be claimed, and no test checks that date is right.
   Kind: test.
   Source: session-audit-2026-09-02 backlog tally.

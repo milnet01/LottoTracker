@@ -236,6 +236,19 @@ def amount(ticket, plus_flag, pool_id, draw, hits, special):
     )
 
 
+def claim_deadline(drawn, today):
+    """-> (expired, expires) for a win drawn on `drawn`, judged at `today`.
+
+    `expires` is the LAST day a claim is accepted: CLAIM_DAYS after the draw.
+    A win is expired only from the day after, so on its expiry date it still
+    reads unexpired. Both boundaries are pinned by LOTTO-0058's case in
+    tools/verify_payouts.py - a one-sided test passes a defect arriving from
+    the other side.
+    """
+    return ((today - drawn).days > CLAIM_DAYS,
+            (drawn + timedelta(days=CLAIM_DAYS)).date().isoformat())
+
+
 def check(tickets=None, today=None):
     """-> list of win dicts, oldest first.
 
@@ -261,6 +274,7 @@ def check(tickets=None, today=None):
                     if label not in pays:
                         continue
                     drawn = datetime.strptime(d["date"], "%Y-%m-%d")
+                    expired, expires = claim_deadline(drawn, today)
                     wins.append(
                         {
                             "ref": t.ref,
@@ -283,8 +297,8 @@ def check(tickets=None, today=None):
                             "matched": site_label(t.game, hits, special),
                             "amount": amount(t, plus_flag, pool_id, d, hits, special),
                             "source": d["source"],
-                            "expired": (today - drawn).days > CLAIM_DAYS,
-                            "expires": (drawn + timedelta(days=CLAIM_DAYS)).date().isoformat(),
+                            "expired": expired,
+                            "expires": expires,
                         }
                     )
     return sorted(wins, key=lambda w: w["date"])
