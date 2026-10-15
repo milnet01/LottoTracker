@@ -133,89 +133,56 @@ tool; an Ants-verb read does not load it.
 
 ## Load-bearing decisions — do not "simplify" these
 
-- **An entry nothing can score is *uncheckable*, not a loss.** `history.py::scorable()`
-  gates it out and `check.py::uncheckable_report()` reports the three reasons
-  separately (oversized board, decided first / predates all draw data / pool
-  no source publishes). Silently
-  scoring such an entry against the wrong draws is the bug this project was
-  built after hitting. **The unit is the entry**: a ticket checkable in one
-  pool and not another is *partly* uncheckable, still scored on the rest, and
-  must never be counted as wholly excluded (INV-11).
-- **A ticket is entered in every tier its price paid for**, base game first,
-  because a PLUS game cannot be bought alone (INV-8). The tiers come from the
-  price in whole cents, not from the printed name, which states only the top
-  tier and since 2026-06-01 states none (INV-9). A price matching no tier is
-  reported, never guessed at (INV-7) — `tickets.py::TIER_PRICES` is hardcoded
-  because no feed publishes it, so `tools/verify_pools.py` is the only thing
-  that makes a price change loud.
+Each is one rule; its full reasoning is the linked record in
+`docs/decisions/`. Read the record before changing code the rule governs.
+
+- **An entry nothing can score is *uncheckable*, not a loss, and the unit is
+  the entry** — a partly checkable ticket is still scored on the rest and
+  never counted as wholly excluded (INV-11).
+  [ADR-0001](../../docs/decisions/ADR-0001-uncheckable-not-a-loss.md)
+- **A ticket is entered in every tier its price paid for, base game first** —
+  tiers come from the price in whole cents, never the printed name, and a
+  price matching no tier is reported, never guessed at (INV-7, INV-8, INV-9).
+  [ADR-0002](../../docs/decisions/ADR-0002-entered-in-every-tier.md)
 - **The PowerBall is the final number on a board line in both eras**, marked
-  with `-` only in the new format. Treating it as a main number scores every
-  PowerBall ticket one match high and never matches the PB (INV-1).
-- **A Lotto board with >6 numbers is Multiplay** and expands to one line per
-  6-number combination, each winning independently (INV-2). **On PowerBall
-  and Daily Lotto a board bigger than one line — six numbers counting the
-  PowerBall, five on Daily — is oversized, not Multiplay** (INV-67,
-  `tickets.LINE_SIZE`): its price per line is unknown, so every entry of the
-  ticket is uncheckable, reported first as `odd_board` and named by
-  `serve.entry_reason()`. `verify_coverage.py` and `verify_pools.py` keep their
-  own copy of the line sizes on purpose; do not point them at `LINE_SIZE`.
-- **The bank's payout SMS never replaces a computed figure.** `check.py::reconcile()`
-  joins the bank's own record to tickets on the `VAS` reference and reports both
-  figures side by side; a disagreement is flagged, never resolved in the SMS's
-  favour (user decision 2026-08-13, LOTTO-0029 INV-43). Adopting it would price
-  the archive era for free — and erase the 15 references where the app computes
-  LOW, which are the evidence that something in pricing is wrong. Three things
-  not to "simplify": the unit is the **reference**, not the payment (77 of 225
-  are paid more than once); money is compared in **whole cents**, never float
-  rands; and the seven categories are decided in a fixed **order**, because as
-  an unordered set they overlap — a reference with no purchase SMS has no
-  entries, so "every entry is scorable" is vacuously true of it and it would
-  match `unexplained` as well as `no_ticket`.
-- **`computed_cents` is three-valued and the three must not converge** — the
-  cardinal rule again, one layer below the page. `None` is *not checkable*
-  (nothing could be scored), `0` is *checked, total prize zero*, and a positive
-  integer is the summed prize. So `computed_cents` never answers "did it win?";
-  `first_win` does. A reference that is only **partly** scorable carries an
-  integer, never `None`, or LOTTO-0009 INV-11 is breached from the other side.
-- **A dump with no parsable payout reports that, and emits no category census.**
-  If the bank changes its wording, `parse_payout()` matches nothing and every
-  scored reference would otherwise satisfy `unpaid` — announcing prizes nobody
-  was ever paid. The guard is in `reconcile()` itself, not only in the report,
-  so the page cannot render the fictions either (INV-47). Same class as
-  LOTTO-0031, where a rebranded game name parsed to `None` and a ticket was
-  silently never scored.
-- **The re-buy warning reads the CALENDAR, never the results.** `expiry.py`
-  imports nothing of the project's and touches no file (INV-50), because a
-  ticket's last draw is fixed at purchase — the ndraws-th calendar draw on or
-  after its start — so the warning is right with the server stopped and the
-  machine offline. `draws_left` (calendar: has it *happened*) and
-  `draws_remaining` (results: has it been *scored*) are different quantities
-  that coincide only while results are current, which is exactly when the
-  warning does not need help. **Do not unify them** — same cardinal rule as
-  `_money_cell()`, one layer out. Both boundaries are pinned and moving either
-  shifts every date by one: `start` is inclusive, and a draw falling *today*
-  has not yet happened. `DRAW_DAYS` is hardcoded like `TIER_PRICES` and rots
-  the same way, so INV-49 checks it against
-  observed history in **both** directions — a one-directional check passes a
-  *removed* draw day forever.
-- **Every date is South African time, read through `clock.py`** (LOTTO-0066,
-  INV-64): a fixed UTC+2, because SAST has no daylight saving, returned naive
-  because `HANDOVER` and every draw date are naive. **Never call
-  `date.today()`, `datetime.now()` or `fromtimestamp()` directly** — each
-  reads the machine's own zone, which put a draw on the wrong day on any
-  machine not set to SAST. `expiry.py` still takes `today` from its caller
-  (INV-50); the caller gets it from `clock.today()`.
-- **`paying_combinations()` raises** rather than returning `{}` when a pool has
-  no recent draw. An empty set would score the whole pool as losses with no
-  diagnostic.
+  with `-` only in the new format (INV-1).
+  [ADR-0003](../../docs/decisions/ADR-0003-powerball-is-last.md)
+- **A Lotto board with >6 numbers is Multiplay; a PowerBall or Daily Lotto
+  board bigger than one line is oversized, not Multiplay** — every entry of
+  that ticket is uncheckable, and `verify_coverage.py` and `verify_pools.py`
+  keep their own copy of the line sizes on purpose (INV-2, INV-67).
+  [ADR-0004](../../docs/decisions/ADR-0004-multiplay-and-oversized.md)
+- **The bank's payout SMS never replaces a computed figure** — a disagreement
+  is flagged, never resolved in the SMS's favour; the unit is the
+  **reference**, not the payment; money is compared in **whole cents**, never
+  float rands; and the categories are decided in a fixed **order** (INV-43).
+  [ADR-0005](../../docs/decisions/ADR-0005-payout-never-replaces-computed.md)
+- **`computed_cents` is three-valued and the three must not converge** —
+  `None` not checkable, `0` checked with prize zero, a positive integer the
+  prize; it never answers "did it win?", and a partly scorable reference
+  carries an integer.
+  [ADR-0006](../../docs/decisions/ADR-0006-computed-cents-three-valued.md)
+- **A dump with no parsable payout reports that, and emits no category
+  census** — the guard is in `reconcile()` itself, not only in the report
+  (INV-47). [ADR-0007](../../docs/decisions/ADR-0007-no-payout-no-census.md)
+- **The re-buy warning reads the CALENDAR, never the results** — `expiry.py`
+  imports nothing of the project's and touches no file; `draws_left` and
+  `draws_remaining` must not be unified; `start` is inclusive and a draw
+  falling today has not happened; `DRAW_DAYS` is checked against history in
+  both directions (INV-49, INV-50).
+  [ADR-0008](../../docs/decisions/ADR-0008-rebuy-reads-calendar.md)
+- **Every date is South African time, read through `clock.py`** — never call
+  `date.today()`, `datetime.now()` or `fromtimestamp()` directly; `expiry.py`
+  takes `today` from its caller, which gets it from `clock.today()` (INV-64,
+  INV-50). [ADR-0009](../../docs/decisions/ADR-0009-dates-are-sast.md)
+- **`paying_combinations()` raises** rather than returning `{}` when a pool
+  has no recent draw.
+  [ADR-0010](../../docs/decisions/ADR-0010-paying-combinations-raises.md)
 - **`daily/1` (Daily Lotto Plus) is deliberately mapped to a pool no source
-  carries**, so those 11 *entries* read as uncheckable while the same tickets'
-  `daily/0` entries score normally — they are the project's only partly
-  uncheckable tickets. Aliasing them onto plain Daily Lotto would score them
-  against a different game. `tools/verify_sources.py` exempts it via
-  `EXPECTED_EMPTY`.
+  carries** — never aliased onto plain Daily Lotto.
+  [ADR-0011](../../docs/decisions/ADR-0011-daily-plus-unmapped.md)
 - **Source-agreement comparison is set-based**: the archive sorts numbers
   ascending, the API preserves drawn order.
-- **Site slugs renamed at the June 2026 rebrand** (Lotto Plus 2 → Lotto 5 Max,
-  PowerBall Plus → XTRA) and the archive rewrote its *old* links to match, so
-  `PAYOUT_SLUG` uses current names for historic draws.
+  [ADR-0012](../../docs/decisions/ADR-0012-source-agreement-set-based.md)
+- **`PAYOUT_SLUG` uses the current, post-rebrand site names for historic draws
+  too.** [ADR-0013](../../docs/decisions/ADR-0013-rebrand-slugs.md)
