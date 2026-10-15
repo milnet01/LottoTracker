@@ -227,6 +227,10 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   `LOTTO-0002` §6 owns the prohibition; the notice is necessary, not
   sufficient. `tools/verify_page.py::uncheckable_not_a_loss` is what catches a
   breach, and its forbidden-strings list includes the empty string.
+- **Every `review-code` sweep leaves a record file in `docs/reviews/`** —
+  what each lane found, verified and dismissed — not only roadmap items (the
+  user, 2026-09-28; LOTTO-0059). Without one, a sweep's claims about itself
+  are checkable only against the same session's own words.
 - Known deferred rough edges hang off `LOTTO-0007` as a lettered list in its
   body; `roadmap_query` it by id before reporting one as new — an id fetch
   returns the body, so the whole list comes back. **Add one with

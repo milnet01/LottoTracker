@@ -1501,6 +1501,11 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Decided by the user 2026-09-28: write all three - an audit config,
   docs/design.md (gated as an ADR), and docs/decisions/ with the
   load-bearing choices moved out of CLAUDE.md prose.
+  Decided by the user 2026-10-15, refining the 2026-09-28 decision now
+  that the load-bearing decisions live in .claude/rules/architecture.md
+  (the 2026-10-08 trim): each gets its own record in docs/decisions/ with
+  the full reasoning, and architecture.md keeps a one-line rule per
+  decision with a link, so a session opening code still sees every rule.
   **Layman:** A few standard files are missing, including a licence on a public repository.
   Kind: doc.
   Source: session-audit-2026-09-01 missing-documents sweep.
@@ -3196,7 +3201,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Source: session-audit-2026-09-02 backlog tally.
   Lanes: check.py, tools.
 
-- 📋 [LOTTO-0059] **The 2026-09-01 review-code sweep left no record file, so its own claims are unverifiable.**
+- ✅ [LOTTO-0059] **The 2026-09-01 review-code sweep left no record file, so its own claims are unverifiable.**
   `docs/reviews/` holds a record for the cold-eyes loop and for the CLAUDE.md
   review, and every spec carries its own loop log. The `review-code` sweep of
   2026-09-01 - the single largest source of open findings here, spread across
@@ -3223,6 +3228,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Decided by the user 2026-09-28: every future review-code sweep leaves
   a record file in docs/reviews/. Also decided: yamllint, typos, pyright
   and mypy join ./local-CI.sh so they stay at zero.
+  Shipped 2026-10-15. docs/reviews/review-code-2026-09-01.md is the
+  sweep's record, written from surviving evidence and labelled as such: per
+  lane CRITICAL/HIGH counts and closing commits are supported; raw and
+  dismissed counts per lane are not, and the file says so. CLAUDE.md now
+  says every review-code sweep leaves a record file in docs/reviews/. The
+  four linters joined ./local-CI.sh's local lane (d04d2b4).
   **Layman:** The biggest code review this project has run left no report - only to-do items - so nobody can check what it actually found.
   Kind: doc.
   Source: session-audit-2026-09-02 backlog tally.
