@@ -4062,21 +4062,28 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: doc-fix.
   Source: review-tests-2026-09-02 lane 1, confirmed by measurement.
 
-- 📋 [LOTTO-0077] **Make a green ./local-CI.sh print one line per verifier.**
+- 🚫 [LOTTO-0077] **Make a green ./local-CI.sh print one line per verifier.**
   A green run today prints every verifier's counts into the session's
   context, where every later request pays for them again. Print one
   line per passing verifier; keep full output for a red one. Exit code
   stays the signal.
+  Dropped (2026-10-15): already true. local-CI.sh's run() prints one PASS line per
+  check and shows output only on a FAIL. The idea was filed without
+  reading the script first.
   **Layman:** The pre-push check stops filling the AI's memory with passing output, which lowers the cost of every later step.
   Kind: perf.
   Source: token-ideas-2026-10-15 (ants-terminal-95 round).
 
-- 📋 [LOTTO-0078] **Move CLAUDE.md's verifier catalogue into an on-demand rules file.**
+- ✅ [LOTTO-0078] **Move CLAUDE.md's verifier catalogue into an on-demand rules file.**
   CLAUDE.md loads on every request of every session; the per-verifier
   catalogue and privacy detail are needed only when touching tools/ or
   the page. Move them into .claude/rules/ files that load on demand,
   as architecture.md already does, and leave a pointer behind. CLAUDE.md
   is built under, so rule 14's question is owed in the commit.
+  Shipped (2026-10-15): the verifier catalogue moved verbatim to
+  .claude/rules/verifiers.md, path-scoped to tools/, local-CI.sh,
+  .githooks/ and .github/. CLAUDE.md keeps the lane rules, the --break
+  rule and a pointer; it went from 18,402 to about 14,800 bytes.
   **Layman:** The instructions loaded into every session get shorter, so each session starts cheaper.
   Kind: perf.
   Source: token-ideas-2026-10-15 (ants-terminal-95 round).
