@@ -2,8 +2,10 @@
 
 **Status:** accepted (2026-08-01).
 **Amended 2026-10-15** for LOTTO-0007 (d) and LOTTO-0011: §1, §4.2, §4.4, §5
-(INV-67, INV-69), §6, §7, §11 and §12. A `review-contract` gate is owed before
-they are built.
+(INV-67, INV-69), §6, §7, §11 and §12. Gated 2026-10-15 by `review-contract`
+(genre spec): two loops, two cold lanes each, eight verified findings all
+fixed, one dismissed. It reached the 2-loop cap for a spec, a calm one;
+implementation is the third reviewer. See §13.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0001 (user request, 2026-08-01).
 
@@ -239,8 +241,10 @@ Two traps, both of which produce plausible-looking wrong answers:
   PowerBall, counting the PowerBall, and five on Daily Lotto. A board holding
   more is reported not checkable, never scored as one line: the price per line
   of such a board is unknown, so the whole ticket cannot be priced or scored.
-  `tickets.py::parse()` keeps the board's numbers in `Ticket.boards` as it reads
-  them and records each such board's label in a new `Ticket.oversized` list,
+  `tickets.py::parse()` keeps such a board in `Ticket.boards` in the usual
+  `(label, mains, special)` split, so a board's size is
+  `len(mains) + (special is not None)` wherever the rule is applied, and
+  records each such board's label in a new `Ticket.oversized` list,
   empty otherwise. `Ticket.__init__` takes it as a trailing parameter
   defaulting to an empty list, so a `Ticket` built directly — as the
   verifiers' fixtures are — is not oversized. `history.py::scorable()` is false for every entry of a
@@ -384,8 +388,8 @@ is the cause.
 (the report's word, `check.py`) exactly when `history.py::scorable()` is false
 for it, which `tools/verify_coverage.py` prints as *unscorable*. Nothing means
 one and not the others. **So `tools/verify_coverage.py`'s own recomputation
-applies the size rule too**, from the board lengths in `Ticket.boards` and its
-own copy of the two line sizes, rather than reading `Ticket.oversized` or
+applies the size rule too**, from each board's size as §4.2 defines it — the
+PowerBall counted — and its own copy of the two line sizes, rather than reading `Ticket.oversized` or
 calling `scorable()` (INV-6's rule against importing the predicate under test).
 Without it the script counts an oversized entry as scorable, finds it covered
 by no draws, and reports a coverage fault that is not one.
@@ -805,8 +809,9 @@ in the project, not the next free number in this file.
   the two oversized fixtures counts every entry under `odd_board` and none
   under `too_old` or `no_pool`. Breaks `oversized_scored_as_line`, which stops
   `parse()` recording the label, and `oversized_misfiled`, which drops the
-  `odd_board` split so the entries fall to `too_old`; each must turn its own
-  case red.
+  `odd_board` split so the entries fall to `too_old`. Each break fires only
+  inside its own case, as `ACTIVE_CASE` scopes them in
+  `tools/verify_payouts.py`, and must turn that case red.
   *Breaks when:* a seven-number PowerBall board is scored as six mains and a
   PowerBall, or a six-number Daily Lotto board as one line, so a ticket paid at
   a price per line nobody knows is scored and priced as if it were known — or
@@ -996,7 +1001,7 @@ is observed red under its own breaks rather than against pre-fix code:
 
 `tools/verify_boards.py` reads neither the dump nor the archive: its fixtures
 are synthetic and its draw record is a seeded `history._cache` (INV-67). LOTTO-0002 INV-68 adds the page's
-case, with break `odd_board_unnamed`.
+case, with breaks `odd_board_unnamed` and `pool_before_board`.
 
 Red-tested against a state that should fail: INV-2's one-liner against the
 pre-Multiplay scorer; INV-6's script against the parser that dropped
@@ -1152,6 +1157,7 @@ README.md (usage), ROADMAP.md (LOTTO-0002 onward), CHANGELOG.md, and:
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 11 | 2026-10-15 | 2, cold — identical brief, packet rebuilt from disk | Q1 0 | Q2 0 | Q3 1 | Q4 1 | **Columns this row: Q1–Q4, not severity.** Two verified, two fixed, none dismissed; one lane returned no findings. **Cap reached (2 for a spec); the run ships, and the cap is calm**: 0 of the 2 landed on text loop 10 wrote. Q3: §4.2 said `parse()` keeps an oversized board "as it reads" it, and §4.4 told `tools/verify_coverage.py` to use "the board lengths" — read as `len(mains)`, a seven-number PowerBall board counts six and is never flagged, so the two copies of the size rule disagree; both now define size as `len(mains) + (special is not None)` over the usual split. The LOTTO-0009 gate's lanes raised the same defect from the other side. Q4: INV-67's two breaks would both redden `odd_board_counted_first` unless scoped, failing `verify_payouts.py`'s exactly-one red-test rule; the clause now scopes each break to its own case as `ACTIVE_CASE` does. Collateral from the LOTTO-0002 gate, not counted: §7 now names that spec's second break, `pool_before_board`. Open questions resolved clean: LOTTO-0009 INV-11's zero-term compares partly-checkable tickets against the wholly list, not a total, so an oversized ticket does not redden it; no ticket is built duck-typed. **These fixes were read by no lane.** Whole run: 6 of 8 verified findings inside the armed span. |
 | 10 | 2026-10-15 | 2, cold — genre pinned `spec`, every lane held every question; new run, trigger commit 5d5c401 | Q1 2 | Q2 0 | Q3 1 | Q4 3 | **Columns this row: Q1–Q4, not severity.** Six verified, six fixed; one dismissed as immaterial and corrected by deletion. **Both lanes found the same three.** Q1: §4.2 called `GAME_MAP` "exactly this table" while the table lacked the LOTTO-0031 aliases `Lotto 5 Max` and `PowerBall XTRA` — a rebuild from it would drop every post-rebrand purchase; rows added (exempt record, existing code). Q1: §4.4's win-dict contract omitted `numbers`, `special`, `drawn_main` and `drawn_special`, which `check()` emits for LOTTO-0035; added (exempt record). Q3: `Ticket.oversized` had no stated construction while three verifiers build `Ticket` positionally; now a trailing parameter defaulting to an empty list. Q4, one lane: INV-69's case never fed `no_ticket`, `unexplained` or `unscored`, so "paid only for agree or low" could not fail for them; fixture rows and break `other_category_reads_paid` added. Q4, one lane: INV-67's `check()` returns-no-win term could not fail on its own; deleted. Q4, from a lane's open question, orchestrator-verified by running it: "installs an `all_draws()` double" read as a name patch does not reach `check.py`, which imports the function — seeding `history._cache` does; the clause and §7 now say so. Dismissed: §4.3 cited §4.4 for the rebrand names, which §4.4 does not discuss; the citation deleted. Two open questions resolved clean (the `<m>` count in the terminal heading binds nothing; per-case break scoping is `verify_payouts.py`'s existing pattern). Inside the armed span: 4 of 6. Packet: every citation windowed, no 1b defect. `doc_integrity` clean after fixes. |
 | amend-d-0011 | 2026-10-15 | none | — | — | — | — | **Not a review loop: no reviewer was dispatched.** Authoring amendment, origin ROADMAP LOTTO-0007 (d) and LOTTO-0011, from their designs drafted 2026-10-08 and the user's decisions of 2026-09-25, 2026-09-28 and 2026-10-08. Adds INV-67 (an oversized PowerBall or Daily Lotto board is never scored as a line; `odd_board` counted before `too_old` and `no_pool`) and INV-69 (`payment_status()` maps each win to paid, partly paid, unpaid or unknown, never paid without a record saying so); rewrites §1's claimable framing and §4.4's expiry paragraph; replaces the terminal STILL CLAIMABLE total with a NOT YET PAID list. A `review-contract` gate is owed before either is built. |
 | 9 | 2026-08-03 | 2 | 0 | 3 | 7 | 8 | **Converged by cap at three loops (7–9), and stopping is the finding.** 18 distinct findings, **all 18 verified, all 18 fixed, 0 dismissed, 0 deferred** — but the split inverted from loop 8: **10 draft defects to 8 collateral**, and one of the draft defects is *structural*, which is the signal this document is past the size a cold read can cover. HIGH, both lanes: **§7's `DUMP` sentence was wrong in both directions** — it said the three non-privacy scripts each carry a `__file__`-relative `DUMP`, where `verify_sources.py` has none and never opens the dump at all, while `verify_privacy.py`, the "genuine exception" loop 8 had just carved out, does carry one. That paragraph has now produced a finding in **three consecutive loops** (loop 7: a false exception; loop 8: the hazard written backwards; loop 9: the wrong scripts), so it is no longer prose — it is a four-row table of which handle each script reaches through, with the two readings that keep being got wrong stated beneath it. Prose that fails three cold reads is a shape problem, not a wording problem. HIGH, lane B alone and **the structural one**: **§4.3 never gave the `POOL_NAMES` table**. `all_draws()` selects a pool by comparing the API's `winPoolName` against it, and two of the seven strings are June-2026 rebrand names — `LOTTO 5 MAX`, not "Lotto Plus 2"; `PowerBall XTRA`, not "PowerBall Plus" — so an implementer rebuilding `history.py` from this spec gets **zero API draws for `lotto/2` and `powerball/1` with no error**, the cardinal failure one layer below scoring. §4.2 calls its analogous SMS table load-bearing for exactly this reason; §4.3 had no equivalent, and INV-26's ceiling-of-six argument had been leaning on a table the document never defined. Now stated. **That it surfaced only at loop 3 is the evidence for splitting**: two prior cold reads did not reach it. Also fixed, §6 having grown two absent failure modes: **the network being unreachable** — the most likely runtime failure, and the existing bullet does not cover it, since `urlopen` raises before any response `code` exists to check — and **an input file being absent**, where the three answers deliberately differ (`verify_sources.py` exits cleanly naming the fix, `verify_privacy.py` degrades to pattern-only and still exits 0, everything reaching `load()` raises) and none of the three was written down. §6's unresolved-price bullet named only an operator price change where `entered_pools()` also returns unresolved for `paid_lines == 0`, a ticket that parses, counts, is scorable and contributes zero lines. §3's KDE Connect bullet read as in-scope ingestion against §4.1's "inspection only" and §9's LOTTO-0003. §10 pinned requests and disk but no wall clock, omitting `backfill.py`'s 1 s courtesy delay per uncached fetch. Loop 7's own "step 2, not yet built" marker had landed in four places, three of which would rot the day step 2 ships — reduced to pointers, with INV-26 keeping the full statement; loop 8's "it is stated once, there" was self-falsifying two sentences after stating it; `426 of 558` was written three times and is now §4.4's alone; INV-22's 86/69/R2,651.60 carried no pre-LOTTO-0027 qualifier where §4.4's copy does; §2 cited §4.2 for a gate §4.2 does not describe; §10's `7 + 6 = 13` is contingent on one scorable entry per pool; and two forward references in §4.4 now name their targets. `./local-CI.sh --force` 9 checks PASS. **The run stops here rather than looping**: `--max-loops` is 3, and the structural draft defect at loop 3 is its own trigger. Nothing is deferred — every finding is fixed — but these fixes have had **no cold read**, and the document is now **831 lines**. Splitting it is the recommendation carried to the user, not a decision taken here. |
