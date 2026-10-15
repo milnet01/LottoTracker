@@ -919,8 +919,8 @@ in the project, not the next free number in this file.
   uncheckable (LOTTO-0009 §4.6).
 - **A board holds more numbers than one line of its game.** Every entry of the
   ticket is uncheckable and counted as `odd_board` (INV-67); none is scored.
-  LOTTO-0009 INV-7 leaves such a ticket out of `unresolved` and counts it
-  apart, so INV-67 is the guard.
+  LOTTO-0009 INV-7's `verify_pools.py::price_counts()` leaves such a ticket
+  out of `unresolved` and counts it apart, so INV-67 is the guard.
 - **No payout SMS parses.** `reconcile()` returns no records (LOTTO-0029
   INV-47), so every win reads `unknown` and keeps its deadline (INV-69).
   Missing data never reads as paid.
@@ -1029,7 +1029,9 @@ is observed red under its own breaks rather than against pre-fix code:
 
 `tools/verify_boards.py` reads neither the dump nor the archive: its fixtures
 are synthetic and its draw record is a seeded `history._cache` (INV-67). LOTTO-0002 INV-68 adds the page's
-case, with breaks `odd_board_unnamed` and `pool_before_board`.
+case, with breaks `odd_board_unnamed` and `pool_before_board`. LOTTO-0009
+INV-7 adds `oversized_not_unresolved`, over `verify_pools.py::price_counts()`,
+with break `oversized_counted_unresolved`.
 
 Red-tested against a state that should fail: INV-2's one-liner against the
 pre-Multiplay scorer; INV-6's script against the parser that dropped
