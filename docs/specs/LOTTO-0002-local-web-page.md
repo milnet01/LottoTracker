@@ -1,4 +1,4 @@
-# LOTTO-0002 — Local web page for tickets, results and claimable winnings
+# LOTTO-0002 — Local web page for tickets, results and winnings
 
 **Status:** accepted (2026-08-02) — split out of the 1,161-line original, then
 four cold-eyes loops on the post-split bytes; 103 verified findings fixed, 2
@@ -7,6 +7,10 @@ re-gate loop by the user's decision rather than at the 3-loop cap, with
 CRITICALs at 1 -> 0 and nothing verified left open. The third loop was postponed once and then run: §13's `3-skipped`
 row records the postponement, and its loop `3` row is that read, carried out as
 the re-gate the amendment's implementation forced.
+**Amended 2026-10-15** for LOTTO-0007 (d), LOTTO-0011 and LOTTO-0062: the
+title, the layman line, §1, §2, §3, §4.1, §4.5, INV-68, INV-70, §6, §7, §11
+and §12. A
+`review-contract` gate is owed before they are built.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0002 (user-request-2026-08-01; three further choices
 taken with the user 2026-08-02, recorded in §3).
@@ -16,14 +20,15 @@ taken with the user 2026-08-02, recorded in §3).
 **LOTTO-0013** (the tray, the supervisor and the headless contract — the other
 half of this split; they ship together).
 
-*Layman: a page in your browser showing every ticket, what it won and what is
-still claimable.*
+*Layman: a page in your browser showing every ticket, what it won and which
+wins the bank has not yet paid.*
 
 ## 1. Goal
 
 After this ships, `http://127.0.0.1:4322` serves every ticket, what it cost,
 which pools it was entered in, which of them could be checked, what it won, and
-— the actionable part — when each unclaimed prize expires. A settings panel on
+— the actionable part — which wins the bank has not paid, and when each of those
+expires. A settings panel on
 the page carries two switches: start the tray at login, and open the page when
 the tray starts. `check.py` keeps working exactly as it does; this adds a second
 face on the same data, and no new source of truth.
@@ -59,6 +64,14 @@ all of them worse since LOTTO-0009 multiplied the data by 2.2×:
    the exact bug this project was built after hitting, arriving through a new
    door. §4.5 and INV-15 make the rendering carry the rule instead of the prose.
 
+**A fourth problem the page itself introduced: "Claimable now" told the user to
+collect money already in their account** (LOTTO-0011, a user correction of
+2026-08-02). The bank pays wins automatically, so section 1 listed every
+unexpired win as outstanding, including prizes banked months earlier. The
+bank's own payout SMSes are the evidence of which were paid, and
+`check.py::reconcile()` (LOTTO-0029) already reads them; the page did not.
+The user's decisions are in §3; §4.5 item 1 and INV-70 carry them.
+
 ## 3. Scope decisions
 
 **From the ROADMAP bullet, taken with the user 2026-08-01 — not re-litigated
@@ -80,6 +93,25 @@ tray decisions — the tray is required rather than optional, it is PySide6, and
   user preference, stated 2026-08-02. This is about the *appearance*: §4.7 keeps
   a real `<input type="checkbox">` underneath, because that is what preserves
   keyboard and screen-reader behaviour.
+
+**Taken with the user for LOTTO-0011:**
+
+- **A claim deadline is shown only for a win the bank has not paid** — the
+  user, 2026-09-25. Every other win reads as paid, never as still claimable.
+  Whether a large prize must still be claimed in person is unverified and not
+  assumed.
+- **A short-paid win, and every win when no payout SMS parses at all, keep
+  their deadline** — the user, 2026-10-08. A short-paid win reads "partly
+  paid"; with no payout data, every win reads "payment unknown". Missing data
+  never reads as paid.
+
+**Taken with the user for LOTTO-0007 (d), 2026-09-28:** a non-Lotto board with
+more than six numbers is reported not checkable with a reason, never scored as
+one line. **The author's generalisation, 2026-10-08, still to be confirmed with
+the user:** "oversized" means more numbers than one line of that game holds —
+six for PowerBall counting the PowerBall, five for Daily Lotto — so a six-number
+Daily Lotto board is not scored as one line either. It errs toward "not
+checkable". LOTTO-0001 owns the rule; §4.5 renders it.
 
 ## 4. Design
 
@@ -125,9 +157,12 @@ happen in `serve.py`'s builder, not in the renderer.
 {
   "wins":   [ {...check.py win dict, MINUS its rands "amount"...,
                "amount_cents": int,
-               "expires_in_days": int} ],   # negative for an already-expired win
+               "expires_in_days": int,      # negative for an already-expired win
+               "payment": str,              # check.payment_status(), LOTTO-0001 §4.4
+               "ref_paid_cents": int|None,  # what the bank paid on this REFERENCE
+               "ref_computed_cents": int|None} ],  # what the app computed for it
   "entries":[ {"ref", "game", "plus_flag", "pool_id", "cost_cents",
-               "scorable": bool, "reason": str|None,   # §4.5 derives these
+               "scorable": bool, "reason": str|None,   # serve.entry_reason(), §4.5
                "won_cents": int|None,                  # None iff not scorable
                "draws_covered": int|None,              # None iff not scorable
                "draws_remaining": int|None} ],         # None iff not scorable
@@ -139,9 +174,11 @@ happen in `serve.py`'s builder, not in the renderer.
                "resolved": bool, "bought": "YYYY-MM-DD"} ],
   "uncheckable": {                          # from check.py::uncheckable_report()
     "entries": 1233, "uncheckable": 974,    # totals
-    "too_old": 963, "no_pool": 11,          # the two reasons, kept apart
+    "too_old": 963, "no_pool": 11,          # the reasons, kept apart
+    "odd_board": int,                       # LOTTO-0007 (d); decided first
     "wholly": 426, "partly": 11,            # TICKET counts, len() of the lists
   },
+  "unknown_senders": [ {...} ],             # LOTTO-0062 §4.3-§4.4 owns the shape
   "spend":  {"compared_cents", "lifetime_cents", "unresolved_cents",
              "unresolved_tickets": int},
   "won":    {"compared_cents", "lifetime_cents", "unexpired_cents"},
@@ -230,13 +267,26 @@ entry nothing can score, so a bare `int` makes every unscorable entry read
 asserts against.
 
 **`reason` is set on exactly the entries `scorable()` rejects, and that is a
-coupling rather than a coincidence.** `history.py::scorable()` returns false on
-two grounds and only two — the pool has no rows at all, or the ticket predates
-the first draw any source carries — which are precisely the two branches §4.5
-derives `reason` from. An unscorable entry therefore always has a reason to
-show. If a third rejection ground is ever added to `scorable()`, §4.5 gains a
-branch in the same change, or the page renders "not checkable" with nothing
-after it, which is half of INV-15 lost.
+coupling rather than a coincidence.** After LOTTO-0007 (d), `history.py::scorable()`
+returns false on three grounds and only three — the ticket has an oversized
+board (LOTTO-0001 INV-67), the pool has no rows at all, or the ticket predates
+the first draw any source carries — which are precisely the three branches
+§4.5's `serve.entry_reason()` takes. An unscorable entry therefore always has a
+reason to show. If a fourth rejection ground is ever added to `scorable()`,
+`entry_reason()` gains a branch in the same change, or the page renders "not
+checkable" with nothing after it, which is half of INV-15 lost.
+
+**The three payment keys on a win are the REFERENCE's, not the win's.**
+`check.reconcile()` (LOTTO-0029) joins the bank's payouts to tickets per `VAS`
+reference, never per winning line, so the builder runs `tickets.load_payouts()`,
+`check.reconcile()` and `check.payment_status()` (LOTTO-0001 §4.4 and INV-69
+own the mapping and its values) and copies each reference's record onto every
+win carrying that reference. That is why a short-paid win reads "the bank paid
+R p of R c **on this ticket**" rather than naming a figure for the line.
+`ref_paid_cents` is `None` where the bank paid nothing on the reference and
+`ref_computed_cents` is the record's own three-valued `computed_cents`; where
+`reconcile()` returns no records (INV-47), both are `None` and `payment` is the
+unknown value.
 
 **Every money value in the model is an integer of cents**, and the builder
 **drops `check.py`'s own `amount` key** when it adds `amount_cents`. That
@@ -527,14 +577,26 @@ Three of its rules bind this document's files:
 
 ### 4.5 What the page shows, and the rule it must not drop
 
-Four sections, in this order — expiry first, because it is the only thing on
-the page with a deadline:
+Above the sections, after the page's notice, comes LOTTO-0062's *From a sender
+not seen before* notice, when there is anything to list; LOTTO-0062 §4.4 owns
+its contract and INV-75 checks it. Then the uncheckable banner below.
 
-1. **Claimable now** — every unexpired win, soonest expiry first, each naming
-   its pool (`lotto/1`, not "Lotto"), its division, its amount and its expiry
-   date. A prize expiring within 30 days is marked; one expiring **today** is
+Four sections, in this order — unpaid wins first, because they are the only
+thing on the page with a deadline:
+
+1. **Not yet paid** — every win that is unexpired **and** whose `payment` is
+   not paid (§4.1, LOTTO-0001 §4.4), soonest claim deadline first, each naming
+   its pool (`lotto/1`, not "Lotto"), its division, its amount, its deadline,
+   and its payment state in words: *unpaid*; *partly paid — the bank paid R p
+   of R c on this ticket*, from `ref_paid_cents` and `ref_computed_cents`; or
+   *payment unknown*. A paid win does not appear here and carries no deadline
+   anywhere on the page (INV-70). The section shows **no summed total**: the
+   figures are per reference, and a sum of partly paid tickets would read as
+   money owed. A deadline within 30 days is marked; one falling **today** is
    marked distinctly, because §6's build-time expiry makes today's the one the
-   page can be wrong about.
+   page can be wrong about. **Empty state:** *No unexpired win is waiting on
+   the bank.* That sentence is true only because missing payout data puts
+   every win here as *payment unknown* rather than emptying the section.
 2. **Still outstanding** — two groups under one heading, because both are
    "not finished", and neither is a loss. The heading is deliberately not "Live
    tickets": a 2019 ticket has no draws still to come, and filing 974 unscorable
@@ -588,20 +650,27 @@ for the per-entry reason**: `counts["too_old"]` and `counts["no_pool"]` are
 integers (`"too_old": len(too_old)`), and the `(ticket, plus_flag)` lists behind
 them are local to the function. So **`serve.py`'s builder** derives each entry's
 reason into `model["entries"][i]["reason"]` (§4.1); `page.py` only renders what
-it finds there:
+it finds there. Since LOTTO-0007 (d) the derivation is a pure function the
+builder calls, so a case can call it with no dump and no archive:
 
 ```python
-rows = all_draws(t.game, plus_flag)                      # in serve.py's builder
-reason = ("no results source carries this pool" if not rows
-          else f"predates all draw data for this pool (earliest {rows[0]['date']})"
-          if t.start.strftime("%Y-%m-%d") < rows[0]["date"] else None)
+def entry_reason(ticket, rows) -> str | None:     # in serve.py
+    """`rows` is history.all_draws(ticket.game, plus_flag), passed in."""
+    # 1. ticket.oversized (LOTTO-0001 INV-67) -> a reason naming the board(s)
+    #    and saying one line of this game holds fewer numbers
+    # 2. not rows -> "no results source carries this pool"
+    # 3. ticket.start before rows[0]["date"]
+    #    -> f"predates all draw data for this pool (earliest {rows[0]['date']})"
+    # 4. otherwise None
 ```
 
-That is the same two-way split `uncheckable_report()` makes, recomputed rather
-than imported — which §7 requires anyway, and which keeps `check.py`'s return
-shape unchanged, since §9 puts changes to scoring out of scope. The banner's
-totals still come from `uncheckable_report()`, so the page cannot disagree with
-`check.py` about how many entries are excluded.
+That is the same three-way split `uncheckable_report()` makes, in the same
+order — the oversized board first, because such a ticket is unscorable in
+every pool whatever its draws — recomputed rather than imported, which §7
+requires anyway. The banner's totals still come from `uncheckable_report()`,
+so the page cannot disagree with `check.py` about how many entries are
+excluded. The board labels in the oversized reason are line letters, never
+numbers, so the reason carries no ticket data.
 
 The page renders per entry:
 
@@ -613,7 +682,11 @@ The page renders per entry:
   same row. All 11 `Daily Lotto Plus` tickets are this shape; a page that files
   each ticket under one heading would have to pick a wrong one.
 - The counts banner (974 of 1,233 entries, 426 tickets wholly and 11 partly)
-  renders above the wins, not below, and is not collapsible.
+  renders above the wins, not below, and is not collapsible. It names each
+  reason that has a non-zero count, `odd_board` included, and its explanation
+  is worded to hold for all three: the entries are not losses because none of
+  them could be scored — never "nothing exists to score them against", which
+  is false of an oversized board whose pool has draws (INV-68).
 
 INV-15 asserts this against a fixture built for it, because it is the one rule
 here that no compiler, linter or type check can see.
@@ -870,7 +943,8 @@ rule, which a preference kept in a query string would breach.
 This document holds **INV-15 to INV-18** — the honesty rules on the data the
 page renders — **INV-48**, added 2026-08-20 with LOTTO-0035 and the same kind
 of rule one column further right, **INV-62 and INV-63**, added 2026-09-06
-with LOTTO-0076, and **INV-24**, which is an honesty rule
+with LOTTO-0076, **INV-68 and INV-70**, added 2026-10-15 with LOTTO-0007 (d)
+and LOTTO-0011, and **INV-24**, which is an honesty rule
 about the port the process binds rather than about the data, and lives here
 because §4.1's environment table and §6's failure mode are both this
 document's. LOTTO-0001
@@ -1104,6 +1178,40 @@ them unqualified.
   reporting it, which is the same silent substitution this invariant exists to
   forbid, arriving where there is no terminal to notice it in.
 
+- **INV-68** — An entry of a ticket with an oversized board (LOTTO-0001 INV-67)
+  carries a `reason` naming the oversized board, and the uncheckable banner
+  names that reason with its own count. The banner's explanation holds for all
+  three reasons. Added 2026-10-15 (LOTTO-0007 (d)).
+  *Test:* `tools/verify_boards.py`, case `odd_board_is_named` — calls
+  `serve.entry_reason()` on a fixture ticket whose `oversized` is set, with
+  `rows` non-empty and starting before the ticket does, so the other two
+  branches both return nothing and only the oversized branch can produce a
+  reason; then renders `page._uncheckable_banner()` over a counts
+  dict with `odd_board` non-zero and the other two reasons zero, and asserts
+  the reason and the count appear and "nothing exists" does not. Break
+  `odd_board_unnamed`, which drops the oversized branch from both.
+  *Breaks when:* `entry_reason()` checks the pool before the board, so an
+  oversized ticket in a carried pool returns `None` and renders as not
+  checkable with nothing after it — INV-15's half lost — or the banner omits
+  the reason, so the count of excluded entries no longer adds up on screen.
+
+- **INV-70** — A win appears in section 1 (§4.5), with its claim deadline,
+  only when it is unexpired and its `payment` is not paid; every win shown
+  names its payment state in words. Missing payout data never reads as paid.
+  Added 2026-10-15 (LOTTO-0011).
+  *Test:* `tools/verify_page.py`, case `deadline_only_when_unpaid` — renders a
+  hand-authored model through `render_pure()` holding four unexpired wins
+  differing only in `payment` (paid, partly paid, unpaid, unknown) and one
+  expired unpaid win. It asserts that section 1 holds the unpaid, partly paid
+  and unknown wins, each with its label and its deadline, and the partly paid
+  one with both figures; that it holds neither the paid nor the expired win;
+  and that a model whose only win is paid renders the empty-state sentence.
+  Break `deadline_on_paid_win`, which filters section 1 on expiry alone.
+  *Breaks when:* section 1 filters on expiry alone, which is the "Claimable
+  now" page this invariant replaces, or renders an unknown payment without a
+  label, which reads as an unremarked deadline and hides that the payout data
+  is missing.
+
 ## 6. Failure modes
 
 - **The operator's API is unreachable.** Four of seven build attempts on
@@ -1193,6 +1301,13 @@ failure, whatever produced it.
   catch it because it compares against the dump's text rather than against what
   the text implies.) The page therefore stamps the build time and marks
   anything expiring today, rather than implying the figure is live.
+- **No payout SMS parses** — the bank's wording moved, or the dump holds none.
+  `check.reconcile()` returns no records (LOTTO-0029 INV-47), every win reads
+  *payment unknown*, and section 1 lists every unexpired win with its deadline.
+  That is the safe direction: the page falls back to the deadlines it showed
+  before LOTTO-0011, labelled, rather than reading as all paid (INV-70).
+- **A payment arrives after the build.** Section 1 still lists the win until
+  the next refresh, for the same build-time reason as expiry above.
 - **A tab left open across a server restart holds a stale token** — its next
   toggle gets a 403 and renders as "this page is from an earlier session —
   reload it". LOTTO-0014 §6 owns that behaviour; it is listed here only because
@@ -1217,6 +1332,19 @@ share their fixtures, their temporary-directory setup and their stub builder.
 | `refresh_refetches` | INV-17 |
 | `failed_refresh_keeps_model` | INV-18 |
 | `port_from_environment` | INV-24 |
+| `deadline_only_when_unpaid` | INV-70 |
+
+**Added 2026-10-15.** INV-70's case joins `tools/verify_page.py`, with break
+`deadline_on_paid_win`. INV-68's case, `odd_board_is_named`, lives in the new
+CI-lane `tools/verify_boards.py` that LOTTO-0001 INV-67 also uses, because it
+calls `serve.entry_reason()` — a builder-side function, which this file's
+cases deliberately never reach (INV-15's *Test* clause says why). Its break is
+`odd_board_unnamed`. **One existing case moves with the rename:**
+`numbers_chosen_and_drawn` finds section 1 by its `Claimable now` heading, and
+its fixture win carries no `payment`; it must look for `Not yet paid` and give
+its win a payment that is not paid, or it asserts against a section that is
+no longer there. `tools/demo_page.py`'s fixture wins need a `payment` for the
+same reason.
 
 Three constraints on the script, each following from something in the existing
 suite, and all three binding on all thirteen cases, LOTTO-0013's and LOTTO-0014's included:
@@ -1361,6 +1489,8 @@ LOTTO-0014 §8.)
 | INV-24's `$LOTTO_PORT` and bare-4322 legs reaching the **bind** | **nothing** — both are asserted at `resolve_port()` level only; the three children cover the `$PORT` leg, the rejected leg and the supervised one. A `main()` that resolved correctly and then bound `DEFAULT_PORT` on the `$LOTTO_PORT` path alone would pass |
 | INV-62 dark before any script; every theme complete and readable | `tools/verify_page.py::theme_is_dark_and_readable` — reads `page.THEMES` and one pure render; red-tested by `--break theme_default_light`, `--break ball_without_colour` and `--break theme_unreadable_palette` |
 | INV-63 the theme reaches no URL and writes one browser key | `tools/verify_page.py::theme_is_dark_and_readable` — the same case; it counts `setItem(` and re-checks INV-21's forbidden calls against the pure render |
+| INV-68 an oversized board named as the reason, on the entry and in the banner | `tools/verify_boards.py::odd_board_is_named` — red-tested by `--break odd_board_unnamed` |
+| INV-70 a deadline only on an unexpired win the bank has not paid, its payment state in words | `tools/verify_page.py::deadline_only_when_unpaid` — red-tested by `--break deadline_on_paid_win`. It renders a hand-authored model, so a builder copying the wrong reference's record onto a win is LOTTO-0001 INV-69's to catch, not this case's |
 | INV-48 the numbers chosen beside the numbers drawn, absence said in words | `tools/verify_page.py::numbers_chosen_and_drawn` — two disjoint fixture sets, so a renderer echoing the chosen numbers into both columns fails; red-tested by `--break no_drawn_numbers` and `--break blank_numbers_cell` |
 | §4.1 the *resolved* port being what builds LOTTO-0014 §4.2's `Host` allowlist, not either variable read again | **nothing** — and the gap is structural rather than an omission: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because the question they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes both. The breach is loud to a *user* — every request fails — and invisible to the suite |
 | §4.1 `page.py` performing no I/O | `tools/verify_page.py` — **two** doubles for `all_draws`, swapped between phases: a *returning* one while the builder runs (INV-15 needs draws for one pool and `[]` for the other), then a *raising* one installed before `render()` is called. Only the second proves the renderer performs no I/O, and it must not be in place during the build or every case dies there. Absent the raising double the row would be false: with no `archive_results.json`, `history.all_draws()` falls straight through to `api_draws()`, which **succeeds** on a connected machine, so a renderer calling it would pass |
@@ -1372,8 +1502,7 @@ LOTTO-0014 §8.)
 | §4.2 the 27-request figure staying true | **nothing** — a dated measurement; a larger dump or an API paging change moves it without failing anything |
 | §4.5 the page being *readable* — ordering, filters, marking near-expiry | **nothing** — no check can tell a clear layout from a cluttered one |
 | §4.7 the written `.desktop` file actually autostarting on this desktop | **nothing mechanical** — it depends on the session's XDG implementation; verified by logging out once |
-
-Sixteen rows, ten `nothing`.
+| §4.1 the builder copying each reference's `reconcile()` record onto every win carrying it | **nothing** — no case runs `build_model()` (INV-15's *Test* clause); the mapping itself is LOTTO-0001 INV-69's |
 
 The parent's table held twenty-two rows and six `nothing`. The three parts now
 hold **57 rows and 32 `nothing` between them** — counted 2026-08-03, sixteen and
@@ -1434,6 +1563,26 @@ error budget is the number of them a reader can see.
   verifier's invariant range and break count, and PySide6 as a `verify_page.py`
   requirement.
 
+**Added by the 2026-10-15 amendment (LOTTO-0007 (d), LOTTO-0011, LOTTO-0062),
+which introduced INV-68 and INV-70:**
+
+- `docs/specs/LOTTO-0001-lottery-ticket-tracker.md` — owns `Ticket.oversized`,
+  the scorable gate and the `odd_board` count (INV-67), and
+  `check.payment_status()` with its values (§4.4, INV-69). This document only
+  renders them. Its `check.py` terminal line `STILL CLAIMABLE` becomes a
+  `NOT YET PAID` list there, not here.
+- `docs/specs/LOTTO-0009-entered-pools.md` — its §4.6 counts gain `odd_board`.
+- `docs/specs/LOTTO-0062-sender-pinning.md` — owns the unknown-senders model
+  key and notice that §4.1 and §4.5 point at.
+- `README.md` — any "still claimable" wording follows section 1's rename.
+- `tools/demo_page.py` and `docs/screenshots/page-top.png` — the demo fixture
+  gains `payment` on its wins and the screenshot is re-shot, since it shows the
+  retiring heading (LOTTO-0058).
+- `.claude/rules/architecture.md` — `serve.entry_reason()` joins the `serve.py`
+  note.
+- `CHANGELOG.md` — `Changed` and `Fixed` entries citing LOTTO-0011 and
+  LOTTO-0007.
+
 **The split this section recommended was taken on 2026-08-02**, by the user —
 and then taken a second time, because the first cut did not do enough.
 
@@ -1473,6 +1622,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| amend-d-0011-0062 | 2026-10-15 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: three roadmap items written in from their 2026-10-08 design notes. LOTTO-0011 renames section 1 to *Not yet paid*, shows a deadline only on an unexpired win the bank has not paid, and adds `payment`, `ref_paid_cents` and `ref_computed_cents` to `wins[]` (INV-70). LOTTO-0007 (d) adds the oversized-board reason through a pure `serve.entry_reason()`, an `odd_board` banner count and a banner sentence true of all three reasons (INV-68). LOTTO-0062 adds the `unknown_senders` key and its notice, pointing at that spec. Sections touched: title, layman line, §1, §2, §3, §4.1, §4.5, §5, §6, §7, §11, §12. The stale *Sixteen rows, ten `nothing`* tally under §11 was deleted rather than recounted (`spec-format.md` § 5.8). **A `review-contract` gate is owed before any of it is built.** |
 | 7 | 2026-08-03 | 1 | 0 | 2 | 5 | 4 | **Third and final gate loop on the LOTTO-0024 amendment — converged at the 3-loop cap, not clean.** All 11 verified findings fixed; 0 unverified, 0 deferred. **No CRITICAL for the second loop running; HIGHs 4 → 3 → 2.** Origin split: roughly 8 draft defects against 3 fix collateral. **The first HIGH is a test description that, built literally, asserts nothing.** INV-24's second half says "a `Supervisor` started while the session exports a *different* `$PORT`" — but since loop 10 of the sibling spec a bare `Supervisor()` resolves `$PORT` itself, so the two ports would be the same one and the assertion is vacuous. The shipped case works only because it passes an explicit `port=`, which this document had never mentioned; it now does, with the reason. **The second predates the amendment by four loops and is the sharper kind of error:** §4.2 and §7 both told an implementer INV-17 "counts requests", while §5's own INV-17 explains at length that counting requests *cannot work* here — the builder seam means no request is ever issued and the count is zero on every refresh. Three passages, one invariant, and the two casual mentions send a reader at the test the careful one proves impossible. Both now name the memo-emptiness assertion the case actually makes (verified against `tools/verify_page.py::refresh_refetches`). **One finding was an example that cannot happen:** the justification for `repr()`-ing a rejected value used `PORT=' 5999 '`, which §4.1's own `int()` rule accepts — whitespace and all — so it resolves to 5999 and no message is ever produced. Replaced with `PORT='59 99'`, which is genuinely non-numeric. Also fixed: the *Test:* clause announced "two halves" and then opened a third, in an order the case does not run; the third child's **trap** — a valid `$LOTTO_PORT` on a known-free port, proved still free afterwards — went unstated, and it is what separates "exited" from "fell through to the next variable"; the supervisor part's `os.environ` save/restore was undocumented although it is the one exception to the explicit-dicts rule; the fallback was called "a notification" unqualified where a managed run prints to a log; and §11 gained a row for INV-24's `$LOTTO_PORT` and bare-4322 legs, which are asserted at resolution level and never at the bind. Doc grew 1,370 -> 1,389 lines (measured, `wc -l`). |
 | 6 | 2026-08-03 | 1 | 0 | 3 | 3 | 5 | Second gate loop on the LOTTO-0024 amendment; one lane here, two on the sibling, where the composition defect turned out to be (that document's loop 10 holds it, and the resolution — the tray now shares this document's precedence — is recorded in §4.1 and §6 here). All 11 verified findings fixed; 0 unverified, 0 deferred. **The sharpest finding is a claim this document made about its own test.** §4.8 said the rule that the *resolved* port builds the `Host` allowlist is "asserted by INV-24" — it is not, and cannot be by that case: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because what they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes. §11 has the honest row now; the claim is gone. Loop 1 had fixed the *rule* (the table cell attributing the allowlist to `LOTTO_PORT`) and then overclaimed its coverage in the same pass — the fix and its own overstatement, one loop apart. **The second: two constraints the case enforces lived only in its *Test:* clause.** The rejection message must name the variable and value **joined**, and must go to **stderr** — the case reads the child's stderr pipe — while §4.1 and §6 required neither. An implementation built from the normative rules alone, printing `rejected PORT: 'abc'` to stdout, satisfies every stated rule and fails a green suite, which is the most expensive shape of spec gap there is. Both are now in §4.1's rule, with `raise SystemExit("…")` named as the one construct delivering the stream and the status together. **A third was a rule contradicting itself two bullets down:** "Three rules, all of them applying to both variables" above a third rule that short-circuits, so a bad `$LOTTO_PORT` behind a valid `$PORT` is deliberately never read. The enumerated test dicts had no case for that combination either, so an implementation validating both eagerly passed everything; the dict was added in the same pass. Also fixed: `LOTTO_NO_BUILD`'s "exists for these two cases only" enumeration, stale in two places 700 lines apart now INV-24 spawns three children under it; `DEFAULT_PORT`'s duplication across `serve.py` and `supervise.py` went undocumented beside a paragraph warning against exactly that shape — now stated as a deliberate exception, with the reason it is not one fact; §6's "Port 4322 is in use" heading naming a port the resolution may not have chosen; and the environment paragraph's own count of what it owns. Doc grew 1,327 -> 1,370 lines (measured, `wc -l`). |
 | 5 | 2026-08-03 | 2 | 1 | 4 | 5 | 3 | Gate for the LOTTO-0024 amendment (§4.1's `PORT` row and resolution paragraph, INV-24, §6's rewritten failure mode), run **after** implementation at the user's request; the amendment records what was built. All 13 verified findings fixed; 0 unverified, 0 deferred. **Both lanes led on the same CRITICAL, and it was one table cell.** §4.1's environment table left "also builds §4.4's `Host` allowlist" attached to the `LOTTO_PORT` **row** while the paragraph below it correctly gave that duty to the *resolved* value — so an implementer building from the table binds `$PORT` and allowlists `$LOTTO_PORT`, which is a 421 on every request, the exact failure the amendment's pinning exists to prevent. The table is what gets copied. **The most useful HIGH is one no reviewer could have raised before this pass: the accepted range appears nowhere in this document.** §4.1, INV-24 and §6 all said "cannot be a port" without defining it, and the bounds live in LOTTO-0013 §4.5 with nothing here pointing there — from INV-24's rejected list an implementer can derive the upper bound and not the lower one. **A second HIGH was the invariant contradicting its own test case:** INV-24 said "a value that is set and cannot be a port ends the process", and an *empty* value is set and cannot be a port, while `resolve_port()` deliberately falls through and `port_from_environment` asserts exactly that. Now "non-empty", with the carve-out named. **Two findings were the test being weaker than it reads.** Its message assertion was a bare substring test, so `PORT=0` was satisfied by the `0` in `1024-65535` and asserted nothing for the value most likely to be mishandled — now the joined `<NAME>=<value>` form. And its end-to-end half spawned only children carrying *valid* values, so "exits non-zero before the bind" had no process-level assertion at all: an implementation whose `main()` caught the `SystemExit` and bound 4322 anyway passed every assertion while doing exactly what `--break port_silent_fallback` does. A third child now runs a bad `$PORT` beside a *valid* `$LOTTO_PORT` and asserts the exit status, the message and that the fallback port was never bound. Both are code fixes, applied in the same pass. Also fixed: §6's older "Port 4322 is in use" bullet still named `LOTTO_PORT` as the override two sections after `$PORT` became the winner; §6's new bullet promised §4.5's fallback for both variables when `Supervisor` reads only one, and a bad `$PORT` is overwritten in the child rather than fallen back from; §4.8 said the port rule was "stated there rather than here" while citing this document's own §4.1; the `PORT` row's *Written by* omitted `supervise.py`, which pins it; the import-edge paragraph omitted the port bounds; `int()`'s leniency and the short-circuit between the two variables were left to be invented; and both port rows now read "unset", 4322 being the resolution's default rather than either variable's. Doc grew 1,282 -> 1,327 lines (measured, `wc -l`). |
