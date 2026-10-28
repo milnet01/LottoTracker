@@ -372,6 +372,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The message file is always read as UTF-8, and a few small fixes from a code review** (LOTTO-0007)
+  The SMS dump is written as UTF-8 but was read in whatever encoding the machine's locale named, so on a non-UTF-8 setup an accented character in a message came back garbled; the settings and warning-state files had the same gap. `python3 results.py` no longer crashes when the feed lists a draw that has not happened yet. The page now says "(1 day)" instead of "(1 days)" beside a claim deadline. Scoring and the not-checkable report do less repeated work. The full record is `docs/reviews/review-code-2026-10-28.md`.
+
 - **A ticket with a board too big for one line is reported as not checkable, never scored wrongly** (LOTTO-0007)
   A PowerBall board with more than six numbers (counting the PowerBall), or a Daily Lotto board with more than five, can't be a single line, and the price of each line is unknown. Before, the app would have scored such a board as one line anyway. Now every entry of that ticket is marked not checkable, and the page explains why: *on a ticket whose board holds more numbers than one line of its game*. That reason is checked first, so it is never blamed on missing draw data. The banner now says "none of them could be scored", which is true for every reason. None of your current tickets has such a board. Checked by `tools/verify_boards.py`. This is LOTTO-0007 (d).
 
