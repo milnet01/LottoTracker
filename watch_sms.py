@@ -155,7 +155,8 @@ def append_new(messages, path=DUMP):
 def read_threads(path=THREADS):
     """Thread ids that have ever carried a lottery message. INV-35."""
     try:
-        got = json.load(open(path))
+        with open(path, encoding="utf-8") as fh:
+            got = json.load(fh)
         return {int(t) for t in got} if isinstance(got, list) else set()
     except (OSError, ValueError, TypeError):
         # Never a reason to exit - the rule supervise.read_settings() follows.
