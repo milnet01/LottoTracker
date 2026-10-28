@@ -73,11 +73,12 @@ def paying_combinations(game, plus_flag=0, pool_id=100):
 def match(ticket, board, draw):
     """-> (main hits, special hit)"""
     nums = board[1]
+    hits = len(set(nums).intersection(draw["main"]))
     if ticket.game == "powerball":
-        return len(set(nums) & set(draw["main"])), board[2] == draw["special"]
+        return hits, board[2] == draw["special"]
     if ticket.game == "lotto":
-        return len(set(nums) & set(draw["main"])), draw["special"] in nums
-    return len(set(nums) & set(draw["main"])), False
+        return hits, draw["special"] in nums
+    return hits, False
 
 
 def api_label(game, hits, special):
