@@ -318,8 +318,10 @@ def uncheckable_report(tickets):
     counts["wholly"] and counts["partly"] are the ticket lists themselves, so
     a caller can check that they do not overlap without recomputing them.
     """
-    entries = [(t, pf) for t in tickets for pf, _ in t.pools]
-    bad = [(t, pf) for t, pf in entries if not scorable(t, pf)]
+    # scorable() once per entry; everything below reads these verdicts.
+    verdicts = [(t, [(pf, scorable(t, pf)) for pf, _ in t.pools]) for t in tickets]
+    entries = [(t, pf) for t, v in verdicts for pf, _ in v]
+    bad = [(t, pf) for t, v in verdicts for pf, ok in v if not ok]
     # Decided FIRST (LOTTO-0001 INV-67): the board is the cause whatever the
     # pool's draws, and filing it under too_old would blame the archive.
     odd_board = [(t, pf) for t, pf in bad if getattr(t, "oversized", None)]
@@ -327,9 +329,9 @@ def uncheckable_report(tickets):
     no_pool = [(t, pf) for t, pf in rest if not all_draws(t.game, pf)]
     too_old = [(t, pf) for t, pf in rest if all_draws(t.game, pf)]
 
-    hurt = [t for t in tickets if any(not scorable(t, pf) for pf, _ in t.pools)]
-    partly = [t for t in hurt if any(scorable(t, pf) for pf, _ in t.pools)]
-    wholly = [t for t in hurt if not any(scorable(t, pf) for pf, _ in t.pools)]
+    hurt = [(t, v) for t, v in verdicts if not all(ok for _, ok in v)]
+    partly = [t for t, v in hurt if any(ok for _, ok in v)]
+    wholly = [t for t, v in hurt if not any(ok for _, ok in v)]
 
     lines = []
     if bad:
