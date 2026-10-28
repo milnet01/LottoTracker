@@ -131,7 +131,10 @@ if __name__ == "__main__":
     for game in GAMES:
         print(f"\n--- {game.upper()} ---")
         for d in draws(game, 3):
+            # A draw listed before it happens has no numbers yet, and the feed
+            # may send them as ints - history.all_draws() handles both too.
+            nums = " ".join(str(n) for n in d.get("winNumList") or [])
             print(
                 f"  {d['winPoolName']:16} draw {d['wagerIssue']}"
-                f"  {d['drawTime'][:10]}  {' '.join(d['winNumList'])}"
+                f"  {d['drawTime'][:10]}  {nums or '(not yet drawn)'}"
             )
