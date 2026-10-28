@@ -259,7 +259,7 @@ def _wins_section(model):
             else:
                 when = f"{_e(w.get('expires'))}"
                 if d is not None:
-                    when += f' <span class="muted">({d} days)</span>'
+                    when += f' <span class="muted">({_count(d, "day", "days")})</span>'
             rows.append(
                 f'<tr class="{cls}" data-game="{_e(w["game"])}">'
                 f'<td>{_e(w["game"])}/{_e(w["plus_flag"])}</td>'
