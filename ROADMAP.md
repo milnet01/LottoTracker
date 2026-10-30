@@ -1670,7 +1670,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: feature.
   Source: user-decision-2026-10-15.
 
-- 🚧 [LOTTO-0081] **Cut the first release, then record the trailer clips from it.**
+- ✅ [LOTTO-0081] **Cut the first release, then record the trailer clips from it.**
   Decided by the user 2026-10-15: cut the first release next session.
   The repository has no tag and no GitHub release yet. Use cut-release.
   Then record 3-6 trailer clips per the ants-projects-hub-website brief
@@ -1681,6 +1681,8 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   is 1.0.0.
   The user chose 0.1.0 on 2026-10-30. Recipe: .claude/bump.json, with a
   new VERSION file as the version source.
+  Released as v0.1.0 on 2026-10-30. Five clips and notes.md delivered to
+  /mnt/Games/Trailers/incoming/lottotracker/.
   **Layman:** The app gets its first official version, so the website can make its video from it.
   Kind: release.
   Source: user-decision-2026-10-15.
