@@ -6,6 +6,10 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-30
+
+**Theme:** The first release: one ledger of your lottery tickets, and a warning before one runs out.
+
 ### Added
 
 - **The page and the README say the app is independent of the lottery and the bank** (LOTTO-0082)
