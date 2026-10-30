@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=82 -->
+<!-- ants-roadmap-id-high-water: LOTTO=85 -->
 
 # ROADMAP — LottoTracker
 
@@ -1051,7 +1051,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Blocked by:** LOTTO-0029.
   Source: in-session-2026-08-19 (split out while speccing LOTTO-0029).
 
-- 📋 [LOTTO-0033] **The app under-counts real money on 15 references, and 4 paid tickets reach no paying division.**
+- ✅ [LOTTO-0033] **The app under-counts real money on 15 references, and 4 paid tickets reach no paying division.**
   Kind: investigate. Source: in-session-2026-08-19 (measured by LOTTO-0029 on shipping).
   Layman: the bank paid you more than this app works out, on tickets that did
   win. We now know exactly which ones — this is finding out why.
@@ -1087,6 +1087,13 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   is this bullet's own stated place to look.
   `tools/verify_sources.py` still cannot cross-check the archive era, so that
   limitation stands. Do not re-run LOTTO-0029's six eliminations.
+  Shipped 2026-10-30. The cause was scoring, not pricing and not the
+  domain: from the 2025-09-24 draw the Lotto payout pages carry a plain
+  `2` row, and two mains without the bonus win it (LOTTO-0001 INV-79).
+  check.py scored those lines as losses. All the `unexplained`
+  references and most of the Lotto `low` ones now agree exactly. The six
+  earlier eliminations stand; none of them tested a match the current
+  division set does not name.
   Source: in-session-2026-08-19 (measured by LOTTO-0029 on shipping).
 
 - ✅ [LOTTO-0034] **Tell the user a ticket is about to run out, before the last draw.**
@@ -1213,7 +1220,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: feature.
   Source: user-discovery-2026-08-20.
 
-- 📋 [LOTTO-0037] **Explain the 15 references where the app computes low, and the 4 scorable tickets it missed.**
+- ✅ [LOTTO-0037] **Explain the 15 references where the app computes low, and the 4 scorable tickets it missed.**
   Sign of success 5 (README § How you would know it works). **The bar settled
   with the user 2026-08-20 is NOT that the figures match — it is that nothing is
   a mystery.** Every disagreement falls into a named reason and the unexplained
@@ -1242,6 +1249,13 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   two more cases for the pricing question LOTTO-0033 owns.
   Re-measure before starting: `python3 check.py` prints the census, and the
   archive era is now priced from real payout pages rather than being skipped.
+  Shipped 2026-10-30. Sign 5's bar is met with one limit: every
+  remaining `low` and `high` carries a named reason (LOTTO-0029 INV-80),
+  and `python3 check.py` prints them. `unexplained` and `unpaid` are
+  empty. The limit is the `no_message_for_draw` reason: the app computes
+  a win and the dump holds no bank message, which only a bank statement
+  can settle. Follow-ups are filed for the Daily Lotto reasons and for
+  stale SMS data.
   **Layman:** Work out why the app's figures disagree with what the bank actually paid, so nothing is left unexplained.
   Kind: investigate.
   Source: user-discovery-2026-08-20.
@@ -1696,6 +1710,24 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** The app now says plainly that it has no connection to the lottery or the bank, and to check results with the official lottery.
   Kind: doc.
   Source: user-request-2026-10-16.
+
+- 📋 [LOTTO-0083] **Say when the SMS data has gone stale, so a silent gap cannot hide a ticket running out.**
+  Measured 2026-10-30: the newest record in `lotto_sms_raw.txt` was dated 2026-08-15 and no `tray.py` or `watch_sms.py` was running. A search of `page.py`, `serve.py`, `supervise.py`, `tray.py` and `watch_sms.py` found no notice about the age of the dump; `serve.py`'s `stale` means a failed rebuild, not old data. The re-buy warning reads the tickets it has, so a ticket bought during such a gap gets no warning and nothing says so. This is sign 1's failure in its quietest form. To settle before building: how old counts as stale, given how often this user buys.
+  **Layman:** The app warns you when it has not heard from your phone for a long time, because it cannot warn about tickets it never saw.
+  Kind: fix.
+  Source: in-session-2026-10-30 (found by LOTTO-0037).
+
+- 📋 [LOTTO-0084] **Price Daily Lotto from the results page, because the feed's Daily table is not what a draw paid.**
+  Measured 2026-10-30: the feed returned the same Daily Lotto prize table for two draws weeks apart, while the results page differed per draw and equalled the bank's message on all six wins checked. Today these read `high` with the reason `feed_price` (LOTTO-0029 INV-80). `check.py::amount()` prices every API-era draw from the feed. To settle before building: what the app shows when the page is not published yet, since INV-22 forbids a zero. Lotto and PowerBall feed prices agree with the bank, so the change is Daily Lotto's alone.
+  **Layman:** The app shows the real Daily Lotto prize instead of a slightly wrong one from the official feed.
+  Kind: fix.
+  Source: in-session-2026-10-30 (found by LOTTO-0037).
+
+- 📋 [LOTTO-0085] **Check whether Daily Lotto Plus can be scored from the results site now.**
+  ADR-0011 maps Daily Lotto Plus to a pool no source carries. The saved results pages' own menu lists a Daily Lotto Plus section, seen 2026-10-30; its results were not read. These entries are the `unscorable_entry` reason and likely some `unscored` references. If the section holds that game's draws and prices, the ADR's premise has changed. Check first that it is the same game the tickets bought, since aliasing the wrong one is what the ADR exists to stop.
+  **Layman:** Tickets with Daily Lotto Plus could be checked in full, instead of that part being marked not checkable.
+  Kind: investigate.
+  Source: in-session-2026-10-30 (found by LOTTO-0037).
 
 ## Hardening
 

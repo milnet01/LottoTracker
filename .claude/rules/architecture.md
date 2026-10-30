@@ -175,6 +175,10 @@ Each is one rule; its full reasoning is the linked record in
   `date.today()`, `datetime.now()` or `fromtimestamp()` directly; `expiry.py`
   takes `today` from its caller, which gets it from `clock.today()` (INV-64,
   INV-50). [ADR-0009](../../docs/decisions/ADR-0009-dates-are-sast.md)
+- **A plain `2` row on a Lotto archive page pays two mains with or without the
+  bonus, from `check.py::PLAIN_TWO_FROM`** — the two spellings name one division
+  but not one rule, and the page decides; never fetch pages before that date to
+  ask (INV-79).
 - **`paying_combinations()` raises** rather than returning `{}` when a pool
   has no recent draw.
   [ADR-0010](../../docs/decisions/ADR-0010-paying-combinations-raises.md)

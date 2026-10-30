@@ -43,17 +43,18 @@ them without being told where to look.
    is empty. The app may under-report; it must never claim a win that was not
    paid.
 
-**Where it stands against those today:** 1, 2, 3 and 4 are done, and 5 is open
-but much smaller than it was. `LOTTO-0006` (2026-08-31) pushed the results
-record back to the earliest ticket, which explained most of the gap outright.
-`LOTTO-0042` (2026-09-02) then corrected how the remainder is measured: the
-comparison runs over the references that could actually be scored, and one
-nothing could score is named beside it rather than charged to the gap.
-`python3 check.py` prints the current figure. What is left is a residue —
-references where the app computes less than the bank paid, a few where it
-computes more, and a few where the bank paid, every entry was checkable, and
-no win was found at all. The app still claims no win the bank
-did not pay. See `ROADMAP.md`.
+**Where it stands against those today:** all five are done, with one limit on 5.
+`LOTTO-0006` (2026-08-31) pushed the results record back to the earliest ticket,
+which explained most of the gap outright. `LOTTO-0033` and `LOTTO-0037`
+(2026-10-30) explained the rest: from September 2025 Lotto's bottom division paid
+two numbers without the bonus ball, which the app was scoring as a loss. Every
+remaining difference now has a named reason, and `python3 check.py` prints each
+one with its count.
+
+**The limit:** a named reason is not always a settled one. On a few draws the app
+computes a win and the SMS record holds no bank message for it. That may be a lost
+SMS or a prize not paid, and only a bank statement can tell which. The app still
+computes no win on a ticket the bank paid nothing on.
 
 Sign 4 carries one limit worth stating plainly: the periods on offer begin
 where the results record does, because the comparison is drawn only over

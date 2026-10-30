@@ -8,6 +8,7 @@ Prize lookup differs by era, which is the only real complexity here:
 Both are cached, so a re-run is cheap.
 """
 
+from collections import Counter
 from datetime import datetime, timedelta
 
 import clock
@@ -20,6 +21,10 @@ CLAIM_DAYS = 365  # SA prizes expire a year after the draw
 
 # Main balls drawn per game, which bounds INV-26's reach domain below.
 MAINS = {"lotto": 6, "powerball": 5, "daily": 5}
+
+# The first Lotto draw whose payout pages carry a plain "2" row (INV-79). All
+# three pools change on this draw.
+PLAIN_TWO_FROM = "2025-09-24"
 
 _struct = {}
 _retired = {}
@@ -122,6 +127,27 @@ def site_label(game, hits, special):
     return f"{hits}" + (tag if special else "")
 
 
+def plain_two_pays(game, plus_flag, draw, hits, special):
+    """Did two mains WITHOUT the bonus pay on this draw? (INV-79, LOTTO-0033)
+
+    Lotto's bottom division (Division 8) paid "2 + Bonus" until 2025-09-20. From
+    2025-09-24 to the June 2026 handover the payout pages call it a plain "2",
+    and the bank paid two mains with no bonus on those draws: 56 of 57 draws
+    matched one bank message to the cent, measured 2026-10-30. The current
+    division set has no such tier, so check() would drop these as losses.
+
+    PLAIN_TWO_FROM only says where to ask. The page still decides, and pages
+    before it are never fetched: every losing line with two mains would cost a
+    scrape, for a question the bank's record already answers for those years.
+    """
+    if game != "lotto" or hits != 2 or special:
+        return False
+    if draw["issue"] is not None or draw["date"] < PLAIN_TWO_FROM:
+        return False
+    table = payouts(game, plus_flag, draw["date"])
+    return "2" in table and "2 + Bonus" not in table
+
+
 def retired_divisions(game, plus_flag=0, pool_id=100):
     """Divisions this pool's ARCHIVE era paid that the current set cannot name.
 
@@ -139,19 +165,14 @@ def retired_divisions(game, plus_flag=0, pool_id=100):
     line reaches this same branch: hundreds of fetches to answer a structural
     question six of them settle.
 
-    **The plain "<n>" key is the one thing the page does not say plainly, and
-    reading it wrong is worse than not asking.** Lotto archive pages spell
-    Division 8 as "2 + Bonus" on some draws and a bare "2" on others; both
-    shapes state "eight prize divisions" in prose and carry exactly eight
-    rows, so it is one division inconsistently labelled rather than two
-    (measured 2026-08-12 across 26 cached Lotto pages - amount() already leans
-    on the same equivalence from the other direction). A key whose sibling
-    shape is absent from the page is therefore read as whichever tier the
-    current set does carry - in BOTH directions, since either spelling can be
-    the one a given draw used - and only a key that no reading can place is
-    reported. Read the other way it would flag every match-2-without-bonus
-    line in the archive era as a possible win, which is this project's
-    cardinal failure inverted - a loss reading as a win.
+    **A plain "<n>" key is not a retired division when its sibling tier is
+    carried.** Lotto archive pages name Division 8 "2 + Bonus" on some draws
+    and a plain "2" on others; both state "eight prize divisions" and carry
+    eight rows, so it is one division, not two. A key whose sibling shape is
+    absent from the page is therefore read as whichever tier the current set
+    does carry - in BOTH directions - and only a key that no reading can place
+    is reported. What a plain "2" PAYS is plain_two_pays()'s question, not this
+    report's: the two spellings name one division but not one rule (INV-79).
     """
     key = (game, plus_flag, pool_id)
     if key not in _retired:
@@ -272,6 +293,9 @@ def check(tickets=None, today=None):
                 for d in drawn_over:
                     hits, special = match(t, board, d)
                     label = api_label(t.game, hits, special)
+                    if plain_two_pays(t.game, plus_flag, d, hits, special):
+                        # The same Division 8, so it takes that division's name.
+                        label = api_label(t.game, hits, True)
                     if label not in pays:
                         continue
                     drawn = datetime.strptime(d["date"], "%Y-%m-%d")
@@ -377,6 +401,33 @@ def uncheckable_report(tickets):
     return lines, counts
 
 
+def disagreement_reason(category, gap, tix, ref_wins, ref_payouts, newest_paid):
+    """Why a `low` or `high` reference differs: a REASON_NOTE key (INV-80).
+
+    `gap` is paid minus computed, in cents. Each answer must be read from the
+    data, and a reference that fits none reads "unnamed", which is the pile
+    sign of success 5 wants empty. It names the disagreement and settles nothing:
+    no figure or category moves (INV-43).
+    """
+    if category == "low":
+        if not all(scorable(t, pf) for t in tix for pf, _ in t.pools):
+            return "unscorable_entry"
+        same = Counter((p.cents, str(p.received)[:10]) for p in ref_payouts)
+        if gap == sum(cents * (n - 1) for (cents, _), n in same.items()):
+            return "repeated_message"
+        return "unnamed"
+    if any(w["game"] == "daily" and w["source"] == "api" for w in ref_wins):
+        return "feed_price"
+    per_draw = {}
+    for w in ref_wins:
+        per_draw[w["date"]] = per_draw.get(w["date"], 0) + round(w["amount"] * 100)
+    if -gap == sum(c for date, c in per_draw.items() if date >= newest_paid):
+        return "after_last_message"
+    if -gap in per_draw.values():
+        return "no_message_for_draw"
+    return "unnamed"
+
+
 def reconcile(tickets, wins, payouts):
     """-> records, one per reference the bank paid OR the app computed a win for.
 
@@ -389,7 +440,8 @@ def reconcile(tickets, wins, payouts):
     unexpired lines alone - because the bank's
     payouts are lifetime and a prize paid in 2025 is still money it paid.
 
-    Each record: ref, paid_cents, computed_cents, category, first_win.
+    Each record: ref, paid_cents, computed_cents, category, first_win, reason.
+    `reason` is set on `low` and `high` only (INV-80).
     `computed_cents` is THREE-valued and the three must not converge, which is
     this project's cardinal rule at this layer (INV-43):
         None  no entry could be scored - not checkable, and not a zero
@@ -410,9 +462,11 @@ def reconcile(tickets, wins, payouts):
     if not payouts:
         return []
 
-    paid = {}
+    paid, ref_payouts = {}, {}
     for p in payouts:
         paid[p.ref] = paid.get(p.ref, 0) + p.cents  # 77 refs are paid twice+
+        ref_payouts.setdefault(p.ref, []).append(p)
+    newest_paid = max((str(p.received)[:10] for p in payouts if p.received), default="")
 
     # A ticket with no Ref: parses to the "?" sentinel. No payout can carry
     # that string, so such tickets never join - but two of them would sum under
@@ -422,10 +476,11 @@ def reconcile(tickets, wins, payouts):
         if t.ref != "?":
             by_ref.setdefault(t.ref, []).append(t)
 
-    won, first = {}, {}
+    won, first, ref_wins = {}, {}, {}
     for w in wins:
         if w["ref"] == "?":
             continue
+        ref_wins.setdefault(w["ref"], []).append(w)
         # Whole cents. amount() returns float rands, and a sum of divisions
         # compared in rands can miss its equal by one part in 10^13 (INV-42).
         won[w["ref"]] = won.get(w["ref"], 0) + round(w["amount"] * 100)
@@ -465,12 +520,17 @@ def reconcile(tickets, wins, payouts):
             # `unexplained` is what stops the real leads being buried (INV-44).
             category = "unscored"
 
+        reason = None
+        if category in ("low", "high"):
+            reason = disagreement_reason(category, paid[ref] - won[ref], tix, ref_wins[ref],
+                                         ref_payouts[ref], newest_paid)
         out.append({
             "ref": ref,
             "paid_cents": p,
             "computed_cents": computed,
             "category": category,
             "first_win": first.get(ref),
+            "reason": reason,
         })
     return out
 
@@ -526,6 +586,16 @@ CATEGORY_NOTE = {
     "agree": "the bank and this app agree exactly",
 }
 
+# Why a `low` or `high` reference differs (INV-80). "unnamed" is the one to fix.
+REASON_NOTE = {
+    "unscorable_entry": "an entry nothing can score, such as Daily Lotto Plus, may have won",
+    "repeated_message": "the bank sent the same amount twice on one day",
+    "feed_price": "the results feed's Daily Lotto prize is not what the draw paid",
+    "after_last_message": "drawn after the newest bank message in the dump",
+    "no_message_for_draw": "the dump holds no bank message for one draw",
+    "unnamed": "NO REASON FOUND",
+}
+
 
 def reconcile_report(records):
     """-> (lines, counts), deliberately the shape uncheckable_report() returns.
@@ -573,6 +643,9 @@ def reconcile_report(records):
     for key in ("unpaid", "low", "high", "unexplained", "no_ticket", "unscored", "agree"):
         if counts[key]:
             lines.append(f"  {counts[key]:4} {key:12} {CATEGORY_NOTE[key]}")
+            if key in ("low", "high"):
+                why = Counter(r["reason"] for r in records if r["category"] == key)
+                lines += [f"       {n:4} {REASON_NOTE[k]}" for k, n in sorted(why.items())]
     gap = paid_scored - computed_total
     if gap:
         lines.append(f"  difference over the scored references: R{gap / 100:,.2f}")

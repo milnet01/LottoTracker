@@ -389,6 +389,104 @@ def claim_deadline_boundary():
     return f"expires {last.date()}; unexpired on it, expired the day after"
 
 
+def plain_two_row_pays():
+    """LOTTO-0001 INV-79: a plain "2" row pays two mains, with or without bonus.
+
+    Every direction a wrong rule could take, because the failure this project
+    fears most is a loss reading as a win: the row must be plain, the draw must
+    be on or after the change, and an API-era draw is never read this way.
+    """
+    plain, bonus = {"3": 20.0, "2": 7.77}, {"3": 20.0, "2 + Bonus": 30.0}
+    pages = {"2025-09-17": plain, "2025-09-20": bonus, "2025-09-24": plain,
+             "2025-09-27": bonus}
+    rows_ = [{"date": d, "main": [1, 2, 3, 4, 5, 6], "special": 7, "issue": None,
+              "source": "archive"} for d in sorted(pages)]
+    rows_.append({"date": "2026-06-03", "main": [1, 2, 3, 4, 5, 6], "special": 7,
+                  "issue": 1, "source": "api"})
+    history._cache[("lotto", 0)] = rows_
+
+    two, two_bonus = [1, 2, 40, 41, 42, 43], [1, 2, 7, 41, 42, 43]
+    one = [1, 40, 41, 42, 43, 44]
+    # (name, draw, board, how many wins, what each pays)
+    want = [
+        ("two mains, plain row", "2025-09-24", two, 1, 7.77),
+        ("two mains and the bonus, plain row", "2025-09-24", two_bonus, 1, 7.77),
+        ("one main, plain row", "2025-09-24", one, 0, None),
+        ("two mains, plain row before the change", "2025-09-17", two, 0, None),
+        ("two mains, Bonus row before the change", "2025-09-20", two, 0, None),
+        ("two mains, Bonus row after the change", "2025-09-27", two, 0, None),
+        ("two mains, API-era draw", "2026-06-03", two, 0, None),
+    ]
+    real_pays, real_payouts = check.paying_combinations, check.payouts
+    check.paying_combinations = lambda *a: {"MATCH 3": "DIV 7", "MATCH 2 + BONUS": "DIV 8"}
+    check.payouts = lambda game, plus_flag, date: pages[date]
+    try:
+        for name, date, board, count, price in want:
+            t = _ticket(SENTINEL, start=date, boards=[("A", board, None)])
+            try:
+                wins = check.check([t])
+            except RuntimeError as e:
+                raise AssertionError(f"{name}: {e}") from e
+            assert len(wins) == count, f"{name}: {len(wins)} wins, want {count}"
+            for w in wins:
+                assert w["amount"] == price, f"{name}: priced {w['amount']}, want {price}"
+                assert w["division"] == "DIV 8", f"{name}: division {w['division']}"
+    finally:
+        check.paying_combinations, check.payouts = real_pays, real_payouts
+    return f"{len(want)} match, page and era combinations"
+
+
+def disagreements_are_named():
+    """LOTTO-0029 INV-80: every `low` and `high` carries a reason, read from data.
+
+    Each reason has a case, and each has a near miss that must read "unnamed":
+    a classifier that names everything is the failure sign of success 5 fears,
+    because it empties the pile by hiding what is in it.
+    """
+    def win(cents, date, game="lotto", source="archive"):
+        return dict(_win(SENTINEL, cents, date), game=game, source=source)
+
+    def pay(cents, day):
+        return tickets.Payout(SENTINEL, cents, datetime.strptime(day, "%Y-%m-%d"))
+
+    whole = _ticket(SENTINEL, start=_STUB_START)
+    plus = _ticket(SENTINEL, "daily", ((0, 100), (1, 101)), start=_STUB_START,
+                   boards=[("A", [1, 2, 3, 4, 5], None)])
+    newest = "2026-08-15"
+    a, b = "2026-07-01", "2026-07-08"
+    late = "2026-08-20"
+    cases = [
+        ("a Plus entry", "low", 251, plus, [win(500, a, "daily")],
+         [pay(500, a), pay(251, a)], "unscorable_entry"),
+        ("one message twice", "low", 333, whole, [win(500, a)],
+         [pay(500, a), pay(333, b), pay(333, b)], "repeated_message"),
+        ("twice, but on two days", "low", 666, whole, [win(500, a)],
+         [pay(500, a), pay(333, a), pay(333, b)], "unnamed"),
+        ("a small unknown excess", "low", 100, whole, [win(500, a)],
+         [pay(600, a)], "unnamed"),
+        ("a feed price", "high", -19, whole, [win(500, a, "daily", "api")],
+         [pay(481, a)], "feed_price"),
+        ("a win after the dump", "high", -1111, whole, [win(500, a), win(1111, late)],
+         [pay(500, a)], "after_last_message"),
+        ("one draw unpaid", "high", -1234, whole, [win(500, a), win(1234, b)],
+         [pay(500, a)], "no_message_for_draw"),
+        ("a part of one draw", "high", -80, whole, [win(500, a), win(1234, b)],
+         [pay(500, a), pay(1154, b)], "unnamed"),
+    ]
+    for name, category, gap, t, wins, paid, want in cases:
+        got = check.disagreement_reason(category, gap, [t], wins, paid, newest)
+        assert got == want, f"{name}: {got}, want {want}"
+
+    # And through reconcile() itself, with the figures left alone (INV-43).
+    t = _ticket(SENTINEL, start=_STUB_START)
+    recs = check.reconcile([t], [_win(SENTINEL, 500)], [_payout(SENTINEL, 481)])
+    assert recs[0]["reason"] == "unnamed", f"reason {recs[0]['reason']}"
+    assert (recs[0]["paid_cents"], recs[0]["computed_cents"]) == (481, 500), recs[0]
+    recs = check.reconcile([t], [_win(SENTINEL, 500)], [_payout(SENTINEL, 500)])
+    assert recs[0]["reason"] is None, f"agree carries a reason: {recs[0]['reason']}"
+    return f"{len(cases)} reasons and near misses; reconcile() moves no figure"
+
+
 CASES = [
     ("purchase_is_not_a_payout", "INV-40", purchase_is_not_a_payout),
     ("multiple_payouts_sum", "INV-41", multiple_payouts_sum),
@@ -400,6 +498,8 @@ CASES = [
     ("no_payouts_is_not_agreement", "INV-47", no_payouts_is_not_agreement),
     ("payment_follows_record", "INV-69", payment_follows_record),
     ("claim_deadline_boundary", "LOTTO-0058", claim_deadline_boundary),
+    ("plain_two_row_pays", "INV-79", plain_two_row_pays),
+    ("disagreements_are_named", "INV-80", disagreements_are_named),
 ]
 
 ACTIVE_CASE = None  # set by main(); a break fires only in its own case
@@ -419,6 +519,11 @@ BREAKS = {
     "other_category_reads_paid": "payment_follows_record",
     "deadline_day_expired": "claim_deadline_boundary",
     "deadline_never_expires": "claim_deadline_boundary",
+    "plain_two_never_pays": "plain_two_row_pays",
+    "plain_two_ignores_page": "plain_two_row_pays",
+    "plain_two_ignores_date": "plain_two_row_pays",
+    "reason_never_unnamed": "disagreements_are_named",
+    "reason_moves_figure": "disagreements_are_named",
 }
 
 
@@ -464,6 +569,33 @@ def _apply_break(name):
 
         check.claim_deadline = broken_cd
         return
+    if name == "reason_never_unnamed":
+        real_why = check.disagreement_reason
+
+        def broken_why(*a):
+            got = real_why(*a)
+            return "feed_price" if got == "unnamed" else got
+
+        check.disagreement_reason = broken_why
+        return
+    if name.startswith("plain_two_"):
+        real_two = check.plain_two_pays
+
+        def broken_two(game, plus_flag, d, hits, special):
+            # Scoped like the others, and here it matters more: applied to the
+            # real-data case, ignoring the date scrapes every old payout page.
+            if ACTIVE_CASE != BREAKS[name]:
+                return real_two(game, plus_flag, d, hits, special)
+            if name == "plain_two_never_pays":
+                return False
+            two = hits == 2 and not special and d["issue"] is None
+            if name == "plain_two_ignores_page":
+                return two and d["date"] >= check.PLAIN_TWO_FROM
+            table = check.payouts(game, plus_flag, d["date"])       # ignores_date
+            return two and "2" in table and "2 + Bonus" not in table
+
+        check.plain_two_pays = broken_two
+        return
     real = check.reconcile
 
     def broken(tk, wins, payouts):
@@ -501,6 +633,8 @@ def _apply_break(name):
                 r["category"] = "agree"
             elif name == "merge_unscored" and r["category"] == "unexplained":
                 r["category"] = "unscored"
+            elif name == "reason_moves_figure" and r["reason"]:
+                r["computed_cents"] = r["paid_cents"]
             elif name == "no_first_win":
                 r["first_win"] = None
         if name == "drop_no_ticket":

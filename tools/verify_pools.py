@@ -484,9 +484,8 @@ def main(argv=()):
     # sample a page whose bottom row reads "2" rather than "2 + Bonus", and
     # both spellings are Division 8 (each page states "eight prize divisions"
     # and carries eight rows). Read as a distinct "Match 2" division it would
-    # report a gap on every Lotto pool and flag every match-2-without-bonus
-    # line in the archive era as a possible win - a loss reading as a win,
-    # which is this project's cardinal failure inverted.
+    # report a gap on every Lotto pool, which is not what happened: what that
+    # row paid is check.plain_two_pays()'s question (INV-79).
     blind = 0
     real_pays = check.paying_combinations
     gap_probes = [

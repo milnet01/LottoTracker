@@ -6,6 +6,16 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Every remaining difference from the bank now has a named reason in `check.py`'s report** (LOTTO-0037)
+  No figure changes. A difference that fits no reason is printed as `NO REASON FOUND`.
+
+### Fixed
+
+- **Lotto wins with two numbers and no bonus ball now count, for draws from 2025-09-24 to the June 2026 handover** (LOTTO-0033)
+  The app scored them as losses, so its totals ran below what the bank paid. All references the app could not explain now match the bank exactly.
+
 ## [0.1.0] - 2026-10-30
 
 **Theme:** The first release: one ledger of your lottery tickets, and a warning before one runs out.
