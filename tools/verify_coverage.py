@@ -56,7 +56,7 @@ def main():
         bad += 1
 
     if os.path.exists(DUMP):
-        expected = open(DUMP, errors="replace").read().count("Played R")
+        expected = open(DUMP, encoding="utf-8", errors="replace").read().count("Played R")
         if len(tickets) != expected:
             print(f"  PARSE GAP: {expected} purchase SMSes, {len(tickets)} parsed")
             bad += 1

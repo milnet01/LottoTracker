@@ -220,7 +220,7 @@ def _read_warned(path):
     a file the user may delete.
     """
     try:
-        with open(path) as fh:
+        with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
     except (OSError, ValueError):
         return []
@@ -288,7 +288,7 @@ def _write_warned(path, records):
     if directory:
         os.makedirs(directory, mode=0o700, exist_ok=True)
     tmp = f"{path}.{os.getpid()}.tmp"
-    with open(tmp, "w") as fh:
+    with open(tmp, "w", encoding="utf-8") as fh:
         json.dump({"warned": records}, fh)
         fh.flush()
         os.fsync(fh.fileno())
@@ -475,7 +475,7 @@ def read_settings():
     """
     open_on_start = True
     try:
-        with open(settings_path()) as fh:
+        with open(settings_path(), encoding="utf-8") as fh:
             data = json.load(fh)
         if isinstance(data, dict) and isinstance(data.get("open_on_start"), bool):
             open_on_start = data["open_on_start"]

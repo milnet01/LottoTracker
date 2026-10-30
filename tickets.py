@@ -372,7 +372,7 @@ def terminal_safe(s):
 
 def load(path="lotto_sms_raw.txt"):
     out = []
-    with open(path, errors="replace") as fh:
+    with open(path, encoding="utf-8", errors="replace") as fh:
         raw = fh.read()
     for address, date_ms, body in rows(raw):
         # Android's SMS timestamp, in milliseconds since the epoch. SAST on
@@ -406,7 +406,7 @@ def load_payouts(path="lotto_sms_raw.txt"):
     drifts later, and this file now has two message kinds to keep in step.
     """
     out = []
-    with open(path, errors="replace") as fh:
+    with open(path, encoding="utf-8", errors="replace") as fh:
         raw = fh.read()
     for address, date_ms, body in rows(raw):
         try:  # load()'s reason, same unbounded date field
