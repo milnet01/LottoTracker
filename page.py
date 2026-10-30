@@ -16,6 +16,14 @@ import json
 
 TITLE = "Lotto Tracker"  # constant: INV-21 forbids ticket data in the title
 
+# INV-78: on every page state. The site and the trailers carry the same words.
+DISCLAIMER = (
+    "LottoTracker is an independent app. It is not affiliated with or endorsed "
+    "by the South African National Lottery, its operator, or Standard Bank. "
+    "Always check results and claim prizes through the official lottery before "
+    "relying on what the app shows."
+)
+
 
 def _e(s):
     return html.escape(str(s), quote=True)
@@ -688,6 +696,7 @@ tr.soon td{background:var(--warn-bg)}tr.today td{background:var(--bad-bg);font-w
 .switch input:checked+.slider:before{transform:translateX(1.2rem)}
 .switch input:focus-visible+.slider{outline:2px solid var(--accent);outline-offset:2px}
 footer{margin-top:2.5rem;color:var(--dim);font-size:.85rem}
+.disclaimer{margin-top:1rem;color:var(--dim);font-size:.85rem}
 button,select{font:inherit;padding:.3rem .7rem;background:var(--panel);color:var(--fg);
  border:1px solid var(--line);border-radius:.25rem}
 button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -914,5 +923,6 @@ def render(model, token):
     return (
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-        f"{head}</head><body>{body}<script>{script}</script></body></html>"
+        f"{head}</head><body>{body}<p class=\"disclaimer\">{DISCLAIMER}</p>"
+        f"<script>{script}</script></body></html>"
     )

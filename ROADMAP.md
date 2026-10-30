@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=81 -->
+<!-- ants-roadmap-id-high-water: LOTTO=82 -->
 
 # ROADMAP — LottoTracker
 
@@ -1682,6 +1682,16 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** The app gets its first official version, so the website can make its video from it.
   Kind: release.
   Source: user-decision-2026-10-15.
+
+- ✅ [LOTTO-0082] **Say on the page and in the README that the app is independent of the lottery and the bank.**
+  Asked for by the user through the ants-projects-hub-website session on
+  2026-10-16; the wording is the site's and trailers' house style. Every
+  page state carries it, including the ones that show no ticket data.
+  Checked by tools/verify_page.py, case disclaimer_on_every_state (INV-78).
+  The invariant lives in docs/specs/LOTTO-0002-local-web-page.md.
+  **Layman:** The app now says plainly that it has no connection to the lottery or the bank, and to check results with the official lottery.
+  Kind: doc.
+  Source: user-request-2026-10-16.
 
 ## Hardening
 

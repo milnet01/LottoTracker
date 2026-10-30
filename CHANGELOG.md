@@ -8,6 +8,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The page and the README say the app is independent of the lottery and the bank** (LOTTO-0082)
+  Every state of the page now says that LottoTracker is not affiliated with or endorsed by the South African National Lottery, its operator or Standard Bank, and to check results and claim prizes through the official lottery. That includes the states showing no ticket data. Checked by `tools/verify_page.py`, case `disclaimer_on_every_state` (INV-78).
+
 - **A dark page by default, thirteen colour themes, and balls coloured by game** (LOTTO-0076)
   You reported the white page as blinding. It now opens dark — and it is dark in
   the stylesheet itself, not dark because a script got there in time, so there is

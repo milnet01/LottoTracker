@@ -2246,6 +2246,36 @@ def theme_is_dark_and_readable():
         page.THEMES = real_themes
 
 
+def disclaimer_on_every_state():
+    """INV-78 — every page state says the app is independent, and so does the README.
+
+    The states that show no ticket data count most: they are what a first-time
+    user sees. The wording is spelled out here rather than read from page.py,
+    so an edit to the constant has to be made on purpose in both places; the
+    site and the trailers carry the same sentence.
+    """
+    temp_home()
+    wording = (
+        "LottoTracker is an independent app. It is not affiliated with or "
+        "endorsed by the South African National Lottery, its operator, or "
+        "Standard Bank. Always check results and claim prizes through the "
+        "official lottery before relying on what the app shows."
+    )
+    states = {
+        "full": fixture_model(),
+        "building": {"building": True, "built": None, "requests": 0},
+        "no dump": {"no_dump": True},
+        "no build": {"no_build": True},
+        "first build failed": {"error": {"what": "boom"}, "built": None},
+    }
+    for name, model in states.items():
+        got = render_pure(model).count(wording)
+        need(got == 1, f"{name}: the disclaimer appears {got} times, want 1")
+    with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as fh:
+        readme = " ".join(fh.read().replace(">", " ").split())
+    need(wording in readme, "the README does not carry the disclaimer")
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -2269,12 +2299,14 @@ CASES = [
     ("counts_read_as_english", "0007(w)", counts_read_as_english),
     ("deadline_only_when_unpaid", "INV-70", deadline_only_when_unpaid),
     ("unscored_month_not_zero", "INV-71", unscored_month_not_zero),
+    ("disclaimer_on_every_state", "INV-78", disclaimer_on_every_state),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
 BREAKS = {
     "no_drawn_numbers": "numbers_chosen_and_drawn",
     "blank_numbers_cell": "numbers_chosen_and_drawn",
+    "disclaimer_with_data_only": "disclaimer_on_every_state",
     "host_endswith": "host_allowlist",
     "no_security_headers": "host_allowlist",
     "token_exempt_refresh": "token_required",
@@ -2317,6 +2349,14 @@ BREAKS = {
 
 def apply_render_breaks():
     """Breaks that live in the renderer rather than the server."""
+    if broken("disclaimer_with_data_only"):
+        # Where a footer-only disclaimer would land: on the full page and on
+        # none of the states that show no ticket data.
+        real_render = page.render
+        page.render = lambda model, token: (
+            real_render(model, token) if model.get("entries")
+            else real_render(model, token).replace(page.DISCLAIMER, "")
+        )
     if broken("blank_money_cell"):
         page._money_cell = lambda won: "<td></td>"
     if broken("dash_for_unscorable"):

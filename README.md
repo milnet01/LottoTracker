@@ -12,6 +12,11 @@ never add up to.
 Runs entirely on your own machine. No account, no API key, no subscription,
 nothing paid.
 
+> LottoTracker is an independent app. It is not affiliated with or endorsed by
+> the South African National Lottery, its operator, or Standard Bank. Always
+> check results and claim prizes through the official lottery before relying
+> on what the app shows.
+
 ## How you would know it works
 
 The five things it is judged against. They are here rather than in a spec
@@ -311,5 +316,4 @@ are, is in [`docs/specs/LOTTO-0001-lottery-ticket-tracker.md`](docs/specs/LOTTO-
 - The archive is scraped from `backfill.FIRST_YEAR` onward — the year of the
   earliest ticket in the dump. Anything older is reported as uncheckable
   rather than scored against the wrong draws.
-- This is a personal tool, not a licensed service. Always confirm a win
-  against the official result before acting on it.
+- This is a personal tool, not a licensed service.

@@ -970,7 +970,8 @@ This document holds **INV-15 to INV-18** — the honesty rules on the data the
 page renders — **INV-48**, added 2026-08-20 with LOTTO-0035 and the same kind
 of rule one column further right, **INV-62 and INV-63**, added 2026-09-06
 with LOTTO-0076, **INV-68 and INV-70**, added 2026-10-15 with LOTTO-0007 (d)
-and LOTTO-0011, and **INV-24**, which is an honesty rule
+and LOTTO-0011, **INV-78**, added 2026-10-30 with LOTTO-0082, and **INV-24**,
+which is an honesty rule
 about the port the process binds rather than about the data, and lives here
 because §4.1's environment table and §6's failure mode are both this
 document's. LOTTO-0001
@@ -1248,6 +1249,17 @@ them unqualified.
   label, which reads as an unremarked deadline and hides that the payout data
   is missing.
 
+- **INV-78** — Every page state, including the ones that show no ticket data,
+  carries `page.DISCLAIMER` once, and the README carries the same words.
+  Added 2026-10-30 (LOTTO-0082).
+  *Test:* `tools/verify_page.py`, case `disclaimer_on_every_state` — renders
+  the full model and the building, no-dump, no-build and first-build-failed
+  states through `render_pure()` and counts the sentence in each, then looks
+  for it in `README.md`. Break `disclaimer_with_data_only`, which strips it
+  from every state but the full page.
+  *Breaks when:* the sentence moves into the full page's `<footer>`, which the
+  no-data states do not render, so a first-time user never sees it.
+
 ## 6. Failure modes
 
 - **The operator's API is unreachable.** Four of seven build attempts on
@@ -1369,6 +1381,7 @@ share their fixtures, their temporary-directory setup and their stub builder.
 | `failed_refresh_keeps_model` | INV-18 |
 | `port_from_environment` | INV-24 |
 | `deadline_only_when_unpaid` | INV-70 |
+| `disclaimer_on_every_state` | INV-78 |
 
 **Added 2026-10-15.** INV-70's case joins `tools/verify_page.py`, with break
 `deadline_on_paid_win`. INV-68's case, `odd_board_is_named`, lives in the new
@@ -1526,6 +1539,7 @@ LOTTO-0014 §8.)
 | INV-63 the theme reaches no URL and writes one browser key | `tools/verify_page.py::theme_is_dark_and_readable` — the same case; it counts `setItem(` and re-checks INV-21's forbidden calls against the pure render |
 | INV-68 an oversized board named as the reason, on the entry and in the banner | `tools/verify_boards.py::odd_board_is_named` — red-tested by `--break odd_board_unnamed`, `--break odd_board_not_in_banner` and `--break pool_before_board` |
 | INV-70 a deadline only on an unexpired win the bank has not paid, its payment state in words | `tools/verify_page.py::deadline_only_when_unpaid` — red-tested by `--break deadline_on_paid_win`. It renders a hand-authored model, so a wrong mapping is LOTTO-0001 INV-69's to catch, not this case's |
+| INV-78 the disclaimer on every page state and in the README | `tools/verify_page.py::disclaimer_on_every_state` — red-tested by `--break disclaimer_with_data_only` |
 | INV-48 the numbers chosen beside the numbers drawn, absence said in words | `tools/verify_page.py::numbers_chosen_and_drawn` — two disjoint fixture sets, so a renderer echoing the chosen numbers into both columns fails; red-tested by `--break no_drawn_numbers` and `--break blank_numbers_cell` |
 | §4.1 the *resolved* port being what builds LOTTO-0014 §4.2's `Host` allowlist, not either variable read again | **nothing** — and the gap is structural rather than an omission: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because the question they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes both. The breach is loud to a *user* — every request fails — and invisible to the suite |
 | §4.1 `page.py` performing no I/O | `tools/verify_page.py` — a *raising* `all_draws` double that `render_pure()` installs before `render()` is called, for every case that renders `page.py` directly (§7 scopes it). Absent the raising double the row would be false: with no `archive_results.json`, `history.all_draws()` falls straight through to `api_draws()`, which **succeeds** on a connected machine, so a renderer calling it would pass |
@@ -1657,6 +1671,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| amend-0082 | 2026-10-30 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0082, the user's request for a disclaimer. Adds INV-78 and its case `disclaimer_on_every_state`. The spec is past two review loops, so no gate re-arms. |
 | 10 | 2026-10-15 | 2, cold, via `neutral-lane` — genre pinned `spec`; every lane held every question; new run, armed by commit 9643da3 (the user's decisions) | — | — | — | — | **First loop of a new run: Q1 1 · Q2 0 · Q3 1 · Q4 1 (verified 3, fixed 0, surfaced 1, filed 2; dismissed 0). Converged: nothing this loop could act on remained in the subject, so no second read.** Surfaced to the user, inside the armed span [Q1]: §4.6's table rewritten today keeps "Winnings lifetime" as a separate labelled line, while `page.py::_spend_section()` has never rendered `won.lifetime_cents` — an implementer following §4.6 would add a row the shipped page lacks. Whether the page should show it is the user's call. Filed, outside the armed span (the blast-radius exit; both on INV-68, written by the earlier run's amendment): [Q3] the banner's `odd_board` wording is not pinned, so `tools/verify_boards.py::odd_board_is_named` and the banner may be built to different strings; [Q4] `odd_board_unnamed` breaks `entry_reason()` and the banner together, so the banner half of INV-68 is never seen red on its own. Open questions resolved clean: `serve.py` and `supervise.py` import no PySide6, so INV-68's case can run on the CI lane; the `unexpired_cents` key still in `tools/verify_page.py` and `tools/demo_page.py` fixtures is read by nothing and changes no render. Code windows were cut from HEAD copies because the working tree held unrelated in-progress edits. Second share: 1 of 3 verified inside the armed span. |
 | 9 | 2026-10-15 | 2, cold, via `neutral-lane` — identical brief, packet rebuilt from disk; every lane held every question | — | — | — | — | **Second loop of the run: Q1 0 · Q2 1 · Q3 0 · Q4 0 (verified 1, fixed 0, surfaced 1; dismissed 0). Cap reached (2 for a spec); the run ships.** One lane returned no finding. The other found, and the first raised as an open question, that §4.6's table still shows "Winnings lifetime and still unexpired" as a labelled line, while §3 and §4.5 item 1 now forbid a summed claimable total; `won.unexpired_cents` includes paid wins, and `page.py::_spend_section()` does not render it today, so an implementer following §4.6 would add the line LOTTO-0011 retires. **Surfaced to the user, not fixed**: whether that figure stays in the model is their call. **A calm cap**: the one verified finding sits in text this run did not write (0 of 1). Second share: 5 of the run's 7 verified findings fall inside the amendment's span. Corrected by deletion, outside the tally: loop 8's fix pointed §11's INV-70 row at "the row below" for builder defects, which is INV-48's row — the clause is gone. Open questions resolved clean: `serve.py` and `supervise.py` import only the standard library and project modules, so `tools/verify_boards.py` can import `serve` on the CI lane; no case besides `numbers_chosen_and_drawn` reads section 1's heading. The final loop's one deletion is read by no lane. |
 | 8 | 2026-10-15 | 2, cold, via `neutral-lane` — genre pinned `spec`; every lane held every question | — | — | — | — | **First loop of a new `review-contract` run, armed by the `amend-d-0011-0062` amendment; this gate tags by question, not severity: Q1 0 · Q2 1 · Q3 3 · Q4 2 (verified 6, fixed 6; dismissed 1).** **Both lanes found INV-68's test blind to the ordering its *Breaks when* names**: with `rows` non-empty and early, a pool-first `entry_reason()` still reaches the board branch, so the case could not see the order §4.5 and LOTTO-0009 §4.6 require; it now also calls with `rows == []`, and gains the break `pool_before_board`. **Both lanes found §11's "two doubles" row contradicting §7 and INV-15** — no case has a build phase; fixed as an exempt record of `render_pure()`'s one raising double. Q3: a win with no `payment` key had no defined rendering, so fixtures and `tools/demo_page.py` would pass or fail on the implementer's guess — it now reads *payment unknown*; the builder's "copies each reference's record" read as a second join beside `payment_status()`, which already returns the wins with the keys added — it now takes those wins and joins nothing; and `load_payouts()` was named with no path while its default is relative — now `load_payouts(DUMP)`. Q4: INV-68's banner fixture set only `odd_board`, and `_uncheckable_banner()` renders nothing unless `uncheckable` is non-zero. Dismissed: §3's "Every other win reads as paid" has no paid label on the page — §3 records the user's words and §4.5 states the build. Corrected by deletion, outside the tally: §7's stale case counts ("thirteen", "the five below"). Collateral handed on: LOTTO-0001 §7 names only `odd_board_unnamed` for `odd_board_is_named`. |
