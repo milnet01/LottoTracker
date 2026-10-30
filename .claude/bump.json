@@ -1,0 +1,14 @@
+{
+  "$why": "The project has no build or package metadata, so VERSION is the one version-bearing file. Nothing in the app reads it.",
+  "version_source": "VERSION",
+  "version_pattern": "^([0-9]+\\.[0-9]+\\.[0-9]+)$",
+  "files": [
+    {
+      "path": "VERSION",
+      "pattern": "{OLD}",
+      "replace": "{NEW}"
+    }
+  ],
+  "tag": "v{NEW}",
+  "post_check": "grep -q \"^## \\[$(cat VERSION)\\] - \" CHANGELOG.md"
+}

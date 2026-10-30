@@ -303,6 +303,7 @@ matches the PowerBall. Whatever your bank does, check that case first.
 | `page.py` | Turns what `check.py` worked out into the page's HTML |
 | `supervise.py` | Starts, watches and stops the server and the SMS listener |
 | `tray.py` | The icon by the clock; the only file that needs PySide6 |
+| `VERSION` | The release number; nothing in the app reads it |
 | `tools/verify_*.py` | Checks the contracts in `docs/specs/`, including that no real message content is tracked |
 
 The design contract, including why each source is used and where the traps
