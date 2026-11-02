@@ -23,6 +23,7 @@ findings were folded into the build. INV-68
 (`tools/verify_boards.py::odd_board_is_named`, three breaks) and INV-70
 (`tools/verify_page.py::deadline_only_when_unpaid`) pass, each observed
 failing under its own breaks.
+**Amended 2026-11-02** for LOTTO-0090: §4.1, §4.5, INV-93 to INV-95, §7, §11.
 **Amended 2026-11-02** for LOTTO-0087: §4.1, §4.5, INV-85 to INV-87, INV-89, §7
 and §11.
 **Kind:** implement.
@@ -186,7 +187,8 @@ happen in `serve.py`'s builder, not in the renderer.
   # If a future SMS carries no `Ref:`, several tickets collapse onto "?" and
   # the join silently merges them — report it rather than rendering the merge.
   "tickets":[ {"ref", "game", "cost_cents", "boards": int, "ndraws",
-               "resolved": bool, "bought": "YYYY-MM-DD"} ],
+               "resolved": bool, "bought": "YYYY-MM-DD",
+               "start": "YYYY-MM-DD"} ],  # the first draw it can enter
   "uncheckable": {                          # from check.py::uncheckable_report()
     "entries": 1233, "uncheckable": 974,    # totals
     "too_old": 963, "no_pool": 11,          # the reasons, kept apart
@@ -205,6 +207,12 @@ happen in `serve.py`'s builder, not in the renderer.
 # What `State` owns, and what serve.py overlays at render time.
 {
   "sms_quiet": None | {"newest": str | None, "days": int | None},
+  # serve.running_view(), judged at each GET like sms_quiet (INV-93). `final` is a
+  # label such as "Fri 21 Nov". None when there are no tickets to ask about.
+  "running": None | {"running": [{"game", "name", "left": int, "ndraws": int,
+                                  "final": str, "final_in_days": int,
+                                  "followed": bool, "buy_soon": bool}],
+                     "ran_out": [{"game", "name", "final": str}], "unknown": int},
                                             # judged per GET; LOTTO-0034 INV-84.
                                             # Tells no empty state apart.
   "icon":     str | None,                    # the tab icon as a data: address (INV-87)
@@ -605,12 +613,18 @@ Above the sections, after the page's notice, comes LOTTO-0062's *From a sender
 not seen before* notice, when there is anything to list; LOTTO-0062 §4.4 owns
 its contract and INV-75 checks it. Then the uncheckable banner below.
 
-Four sections, in this order — unpaid wins first, because they are the only
+**The Overview opens the page**, because telling the user when to buy again is
+the app's first job (`README.md` § How you would know it works). It says, in this
+order: when to buy, as one sentence and one row per running ticket, soonest first;
+how many wins wait on the bank; and the newest year's spend and winnings. Its two
+buttons go to the tabs that hold the detail. INV-93 holds it.
+
+Four sections follow, in this order — unpaid wins first, because they are the only
 thing on the page with a deadline:
 
 1. **Not yet paid** — every win that is unexpired **and** whose `payment` is
    not paid (§4.1, LOTTO-0001 §4.4), latest draw first (INV-85), each naming
-   its pool (`lotto/1`, not "Lotto"), its division, its amount, its deadline,
+   its exact game (*Lotto Plus 1*, not *Lotto*; INV-95), its division, its amount, its deadline,
    and its payment state in words: *unpaid*; *partly paid — the bank paid R p
    of R c on this ticket*, from `ref_paid_cents` and `ref_computed_cents`; or
    *payment unknown*. A win with no `payment` key renders as *payment
@@ -622,6 +636,8 @@ thing on the page with a deadline:
    page can be wrong about. **Empty state:** *No unexpired win is waiting on
    the bank.* That sentence is true only because missing payout data puts
    every win here as *payment unknown* rather than emptying the section.
+   **Paid by the bank** follows in the same tab, with the same columns and no
+   deadline (INV-94).
 2. **Still outstanding** — two groups under one heading, because both are
    "not finished", and neither is a loss. The heading is deliberately not "Live
    tickets": a 2019 ticket has no draws still to come, and filing 974 unscorable
@@ -1295,6 +1311,32 @@ them unqualified.
   *Breaks when:* the column is capped below what the widest table needs, or the
   narrow rule stops stacking the rows.
 
+- **INV-93** — The page opens on an Overview that says when to buy. Its dates come
+  from `expiry.py`, as the tray's warning does, and are judged each time the page
+  is shown. *Buy soon* uses the tray's `WARN_AT`, and is not said of a ticket whose
+  game has a later-ending ticket. A game whose newest ticket ended within
+  `serve.RAN_OUT_DAYS` with none running says *buy now*. A ticket the calendar cannot
+  place is counted and said, and no calendar answer reads as *not known*, never as
+  nothing to buy. The newest year's figures are `periods` verbatim, and no scored
+  year shows no figure. The Overview shows no ticket reference. Added 2026-11-02
+  (LOTTO-0090).
+  *Test:* `tools/verify_page.py`, case `buy_again_on_overview`. Breaks
+  `rebuy_judged_at_build`, `unknown_ticket_dropped`, `followed_still_says_buy`,
+  `no_overview_answer` and `overview_money_zero`.
+  *Breaks when:* the Overview is built from `draws_remaining`, or its verdict is
+  stored at build time.
+
+- **INV-94** — A win the bank paid shows its numbers and the numbers drawn in
+  *Paid by the bank*, with no deadline. Added 2026-11-02 (LOTTO-0090).
+  *Test:* `tools/verify_page.py`, case `paid_wins_shown`. Break `no_paid_section`.
+  *Breaks when:* a paid win is filtered out of every section that shows numbers.
+
+- **INV-95** — The reader sees a game's name. The `game/plus_flag` key stays only in
+  attributes the filter reads, and an unknown pool shows its key rather than a guess.
+  Added 2026-11-02 (LOTTO-0090).
+  *Test:* `tools/verify_page.py`, case `games_by_their_names`. Break `pool_keys_shown`.
+  *Breaks when:* a section renders the key, or a new pool has no name.
+
 - **INV-89** — The sections sit in tabs under a sticky bar, in §4.5's order, with
   *Spending* holding both spend sections. Every notice sits above the tabs, so no
   tab can hide one. A refresh reports in the bar. Tabs touch no URL and store
@@ -1441,6 +1483,9 @@ share their fixtures, their temporary-directory setup and their stub builder.
 | `page_follows_window_width` | INV-86 |
 | `app_icon_in_page` | INV-87 |
 | `tabs_never_hide_a_warning` | INV-89 |
+| `buy_again_on_overview` | INV-93 |
+| `paid_wins_shown` | INV-94 |
+| `games_by_their_names` | INV-95 |
 
 **Added 2026-10-15.** INV-70's case joins `tools/verify_page.py`, with break
 `deadline_on_paid_win`. INV-68's case, `odd_board_is_named`, lives in the new
@@ -1602,6 +1647,9 @@ LOTTO-0014 §8.)
 | INV-85 every ticket table opens latest first, with two ways to sort | `tools/verify_page.py::latest_first_and_sortable` — red-tested by `--break oldest_first` and `--break no_sort_dropdown`. **Nothing** runs a click |
 | INV-86 a centred column at 75% of the window, turning to cards when narrow | `tools/verify_page.py::page_follows_window_width` — red-tested by `--break capped_width` and `--break no_cards`. **Nothing** measures a table against a real window |
 | INV-87 the tab icon on every page state, with no fifth route | `tools/verify_page.py::app_icon_in_page` — red-tested by `--break no_icon` |
+| INV-93 the Overview says when to buy, from the tray's calendar, judged when shown | `tools/verify_page.py::buy_again_on_overview` — red-tested by five breaks. **Layout and the buttons run in the browser and no case runs them**; checked by hand in Firefox on 2026-11-02 |
+| INV-94 a paid win shows its numbers and no deadline | `tools/verify_page.py::paid_wins_shown` — red-tested by `--break no_paid_section` |
+| INV-95 game names, never pool keys | `tools/verify_page.py::games_by_their_names` — red-tested by `--break pool_keys_shown` |
 | INV-89 tabs under a sticky bar, with every notice above them | `tools/verify_page.py::tabs_never_hide_a_warning` — red-tested by `--break warning_in_a_tab`. **Nothing** runs a click |
 | INV-48 the numbers chosen beside the numbers drawn, absence said in words | `tools/verify_page.py::numbers_chosen_and_drawn` — two disjoint fixture sets, so a renderer echoing the chosen numbers into both columns fails; red-tested by `--break no_drawn_numbers` and `--break blank_numbers_cell` |
 | §4.1 the *resolved* port being what builds LOTTO-0014 §4.2's `Host` allowlist, not either variable read again | **nothing** — and the gap is structural rather than an omission: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because the question they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes both. The breach is loud to a *user* — every request fails — and invisible to the suite |
@@ -1734,6 +1782,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| amend-0090 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0090, the user's request to improve the page's look and flow. Adds the Overview, the paid wins and game names; INV-93 to INV-95. |
 | amend-0087-b | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0087, the user's two further requests that day. INV-86 now holds a centred 75% column; INV-89 adds the tabs and sticky bar. |
 | amend-0087 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0087, the user's request of 2026-11-02. Adds INV-85 to INV-87, and §4.5 item 1 now opens latest first rather than soonest deadline first. |
 | amend-0082 | 2026-10-30 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0082, the user's request for a disclaimer. Adds INV-78 and its case `disclaimer_on_every_state`. The spec is past two review loops, so no gate re-arms. |

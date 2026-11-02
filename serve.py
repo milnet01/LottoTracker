@@ -25,6 +25,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import clock
+import expiry
 import page
 
 # Module scope, not lazy inside refresh()'s work(): GET /status reads
@@ -81,7 +82,9 @@ APP_ICON = _icon_address()
 from supervise import (  # noqa: E402
     MAX_PORT,
     MIN_PORT,
+    WARN_AT,
     autostart_path,
+    day_label,
     read_settings,
     settings_path,
     sms_is_quiet,
@@ -413,6 +416,9 @@ def build_model():
                 "ndraws": t.ndraws,
                 "resolved": t.resolved,
                 "bought": t.bought.strftime("%Y-%m-%d"),
+                # The first draw it can enter, which is what the calendar counts
+                # from. Not `bought`: running_view() must agree with the tray.
+                "start": t.start.strftime("%Y-%m-%d"),
             }
             for t in all_tickets
         ],
@@ -462,6 +468,11 @@ def build_model():
     }
 
 
+# How long after its last draw a game still says "buy again". After that the user
+# has probably stopped playing it, and a standing nudge would be noise.
+RAN_OUT_DAYS = 30
+
+
 def _iso(day):
     return day.isoformat() if day else None
 
@@ -480,6 +491,52 @@ def sms_quiet_view(model, today):
     if not sms_is_quiet(day, today):
         return None
     return {"newest": newest, "days": (today - day).days if day else None}
+
+
+def running_view(model, today):
+    """What the Overview says about buying again, or None (LOTTO-0002 INV-93).
+
+    Pure, and judged each time the page is shown, like sms_quiet_view(): a ticket
+    runs down with the calendar and no rebuild happens to mark that. It reads
+    expiry.py, as the tray's warning does, so the two cannot name different dates
+    (ADR-0008). It is not `draws_remaining`, which counts results fetched so far.
+
+    A ticket whose game or draw count the calendar cannot place is counted, never
+    dropped: leaving it out would read as "nothing is running" (INV-56).
+    """
+    if "tickets" not in model:
+        return None
+    rows, unknown, latest = [], 0, {}
+    for t in model["tickets"]:
+        try:
+            start = datetime.date.fromisoformat(t["start"])
+            final = expiry.final_draw_date(t["game"], start, t["ndraws"])
+            left = expiry.draws_left(t["game"], start, t["ndraws"], today)
+        except (KeyError, TypeError, ValueError):
+            unknown += 1
+            continue
+        latest[t["game"]] = max(final, latest.get(t["game"], final))
+        if left > 0:
+            rows.append((final, t["game"], left, t["ndraws"]))
+    running = []
+    for final, game, left, ndraws in sorted(rows, key=lambda r: (r[0], r[1])):
+        followed = latest[game] > final
+        running.append({
+            "game": game,
+            "name": expiry.DISPLAY_NAME[game],
+            "left": left,
+            "ndraws": ndraws,
+            "final": day_label(final),
+            "final_in_days": (final - today).days,
+            "followed": followed,
+            "buy_soon": left <= WARN_AT and not followed,
+        })
+    ran_out = [
+        {"game": game, "name": expiry.DISPLAY_NAME[game], "final": day_label(final)}
+        for game, final in sorted(latest.items(), key=lambda kv: kv[1], reverse=True)
+        if 0 < (today - final).days <= RAN_OUT_DAYS
+    ]
+    return {"running": running, "ran_out": ran_out, "unknown": unknown}
 
 
 # ------------------------------------------------------------------- state
@@ -804,6 +861,7 @@ def make_server(build_model_fn, token, port):
                     # join it - nothing in page.py renders it (§4.2).
                     "requests": requests,
                     "sms_quiet": sms_quiet_view(model or {}, clock.today()),
+                    "running": running_view(model or {}, clock.today()),
                     "icon": APP_ICON,
                 }
             )

@@ -25,6 +25,26 @@ DISCLAIMER = (
 )
 
 
+# The names the reader knows, in place of the (game, plus_flag) key. Current names:
+# the June 2026 rebrand renamed Lotto Plus 2 and PowerBall Plus (tickets.py).
+# Not history.POOL_NAMES, which matches the API's wire format and may not change
+# when a sentence should. An unknown pool shows its key rather than a guess.
+GAME_NAMES = {"lotto": "Lotto", "powerball": "PowerBall", "daily": "Daily Lotto"}
+POOL_NAMES = {
+    ("lotto", 0): "Lotto",
+    ("lotto", 1): "Lotto Plus 1",
+    ("lotto", 2): "Lotto 5 Max",
+    ("powerball", 0): "PowerBall",
+    ("powerball", 1): "PowerBall XTRA",
+    ("daily", 0): "Daily Lotto",
+    ("daily", 1): "Daily Lotto Plus",
+}
+
+
+def _pool_name(game, plus_flag):
+    return POOL_NAMES.get((game, plus_flag), f"{game}/{plus_flag}")
+
+
 def _e(s):
     return html.escape(str(s), quote=True)
 
@@ -277,7 +297,9 @@ def _uncheckable_banner(u):
                     "source carries")
     detail = "; ".join(bits)
     return (
-        '<div class="notice"><strong>'
+        # "standing" because it never clears: warning colours are kept for what
+        # needs doing, or the real warnings stop being seen.
+        '<div class="notice standing"><strong>'
         f"{u['uncheckable']:,} of {_count(u['entries'], 'entry', 'entries')} "
         "cannot be checked."
         # Worded to hold for all three reasons: "nothing exists to score them
@@ -320,6 +342,25 @@ def _waiting(wins):
             if not w.get("expired") and w.get("payment", "unknown") != "paid"]
 
 
+# The cells a win shows whatever its payment state. "Draw" is the default sort.
+WIN_COLUMNS = [("Game", "text"), ("Your numbers", None), ("Drawn", None),
+               ("Division", "text"), ("Matched", "text"), ("Draw", "date"),
+               ("Amount", "num")]
+
+
+def _win_cells(w):
+    return (
+        f'<td>{_e(_pool_name(w["game"], w["plus_flag"]))}</td>'
+        + _numbers_cell(w.get("numbers"), w.get("special"))
+        + _numbers_cell(w.get("drawn_main"), w.get("drawn_special"))
+        + f'<td>{_e(w.get("division"))}</td><td>{_e(w.get("matched"))}</td>'
+        f'<td>{_e(w.get("date"))}</td>'
+        f'<td class="money">{_e(_rands(w["amount_cents"]))}'
+        + (' <span class="muted">estimate</span>' if w.get("estimate") else "")
+        + "</td>"
+    )
+
+
 def _wins_section(model):
     live = _waiting(model.get("wins", []))
     # Latest draw first, the user's call of 2026-11-02 (INV-85). A deadline
@@ -353,26 +394,41 @@ def _wins_section(model):
                     when += f' <span class="muted">({_count(d, "day", "days")})</span>'
             rows.append(
                 f'<tr class="{cls}" data-game="{_e(w["game"])}">'
-                f'<td>{_e(w["game"])}/{_e(w["plus_flag"])}</td>'
-                + _numbers_cell(w.get("numbers"), w.get("special"))
-                + _numbers_cell(w.get("drawn_main"), w.get("drawn_special"))
-                + f'<td>{_e(w.get("division"))}</td><td>{_e(w.get("matched"))}</td>'
-                f'<td>{_e(w.get("date"))}</td>'
-                f'<td class="money">{_e(_rands(w["amount_cents"]))}'
-                + (' <span class="muted">estimate</span>' if w.get("estimate") else "")
-                + "</td>"
+                + _win_cells(w)
                 + _payment_cell(w)
                 + f"<td>{when}</td></tr>"
             )
         body = _sorted_table(
             "wins",
-            [("Pool", "text"), ("Your numbers", None), ("Drawn", None),
-             ("Division", "text"), ("Matched", "text"), ("Draw", "date"),
-             ("Amount", "num"), ("Payment", "text"), ("Expires", "date")],
+            WIN_COLUMNS + [("Payment", "text"), ("Expires", "date")],
             "".join(rows),
             5,
         )
     return f"<section><h2>Not yet paid</h2>{body}</section>"
+
+
+def _paid_section(model):
+    """Wins the bank has paid: their numbers appear nowhere else on the page.
+
+    No Expires column: a paid win carries no deadline anywhere (INV-70, INV-94).
+    """
+    paid = [w for w in model.get("wins", []) if w.get("payment") == "paid"]
+    if not paid:
+        body = (
+            '<p class="muted">No win here has a matching payment in the bank\'s '
+            "messages.</p>"
+        )
+    else:
+        body = _sorted_table(
+            "paid",
+            WIN_COLUMNS,
+            "".join(
+                f'<tr data-game="{_e(w["game"])}">{_win_cells(w)}</tr>'
+                for w in _newest_first(paid, "date")
+            ),
+            5,
+        )
+    return f"<section><h2>Paid by the bank</h2>{body}</section>"
 
 
 def _outstanding_section(model):
@@ -395,7 +451,7 @@ def _outstanding_section(model):
             out.append(
                 f'<tr data-game="{_e(e["game"])}"><td>{_e(e["ref"])}</td>'
                 + _bought_cell(e)
-                + f'<td>{_e(e["game"])}/{_e(e["plus_flag"])}</td>'
+                + f'<td>{_e(_pool_name(e["game"], e["plus_flag"]))}</td>'
                 + _boards_cell(e.get("boards"))
                 + (
                     f"<td>{e['draws_remaining']}</td>"
@@ -412,7 +468,7 @@ def _outstanding_section(model):
             "<h3>Draws still to come</h3>"
             + _sorted_table(
                 "coming",
-                [("Ticket", "text"), ("Bought", "date"), ("Pool", "text"),
+                [("Ticket", "text"), ("Bought", "date"), ("Game", "text"),
                  ("Your numbers", None), ("Draws remaining", "num")],
                 rows(coming, True),
                 1,
@@ -425,7 +481,7 @@ def _outstanding_section(model):
             "nothing to measure a window against. They are not losses.</p>"
             + _sorted_table(
                 "unchecked",
-                [("Ticket", "text"), ("Bought", "date"), ("Pool", "text"),
+                [("Ticket", "text"), ("Bought", "date"), ("Game", "text"),
                  ("Your numbers", None), ("Why not", "text")],
                 rows(unchecked, False),
                 1,
@@ -445,37 +501,181 @@ def _entries_section(model):
             f'<tr data-game="{_e(e["game"])}" data-pool="{_e(pool)}">'
             f'<td>{_e(e["ref"])}</td>'
             + _bought_cell(e)
-            + f'<td>{_e(pool)}</td>'
+            + f'<td>{_e(_pool_name(e["game"], e["plus_flag"]))}</td>'
             f'<td class="money">{_e(_rands(e["cost_cents"]))}</td>'
             + _draws_cell(e.get("draws_covered"))
             + _money_cell(e.get("won_cents"))
             + f'<td class="notcheckable wrap">{_e(e.get("reason") or "")}</td></tr>'
         )
     games = sorted({e["game"] for e in model.get("entries", [])})
-    opts = "".join(f'<option value="{_e(g)}">{_e(g)}</option>' for g in games)
+    opts = "".join(
+        f'<option value="{_e(g)}">{_e(GAME_NAMES.get(g, g))}</option>' for g in games
+    )
     # §4.5 item 3 promises the table is filterable by game AND pool. Every row
     # has carried data-pool since it was written, with nothing reading it -
     # the attribute looked wired and had no consumer at all. Same client-side
     # shape as the game filter, so INV-21 is untouched: no query parameter, no
     # fragment, no history entry, only visibility on rows already present.
-    pools = sorted({f"{e['game']}/{e['plus_flag']}"
-                    for e in model.get("entries", [])})
-    popts = "".join(f'<option value="{_e(p)}">{_e(p)}</option>' for p in pools)
+    pools = sorted({(e["game"], e["plus_flag"]) for e in model.get("entries", [])})
+    popts = "".join(
+        f'<option value="{_e(g)}/{_e(f)}">{_e(_pool_name(g, f))}</option>'
+        for g, f in pools
+    )
     return (
         "<section><h2>Every entry</h2>"
         '<label>Filter by game <select id="gamefilter">'
         f'<option value="">all</option>{opts}</select></label> '
-        '<label>Filter by pool <select id="poolfilter">'
+        '<label>Exact game <select id="poolfilter">'
         f'<option value="">all</option>{popts}</select></label>'
         + _sorted_table(
             "entries",
-            [("Ticket", "text"), ("Bought", "date"), ("Pool", "text"),
+            [("Ticket", "text"), ("Bought", "date"), ("Game", "text"),
              ("Cost", "num"), ("Draws checked", "num"), ("Won", "num"),
              ("Why not", "text")],
             "".join(rows),
             1,
         )
         + "</section>"
+    )
+
+
+def _when(row):
+    """A ticket's last draw, said the way a person would."""
+    days = row["final_in_days"]
+    if days == 0:
+        return "Last draw today"
+    if days == 1:
+        return f'Last draw tomorrow, {_e(row["final"])}'
+    return f'Last draw {_e(row["final"])}'
+
+
+def _buy_headline(view):
+    """The one sentence the page exists to say (LOTTO-0002 INV-93)."""
+    soon = [r for r in view["running"] if r["buy_soon"]]
+    still = {r["game"] for r in view["running"]}
+    gone = [g for g in view["ran_out"] if g["game"] not in still]
+    if len(gone) == 1:
+        g = gone[0]
+        return f'Buy {_e(g["name"])} now. Your last ticket ended {_e(g["final"])}.'
+    if gone:
+        names = " and ".join(_e(g["name"]) for g in gone)
+        return f"Buy {names} now. Your last tickets have ended."
+    if soon:
+        r = soon[0]
+        return f'Buy {_e(r["name"])} soon. {_when(r)}.'
+    if view["running"]:
+        r = next((x for x in view["running"] if not x["followed"]), view["running"][0])
+        return f'Nothing to buy yet. {_e(r["name"])} runs out next: {_e(r["final"])}.'
+    return "No ticket on this page has draws still to come."
+
+
+def _draw_balls(row):
+    """One ball per draw paid for: hollow once it has happened, filled still to come.
+
+    Hidden from a screen reader, because the sentence beside it says the same.
+    """
+    used = row["ndraws"] - row["left"]
+    return (
+        '<div class="burn" aria-hidden="true">'
+        + '<span class="ball used"></span>' * used
+        + '<span class="ball"></span>' * row["left"]
+        + "</div>"
+    )
+
+
+def _run_row(row):
+    tag = ""
+    if row["buy_soon"]:
+        tag = ' <span class="tag">Buy soon</span>'
+    elif row["followed"]:
+        tag = ' <span class="muted">next ticket already bought</span>'
+    left = _count(row["left"], "draw", "draws")
+    return (
+        f'<li class="run" data-game="{_e(row["game"])}">'
+        f'<div class="runname">{_e(row["name"])}{tag}</div>'
+        + _draw_balls(row)
+        + f'<div class="runfacts"><strong>{left} left</strong> of {row["ndraws"]}. '
+        f"{_when(row)}.</div></li>"
+    )
+
+
+def _go(tab, words):
+    """A button to another tab. No link: a fragment would touch the URL (INV-89)."""
+    return f'<button type="button" class="golink" data-goto="{tab}">{_e(words)}</button>'
+
+
+def _glance_wins(model):
+    waiting = _waiting(model.get("wins", []))
+    if not waiting:
+        said = (
+            "No unexpired win is waiting on the bank. This counts only the "
+            "entries that could be checked."
+        )
+    else:
+        soonest = min(w.get("expires") or "9999" for w in waiting)
+        said = (
+            f"<strong>{_count(len(waiting), 'win', 'wins')}</strong> waiting on "
+            f"the bank. The first claim deadline is {_e(soonest)}."
+        )
+    return (
+        f'<div class="glance"><h3>Prizes</h3><p>{said}</p>'
+        f'{_go("wins", "See your wins")}</div>'
+    )
+
+
+def _glance_money(model):
+    """The newest year, verbatim from serve.py. No bucket means no figure at all:
+    R0.00 here would say "checked, won nothing" of a year nobody checked."""
+    buckets = (model.get("periods") or {}).get("buckets") or []
+    year = next((b for b in buckets if b["kind"] == "year"), None)
+    if year is None:
+        said = "No draw has been checked against a result yet, so there is nothing to compare."
+    else:
+        said = (
+            f'In {_e(year["label"])}, on the draws checked so far: spent '
+            f'<strong>{_e(_rands(year["spend_cents"]))}</strong>, won '
+            f'<strong>{_e(_rands(year["won_cents"]))}</strong>.'
+        )
+    return (
+        f'<div class="glance"><h3>Money</h3><p>{said}</p>'
+        f'{_go("spending", "See spending by period")}</div>'
+    )
+
+
+def _overview_section(model):
+    """What the page is for, in order of what the reader must act on (INV-93)."""
+    view = model.get("running")
+    if view is None:
+        # Not "nothing is running": the calendar was never asked.
+        buy = (
+            '<h2 class="headline">Not known when your tickets run out.</h2>'
+            '<p class="notcheckable">The tickets could not be read against the draw '
+            "calendar.</p>"
+        )
+    else:
+        rows = "".join(_run_row(r) for r in view["running"])
+        lost = ""
+        if view["unknown"]:
+            n = view["unknown"]
+            lost = (
+                f'<p class="notcheckable">{_count(n, "ticket", "tickets")} could not '
+                "be placed on the draw calendar, so "
+                f'{"it is" if n == 1 else "they are"} not listed here.</p>'
+            )
+        empty = ""
+        if not rows:
+            empty = (
+                '<p class="muted">If you have bought one since, its SMS has not '
+                "reached this app yet.</p>"
+            )
+        buy = (
+            f'<h2 class="headline">{_buy_headline(view)}</h2>{empty}'
+            + (f'<ul class="runs">{rows}</ul>' if rows else "")
+            + lost
+        )
+    return (
+        f'<section class="overview">{buy}<div class="glances">'
+        f"{_glance_wins(model)}{_glance_money(model)}</div></section>"
     )
 
 
@@ -764,14 +964,14 @@ THEME_BOOT = (
 # variable rather than a hex. That is what makes a new theme a table row instead
 # of a second copy of this stylesheet.
 BASE_CSS = """
-body{font:16px/1.55 system-ui,sans-serif;margin:0;color:var(--fg);background:var(--bg)}
+body{font:1.125rem/1.55 system-ui,sans-serif;margin:0;color:var(--fg);background:var(--bg)}
 .column{box-sizing:border-box;width:max(75%,90rem);max-width:100%;margin:0 auto;padding:0 1rem}
 main.column{padding-top:1.25rem;padding-bottom:2rem}
 .topbar{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line)}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1.5rem;padding-top:.5rem}
 .brand{display:flex;align-items:center;gap:.5rem;padding-bottom:.5rem}
 .brand img{width:1.5rem;height:1.5rem}
-h1{font-size:1.2rem;font-weight:700;margin:0;letter-spacing:-.01em}
+h1{font-size:1.35rem;font-weight:700;margin:0;letter-spacing:-.01em}
 .tabs{display:flex;flex:1 1 auto;gap:.25rem;overflow-x:auto;scrollbar-width:none;align-self:flex-end}
 .tab{padding:.45rem .8rem .55rem;background:none;border:0;border-bottom:3px solid transparent;
  border-radius:0;color:var(--dim);cursor:pointer;white-space:nowrap}
@@ -780,10 +980,10 @@ h1{font-size:1.2rem;font-weight:700;margin:0;letter-spacing:-.01em}
 .baractions{display:flex;align-items:center;gap:.75rem;padding-bottom:.5rem}
 #top-msg{color:var(--dim);font-size:.9rem}
 .js .tabpanel:not(.on){display:none}
-h2{font-size:1.4rem;font-weight:700;letter-spacing:-.01em;margin:1.5rem 0 .5rem}
-h3{font-size:1.05rem;font-weight:650;margin:1.5rem 0 .4rem}
+h2{font-size:1.6rem;font-weight:700;letter-spacing:-.01em;margin:1.5rem 0 .5rem}
+h3{font-size:1.2rem;font-weight:650;margin:1.5rem 0 .4rem}
 table{border-collapse:collapse;width:100%;margin:.5rem 0}
-th,td{text-align:left;padding:.45rem .6rem;border-bottom:1px solid var(--line);font-size:.95rem}
+th,td{text-align:left;padding:.45rem;border-bottom:1px solid var(--line);font-size:1rem}
 th{font-weight:600;color:var(--dim);border-bottom-width:2px}
 tbody tr:hover td{background:var(--panel)}
 .cards th,.cards td{white-space:nowrap}
@@ -791,23 +991,42 @@ tbody tr:hover td{background:var(--panel)}
 .tablewrap{overflow-x:auto}
 .money{text-align:right;font-variant-numeric:tabular-nums}
 .nums{white-space:nowrap}
-.ball{display:inline-block;position:relative;min-width:1.8rem;height:1.8rem;line-height:1.8rem;
+.ball{display:inline-block;position:relative;min-width:2rem;height:2rem;line-height:2rem;
  margin:.08rem .06rem;border-radius:50%;background:#4a5568;color:#fff;text-align:center;
- font-variant-numeric:tabular-nums;font-size:.95rem;font-weight:600}
+ font-variant-numeric:tabular-nums;font-size:1.05rem;font-weight:600}
 .ball:after{content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;
  background:radial-gradient(circle at 35% 25%,rgba(255,255,255,.24),rgba(255,255,255,0) 55%);
  box-shadow:inset 0 -2px 3px rgba(0,0,0,.28)}
 .ball.special{background:#6a1b9a;color:#fff}
-tr[data-game="lotto"] .ball{background:#c62828}
-tr[data-game="lotto"] .ball.special{background:#6a1b9a}
-tr[data-game="powerball"] .ball{background:#1565c0}
-tr[data-game="powerball"] .ball.special{background:#bf360c}
-tr[data-game="daily"] .ball{background:#2e7d32}
+[data-game="lotto"] .ball{background:#c62828}
+[data-game="lotto"] .ball.special{background:#6a1b9a}
+[data-game="powerball"] .ball{background:#1565c0}
+[data-game="powerball"] .ball.special{background:#bf360c}
+[data-game="daily"] .ball{background:#2e7d32}
 .notcheckable{color:var(--warn);font-style:italic}
-.muted{color:var(--dim);font-size:.92rem}
+.muted{color:var(--dim);font-size:1rem}
 .notice{background:var(--warn-bg);border-left:4px solid var(--accent);border-radius:.4rem;
  padding:.7rem 1rem;margin:.8rem 0}
 .notice.bad{background:var(--bad-bg);border-left-color:var(--bad)}
+.notice.standing{background:var(--panel);border-left-color:var(--line)}
+.headline{font-size:clamp(1.7rem,3.2vw,2.5rem);line-height:1.2;margin:1.25rem 0 1rem;max-width:40ch;text-wrap:balance}
+.runs{list-style:none;margin:0 0 1.5rem;padding:0}
+.run{display:grid;grid-template-columns:minmax(11rem,16rem) auto 1fr;gap:.4rem 1.5rem;align-items:center;
+ padding:.9rem 0;border-top:1px solid var(--line)}
+.runname{font-size:1.25rem;font-weight:650}
+.tag{display:inline-block;margin-left:.4rem;padding:0 .55rem;border-radius:1rem;font-size:.95rem;
+ font-weight:650;color:var(--warn);background:var(--warn-bg)}
+.burn{display:flex;flex-wrap:wrap;gap:.3rem}
+.burn .ball{min-width:1.35rem;height:1.35rem;margin:0}
+.burn .ball.used,[data-game] .burn .ball.used{background:none;box-shadow:inset 0 0 0 2px var(--line)}
+.burn .ball.used:after{display:none}
+.glances{display:flex;flex-wrap:wrap;gap:1rem 4rem}
+.glance{flex:1 1 22rem}
+.glance h3{margin-top:.5rem}
+.glance p{margin:.3rem 0 .7rem;max-width:60ch}
+.golink{cursor:pointer}
+.golink:hover{border-color:var(--accent)}
+html:not(.js) .golink{display:none}
 tr.soon td{background:var(--warn-bg)}tr.today td{background:var(--bad-bg);font-weight:600}
 .row{display:flex;align-items:center;gap:.6rem;margin:.4rem 0}
 .switch{position:relative;display:inline-block;width:2.6rem;height:1.4rem;flex:none}
@@ -819,8 +1038,8 @@ tr.soon td{background:var(--warn-bg)}tr.today td{background:var(--bad-bg);font-w
 .switch input:checked+.slider{background:var(--on)}
 .switch input:checked+.slider:before{transform:translateX(1.2rem)}
 .switch input:focus-visible+.slider{outline:2px solid var(--accent);outline-offset:2px}
-footer{margin-top:2rem;color:var(--dim);font-size:.9rem}
-.disclaimer{margin-top:1rem;color:var(--dim);font-size:.9rem}
+footer{margin-top:2rem;color:var(--dim);font-size:1rem}
+.disclaimer{margin-top:1rem;color:var(--dim);font-size:1rem;max-width:80ch}
 button,select{font:inherit;padding:.3rem .7rem;background:var(--panel);color:var(--fg);
  border:1px solid var(--line);border-radius:.4rem}
 #refresh{cursor:pointer;background:var(--bg);white-space:nowrap}
@@ -844,6 +1063,7 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
  .tabs{order:3;flex-basis:100%}
  .baractions{margin-left:auto}
 }
+@media(max-width:60rem){.run{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.slider,.slider:before{transition:none}}
 """
 
@@ -1000,6 +1220,11 @@ tabs.forEach(function(tab,i){
   if(step){ev.preventDefault();showTab(tabs[(i+step+tabs.length)%%tabs.length],true)}
  });
 });
+[].forEach.call(document.querySelectorAll(".golink"),function(b){
+ b.addEventListener("click",function(){
+  showTab(document.getElementById("tab-"+b.getAttribute("data-goto")),true);
+ });
+});
 // Same rule for the period selector: rows are already in the document and
 // only their visibility changes (INV-21).
 var pf=document.getElementById("periodfilter");
@@ -1123,7 +1348,8 @@ def render(model, token):
         # The notices stay above the tabs: "no data is not a loss" and "this ticket
         # is not on this page" must not be something a tab can hide (INV-89).
         tabs = [
-            ("wins", "Not yet paid", _wins_section(model)),
+            ("overview", "Overview", _overview_section(model)),
+            ("wins", "Wins", _wins_section(model) + _paid_section(model)),
             ("outstanding", "Still outstanding", _outstanding_section(model)),
             ("entries", "Every entry", _entries_section(model)),
             ("spending", "Spending", _periods_section(model) + _spend_section(model)),
@@ -1155,7 +1381,7 @@ def render(model, token):
             )
             + "<footer>"
             + (
-                f"Last successful build: {_e(built)}."
+                f"Results last checked: {_e(str(built)[:16].replace('T', ' at '))}."
                 if built
                 else "No successful build yet."
             )

@@ -27,7 +27,8 @@ them without being told where to look.
    ticket bought for ten draws is used up after the tenth; you are told while
    there is still time to buy the next one, without opening anything. This is
    the primary job. The tray warns you once, two draws out, naming the game
-   and the date of the last draw (LOTTO-0034).
+   and the date of the last draw (LOTTO-0034). The page opens by saying the same
+   (LOTTO-0090).
 2. **It shows the numbers you chose beside the numbers that came up.** Per
    entry, both — whether you picked them or took a quick pick.
 3. **It shows what each ticket won**, consolidated in one place, rather than
@@ -237,7 +238,9 @@ python3 serve.py    # or just the page, no icon, no PySide6 needed
 ```
 
 The icon starts the server, opens the page, refreshes the results on demand and
-shuts the server down when you quit. The page shows the wins the bank has not yet paid, what is
+shuts the server down when you quit. The page opens on an overview: when to buy
+next, each running ticket with a ball for every draw it paid for, the wins waiting
+on the bank, and this year's money. Further tabs show every win, paid or not, what is
 still outstanding, every entry with what it cost and what it won, and what you
 have spent against what you have won. Tabs under a sticky bar take you to each part, and every warning stays above
 them. Ticket tables open latest first, and a

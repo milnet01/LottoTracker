@@ -12,7 +12,10 @@ import sys
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
+import datetime  # noqa: E402
+
 import page  # noqa: E402
+import serve  # noqa: E402
 import verify_page  # noqa: E402
 
 
@@ -68,11 +71,11 @@ model.update({
     "entries": entries,
     "tickets": [
         {"ref": "demo-lotto", "game": "lotto", "cost_cents": 4000, "boards": 2,
-         "ndraws": 10, "resolved": True, "bought": "2026-06-10"},
+         "ndraws": 10, "resolved": True, "bought": "2026-09-05", "start": "2026-09-05"},
         {"ref": "demo-powerball", "game": "powerball", "cost_cents": 2500, "boards": 1,
-         "ndraws": 10, "resolved": True, "bought": "2026-08-14"},
+         "ndraws": 10, "resolved": True, "bought": "2026-08-25", "start": "2026-08-25"},
         {"ref": "demo-daily", "game": "daily", "cost_cents": 2250, "boards": 1,
-         "ndraws": 5, "resolved": True, "bought": "2026-09-21"},
+         "ndraws": 10, "resolved": True, "bought": "2026-09-21", "start": "2026-09-21"},
     ],
     "uncheckable": {"entries": 7, "uncheckable": 1, "too_old": 0, "no_pool": 1,
                     "wholly": 0, "partly": 1},
@@ -87,6 +90,7 @@ model.update({
     ], "no_result_cents": 0},
     "built": "2026-09-25T09:30:00",
 })
+model["running"] = serve.running_view(model, datetime.date(2026, 9, 25))
 
 out = sys.argv[1]
 with open(out, "w") as fh:

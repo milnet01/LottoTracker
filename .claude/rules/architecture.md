@@ -95,6 +95,9 @@ tool; an Ants-verb read does not load it.
   period of the **draw**, never of the purchase (the user's call, 2026-08-27),
   and the key set is built from the spend side so a win can never conjure a
   bucket with no spend.
+- **`serve.py::running_view()`** owns what the Overview says about buying again
+  (LOTTO-0002 INV-93). It reads `expiry.py`, as the tray does, and is judged on
+  each GET like `sms_quiet_view()`, because a ticket runs down with no rebuild.
 - **`serve.py`** is `check.py`'s second consumer and adds no third opinion: a
   wrong number on the page is a bug in its rendering or in LOTTO-0001/0009,
   never a separate calculation. It does **all** the I/O; **`page.py`** is a pure

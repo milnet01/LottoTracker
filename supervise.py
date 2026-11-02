@@ -225,6 +225,11 @@ def sms_quiet_notices(today, path=None):
     return [SMS_QUIET_NOTICE] if sms_is_quiet(newest, today) else []
 
 
+def day_label(day):
+    """A date as a sentence reads it: "Fri 21 Nov". See expiry_notice()."""
+    return f"{_DAY_NAMES[day.weekday()]} {day.day} {_MONTH_NAMES[day.month - 1]}"
+
+
 def expiry_notice(game_name, final_draw, draws_left):
     """One ticket's re-buy warning, as a string. LOTTO-0034 §4.7, INV-54.
 
@@ -247,8 +252,7 @@ def expiry_notice(game_name, final_draw, draws_left):
     return (
         f"Your {game_name} ticket has {draws_left} "
         f"draw{'' if draws_left == 1 else 's'} left — last draw "
-        f"{_DAY_NAMES[final_draw.weekday()]} {final_draw.day} "
-        f"{_MONTH_NAMES[final_draw.month - 1]}. "
+        f"{day_label(final_draw)}. "
         "Time to buy the next one."
     )
 

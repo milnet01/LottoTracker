@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=89 -->
+<!-- ants-roadmap-id-high-water: LOTTO=90 -->
 
 # ROADMAP — LottoTracker
 
@@ -1766,9 +1766,27 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 
 - 📋 [LOTTO-0089] **A terminate signal to the tray leaves its server and SMS watcher running, and the next tray collides with them.**
   Measured 2026-11-02: kill -TERM on tray.py left serve.py and watch_sms.py alive, re-parented. The next tray could not bind the port, so the old server kept answering, and two watchers ran. The dump's flock (INV-38) and its de-duplication should keep two watchers safe, but that pair was not examined. Whether a real session logout delivers this signal was not measured, and it decides how urgent this is. The menu's Quit was not tested in this run; LOTTO-0013 INV-20 covers reaping.
+  Measured 2026-11-02 with a stand-in parent and child under a service
+  with the autostart unit's settings (Type=exec, ExitType=cgroup,
+  KillMode=control-group): stopping the unit, which is how the user
+  manager ends a session, delivered the terminate signal to both, and
+  neither survived. A signal to the parent alone left the child alive,
+  as first measured. So a logout should not leave children behind, which
+  makes this less urgent. A real logout was not run. Separately, a tray
+  started from a terminal lives in that terminal's service, so closing
+  the terminal takes it down.
   **Layman:** If the tray is shut down from outside instead of from its menu, the page and the SMS collector keep running, so the next start shows the old page and collects twice.
   Kind: fix.
   Source: in-session-2026-11-02.
+
+- ✅ [LOTTO-0090] **Open the page on an overview that says when to buy, with every win and plain game names.**
+  The page opened on "Not yet paid", though buying again is the app's first job, and nothing on the first screen answered it.
+  Now: an Overview tab first (when to buy, one row per running ticket, prizes, this year's money). Wins the bank paid show their numbers, which appeared nowhere before. Game names replace pool keys. Text is larger, and the standing "cannot be checked" banner no longer uses warning colours.
+  Contract: LOTTO-0002 INV-93 to INV-95.
+  For the release that carries this: the Ants Projects Hub website session asked to be told, and retakes its screenshots then. Its trailer shows the old look.
+  **Layman:** The page now opens by telling you when to buy your next ticket, and shows game names and larger text.
+  Kind: ux.
+  Source: user-request-2026-11-02.
 
 ## Hardening
 

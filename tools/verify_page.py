@@ -138,6 +138,7 @@ def fixture_model(**over):
                 "ndraws": 1,
                 "resolved": True,
                 "bought": "2026-07-01",
+                "start": "2026-07-01",
             }
         ],
         "uncheckable": {
@@ -613,7 +614,7 @@ def uncheckable_not_a_loss():
 
     # The scorable half of the partly-uncheckable ticket must render too, or the
     # invariant's second clause has no assertion at all.
-    scorable_rows = [r for r in rows if "daily/0" in r]
+    scorable_rows = [r for r in rows if "<td>Daily Lotto</td>" in r]
     need(scorable_rows, "the scorable pool of the partly uncheckable ticket is missing")
     need("R0.00" in scorable_rows[0], "a scored-but-lost entry should show R0.00")
 
@@ -2452,6 +2453,146 @@ def tabs_never_hide_a_warning():
              "a page with no tickets offers tabs of nothing")
 
 
+def overview_html(model):
+    found = re.search(r'<section class="overview">.*?</section>', render_pure(model), re.S)
+    if found is None:
+        raise Fail("the page has no Overview")
+    return found.group(0)
+
+
+def running_for(tickets, day):
+    view = serve.running_view({"tickets": tickets}, day)
+    if view is None:
+        raise Fail("a model with tickets drew no answer at all")
+    return view
+
+
+def buy_again_on_overview():
+    """INV-93 — the first thing shown is when to buy, on the tray's own calendar."""
+    import datetime
+
+    import clock
+    import expiry
+    import supervise
+
+    temp_home()
+
+    def ticket(game, start, ndraws):
+        return {"ref": SENTINEL, "game": game, "start": start, "ndraws": ndraws}
+
+    monday = datetime.date(2026, 11, 2)
+    # Four daily draws from Friday: the last falls on `monday` itself.
+    daily = ticket("daily", "2026-10-30", 4)
+    view = running_for([daily], monday)
+    row = view["running"][0]
+    need((row["left"], row["final_in_days"], row["buy_soon"]) == (1, 0, True),
+         f"a ticket on its last draw day reads {row}")
+    final = expiry.final_draw_date("daily", datetime.date(2026, 10, 30), 4)
+    need(row["final"] in supervise.expiry_notice("Daily Lotto", final, 1),
+         "the page and the tray's notice name different dates")
+
+    after = running_for([daily], monday + datetime.timedelta(days=1))
+    need(not after["running"] and after["ran_out"], "the day after, it is not said to have ended")
+    later = running_for([daily], monday + datetime.timedelta(days=31))
+    need(not later["ran_out"], "a month on, a game given up still says buy again")
+
+    # An old Lotto ticket ending soon, and its successor already bought.
+    old, new = ticket("lotto", "2026-10-24", 4), ticket("lotto", "2026-11-01", 10)
+    rows = running_for([new, old], monday)["running"]
+    need(rows[0]["ndraws"] == 4, "the ticket ending soonest is not listed first")
+    need(rows[0]["followed"] and not rows[0]["buy_soon"],
+         "a ticket with its successor already bought still says to buy")
+
+    lost = running_for([ticket("keno", "2026-11-01", 5), daily], monday)
+    need(lost["unknown"] == 1, "a ticket the calendar cannot place was dropped silently")
+    said = overview_html(fixture_model(running=lost))
+    need("1 ticket could not be placed" in said, "the page does not say a ticket is missing")
+
+    said = overview_html(fixture_model(running=view))
+    need("Buy Daily Lotto soon. Last draw today." in said, f"the headline is wrong: {said[:200]}")
+    need(SENTINEL not in said, "the Overview shows a ticket reference")
+    gone = overview_html(fixture_model(running=after))
+    need("Buy Daily Lotto now." in gone, "a ticket that has ended does not say to buy")
+    calm = overview_html(fixture_model(
+        running=running_for([ticket("lotto", "2026-11-01", 10)], monday)))
+    need("Nothing to buy yet." in calm, "a long-running ticket does not say so")
+
+    # Absence is not "nothing is running".
+    unknown = overview_html(fixture_model(running=None))
+    need("Not known" in unknown and "Nothing to buy" not in unknown,
+         "no calendar answer reads as nothing to buy")
+    none = running_for([], monday)
+    empty = overview_html(fixture_model(running=none))
+    need("No ticket on this page" in empty and "has not reached this app" in empty,
+         "an empty list does not say why it may be empty")
+
+    # No scored year means no figure: R0.00 would claim it was checked.
+    bare = overview_html(fixture_model(running=view, periods={"buckets": []}))
+    need("R0.00" not in bare and "nothing to compare" in bare,
+         "an unscored year reads as money won or spent")
+    tabs = re.findall(r'aria-controls="panel-([a-z]+)"', render_pure(fixture_model()))
+    need(tabs[0] == "overview", f"the page opens on {tabs[0]}")
+
+    # One build, two days: a ticket runs down with no rebuild to mark it.
+    real_today = clock.today
+    start = real_today().isoformat()
+    build = lambda: fixture_model(tickets=[ticket("daily", start, 1)])  # noqa: E731
+    srv, state, port, _t = serve_on(build)
+    host = f"127.0.0.1:{port}"
+    try:
+        need(serve.refresh(state, build), "the opening refresh was declined")
+        need(state.wait_idle(5), "the opening build did not finish")
+        need(b"Last draw today" in req(port, "GET", "/", host=host)[2],
+             "the draw day does not say last draw today")
+        clock.today = lambda: real_today() + datetime.timedelta(days=1)
+        try:
+            next_day = req(port, "GET", "/", host=host)[2]
+        finally:
+            clock.today = real_today
+        need(b"Buy Daily Lotto now." in next_day,
+             "a day on, with no rebuild, the page still counts the ticket as running")
+    finally:
+        srv.shutdown()
+
+
+def paid_wins_shown():
+    """INV-94 — a paid win shows its numbers, and no deadline."""
+    temp_home()
+    base = fixture_model()["wins"][0]
+    paid = dict(base, payment="paid", numbers=[1, 2, 3, 4, 5, 6], drawn_main=[1, 2, 3, 40, 41, 42],
+                drawn_special=7, date="2026-06-06", expires="2027-06-06")
+    unpaid = dict(base, payment="unpaid", numbers=[11, 12, 13, 14, 15, 16], date="2026-07-07")
+    html = render_pure(fixture_model(wins=[paid, unpaid]))
+    table = re.search(r'<table id="paid">.*?</table>', html, re.S)
+    if table is None:
+        raise Fail("a paid win has no table at all")
+    need('<span class="ball">42</span>' in table.group(0), "the paid win's drawn numbers are missing")
+    need("Expires" not in table.group(0), "the paid table offers a deadline")
+    need("2027-06-06" not in html, "a paid win's deadline is on the page")
+    need('<span class="ball">16</span>' not in table.group(0), "an unpaid win is filed as paid")
+    none = render_pure(fixture_model(wins=[unpaid]))
+    need("No win here has a matching payment" in none, "no paid win leaves the section blank")
+
+
+def games_by_their_names():
+    """INV-95 — the reader sees a game's name, never the internal pool key."""
+    temp_home()
+    entry = fixture_model()["entries"][0]
+    entries = [dict(entry, game=g, plus_flag=f) for g, f in
+               (("lotto", 2), ("powerball", 1), ("daily", 0))]
+    html = render_pure(fixture_model(entries=entries))
+    body = html.split("<body>", 1)[1].split("<script>", 1)[0]
+    shown = re.sub(r"<[^>]+>", " ", body)
+    found = re.findall(r"\b(?:lotto|powerball|daily)/[0-9]", shown)
+    need(not found, f"the reader is shown pool keys: {found}")
+    for name in ("Lotto 5 Max", "PowerBall XTRA", "Daily Lotto"):
+        need(name in shown, f"{name} is not on the page")
+    need('data-pool="lotto/2"' in html and 'value="lotto/2"' in html,
+         "the filter no longer has a key to match on")
+    odd = render_pure(fixture_model(entries=[dict(entry, game="lotto", plus_flag=9)]))
+    need("lotto/9" in re.sub(r"<[^>]+>", " ", odd), "an unknown pool is given a guessed name")
+
+
 def app_icon_in_page():
     """INV-87 — the browser tab shows the app's own icon, with no fifth route."""
     import base64
@@ -2512,6 +2653,9 @@ CASES = [
     ("app_icon_in_page", "INV-87", app_icon_in_page),
     ("tabs_never_hide_a_warning", "INV-89", tabs_never_hide_a_warning),
     ("estimate_is_said", "INV-90", estimate_is_said),
+    ("buy_again_on_overview", "INV-93", buy_again_on_overview),
+    ("paid_wins_shown", "INV-94", paid_wins_shown),
+    ("games_by_their_names", "INV-95", games_by_their_names),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -2523,6 +2667,13 @@ BREAKS = {
     "no_icon": "app_icon_in_page",
     "warning_in_a_tab": "tabs_never_hide_a_warning",
     "estimate_unmarked": "estimate_is_said",
+    "rebuy_judged_at_build": "buy_again_on_overview",
+    "unknown_ticket_dropped": "buy_again_on_overview",
+    "followed_still_says_buy": "buy_again_on_overview",
+    "no_overview_answer": "buy_again_on_overview",
+    "overview_money_zero": "buy_again_on_overview",
+    "no_paid_section": "paid_wins_shown",
+    "pool_keys_shown": "games_by_their_names",
     "no_drawn_numbers": "numbers_chosen_and_drawn",
     "blank_numbers_cell": "numbers_chosen_and_drawn",
     "disclaimer_with_data_only": "disclaimer_on_every_state",
@@ -2590,6 +2741,44 @@ def apply_render_breaks():
         real_quiet = page._sms_quiet_section
         page._wins_section = lambda m: real_quiet(m) + real_wins(m)
         page._sms_quiet_section = lambda m: ""
+    if broken("rebuy_judged_at_build"):
+        # The first answer for a model is kept, as a build-time verdict would be.
+        real_running, judged = serve.running_view, {}
+        serve.running_view = lambda model, today: (
+            judged.setdefault(id(model), real_running(model, today))
+            if "wins" in model else real_running(model, today))  # a built model
+    if broken("unknown_ticket_dropped"):
+        real_lost = serve.running_view
+
+        def drops_unknown(model, today):
+            view = real_lost(model, today)
+            return view and dict(view, unknown=0)
+
+        serve.running_view = drops_unknown
+    if broken("followed_still_says_buy"):
+        real_followed = serve.running_view
+
+        def ignores_successor(model, today):
+            view = real_followed(model, today)
+            rows = view["running"] if view else []
+            assert isinstance(rows, list)
+            for row in rows:
+                row["followed"] = False
+                row["buy_soon"] = row["left"] <= serve.WARN_AT
+            return view
+
+        serve.running_view = ignores_successor
+    if broken("no_overview_answer"):
+        page._buy_headline = lambda view: "Your tickets"
+    if broken("overview_money_zero"):
+        real_money = page._glance_money
+        page._glance_money = lambda model: real_money(model).replace(
+            "No draw has been checked against a result yet, so there is nothing to compare.",
+            "Spent R0.00, nothing to compare.")
+    if broken("no_paid_section"):
+        page._paid_section = lambda model: ""
+    if broken("pool_keys_shown"):
+        page._pool_name = lambda game, plus_flag: f"{game}/{plus_flag}"
     if broken("no_icon"):
         serve.APP_ICON = None
     if broken("quiet_judged_at_build"):

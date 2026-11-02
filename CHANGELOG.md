@@ -17,6 +17,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The page opens on an overview that says when to buy next, with a ball for every draw a ticket paid for (LOTTO-0090)**
+  Further tabs now show the wins the bank has paid, with their numbers. Games go by their names rather than keys such as `lotto/1`, and the text is larger.
+
 - **The page has a new look: a sticky bar with tabs over a centred column, 75% of a wide screen, with the warnings above every tab** (LOTTO-0087)
 
 - **Fit the page to the window, open its tables latest first, offer other orders, and show the app icon in the browser tab.** (LOTTO-0087)
