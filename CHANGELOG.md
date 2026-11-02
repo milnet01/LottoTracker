@@ -42,6 +42,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Shutting the tray down from outside its menu now stops the page and the SMS collector too** (LOTTO-0089)
+  Before, they kept running, so the next start showed the old page and collected twice.
+
 - **Price Daily Lotto from the results page, because the feed's Daily table is not what a draw paid.** (LOTTO-0084)
 
 - **The SMS catch-up read a conversation list still empty as finished, and reported nothing to collect.** (LOTTO-0088)

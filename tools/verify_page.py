@@ -31,6 +31,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import site
 import socket
 import subprocess
@@ -1594,6 +1595,111 @@ def tray_headless_when_managed():
         )
 
 
+# The real tray.main() with a real server child, on Qt's offscreen platform. The
+# watcher is a stand-in because the real one talks to the phone and appends to
+# the real dump. Offscreen reports no system tray, so that one answer is forced.
+TRAY_SIGNAL_PROBE = r'''
+import os, sys
+sys.path.insert(0, {root!r})
+import supervise, tray
+
+report = open(os.environ["LOTTO_PROBE_PIDS"], "a", buffering=1)
+
+
+def recording(cls, label):
+    real = cls.start
+
+    def start(self):
+        real(self)
+        report.write("{{}} {{}}\n".format(label, self.child.pid))
+
+    cls.start = start
+
+
+recording(supervise.Supervisor, "server")
+recording(supervise.SmsWatch, "watcher")
+real_watch = supervise.SmsWatch
+supervise.SmsWatch = lambda: real_watch(
+    [sys.executable, "-c", "import time; time.sleep(120)"])
+# None of the tray's checks may read real tickets or open a browser here.
+supervise.expiry_notices = lambda today: []
+supervise.read_settings = lambda: {{"autostart": False, "open_on_start": False}}
+tray.dump_size = lambda: 0
+tray.QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
+
+if os.environ.get("LOTTO_BREAK") == "signal_orphans_children":
+    tray.quit_on_signals = lambda app: None
+
+raise SystemExit(tray.main())
+'''
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return False
+    return True
+
+
+def tray_signal_reaps_children():
+    """INV-99 — a tray ended by a signal, not its menu, takes its server and SMS
+    watcher with it (LOTTO-0089)."""
+    home = temp_home()
+    for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        pids_path = os.path.join(home, f"pids-{sig.name}")
+        env = {
+            **os.environ,
+            "QT_QPA_PLATFORM": "offscreen",
+            "LOTTO_NO_BUILD": "1",
+            "LOTTO_PORT": str(supervise.free_port()),
+            "LOTTO_PROBE_PIDS": pids_path,
+            "PYTHONPATH": os.pathsep.join(
+                p for p in (USER_SITE, os.environ.get("PYTHONPATH")) if p),
+        }
+        env.pop("PORT", None)
+        env.pop("LWSM_MANAGED", None)
+        # To DEVNULL: a surviving child holding a pipe would hang the read of it.
+        tray_proc = subprocess.Popen(
+            [sys.executable, "-c", TRAY_SIGNAL_PROBE.format(root=ROOT)],
+            cwd=ROOT, env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        pids = {}
+        try:
+            deadline = time.monotonic() + 30
+            while len(pids) < 2 and time.monotonic() < deadline:
+                need(tray_proc.poll() is None,
+                     f"the tray exited with {tray_proc.returncode} before its "
+                     "children were up")
+                if os.path.exists(pids_path):
+                    with open(pids_path, encoding="utf-8") as fh:
+                        pids = {k: int(v) for k, v in
+                                (line.split() for line in fh if line.endswith("\n"))}
+                time.sleep(0.05)
+            need(len(pids) == 2, f"the children never started: {pids}")
+
+            tray_proc.send_signal(sig)
+            try:
+                tray_proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                raise Fail(f"{sig.name} did not end the tray") from None
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and any(map(_pid_alive, pids.values())):
+                time.sleep(0.05)
+            left = [k for k, pid in pids.items() if _pid_alive(pid)]
+            need(not left, f"{sig.name} to the tray left these running: {left}")
+            need(tray_proc.returncode == 0,
+                 f"{sig.name} ended the tray with {tray_proc.returncode}, not a clean quit")
+        finally:
+            if tray_proc.poll() is None:
+                tray_proc.kill()
+                tray_proc.wait()
+            for pid in pids.values():
+                if _pid_alive(pid):
+                    os.kill(pid, signal.SIGKILL)
+
+
 # ------------------------------------------------- LOTTO-0019: build reporting
 #
 # INV-27, INV-28, INV-29, INV-30. Two of these install a TRANSPORT seam beside
@@ -2757,6 +2863,7 @@ CASES = [
     ("refresh_reports_the_build", "INV-23", refresh_reports_the_build),
     ("port_from_environment", "INV-24", port_from_environment),
     ("tray_headless_when_managed", "INV-25", tray_headless_when_managed),
+    ("tray_signal_reaps_children", "INV-99", tray_signal_reaps_children),
     ("post_retries_transport_failure", "INV-27", post_retries_transport_failure),
     ("build_progress_is_visible", "INV-28", build_progress_is_visible),
     ("no_comparison_is_not_no_wins", "INV-29", no_comparison_is_not_no_wins),
@@ -2829,6 +2936,7 @@ BREAKS = {
     "tray_silent_fallback": "port_from_environment",
     "tray_icon_when_managed": "tray_headless_when_managed",
     "headless_stops_server": "tray_headless_when_managed",
+    "signal_orphans_children": "tray_signal_reaps_children",
     "no_retry": "post_retries_transport_failure",
     "retry_http_error": "post_retries_transport_failure",
     "no_counter_reset": "build_progress_is_visible",

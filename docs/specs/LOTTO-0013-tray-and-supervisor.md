@@ -10,6 +10,7 @@ ran eleven cases and sixteen breaks then, and thirteen and twenty-two on
 2026-08-03 after the LOTTO-0024 amendment below. Both are dated records; the
 current set is that file's `CASES` table and its `--list` breaks, not a number here.)
 
+**Amended 2026-11-02** for LOTTO-0089: INV-99, §6, §7, §11.
 **Amended again 2026-08-03 for ROADMAP LOTTO-0024** (running under an external
 process manager): §4.2 pins both port variables in the child, §4.5 states the
 `$PORT` precedence that made that necessary, and a new **§4.7** and **INV-25**
@@ -916,7 +917,7 @@ and nothing under it.
 
 ## 5. Invariants
 
-This document holds INV-19, INV-20, INV-23 and INV-25. LOTTO-0001 holds INV-1 to
+This document holds INV-19, INV-20, INV-23, INV-25 and INV-99. LOTTO-0001 holds INV-1 to
 INV-6, INV-22 and INV-26, LOTTO-0009 INV-7 to INV-11, LOTTO-0014 INV-12 to INV-14 and
 INV-21, and LOTTO-0002 INV-15 to INV-18 and INV-24. CHANGELOG.md cites them
 unqualified, so the numbers do not move on a split.
@@ -1102,6 +1103,16 @@ unqualified, so the numbers do not move on a split.
   the second is not: a stopped server looks to the manager like a service that
   died on its own.
 
+- **INV-99** — A tray with an icon that is ended by `SIGTERM`, `SIGHUP` or
+  `SIGINT` quits normally and leaves neither its server nor its SMS watcher
+  running. The managed path is exempt: INV-25 forbids it to stop the server.
+  *Test:* `tools/verify_page.py`, case `tray_signal_reaps_children` — runs the
+  real `tray.main()` on Qt's offscreen platform with a real server and a stand-in
+  watcher, sends each signal to the tray's pid alone, and asserts both children
+  are gone and the tray exited 0.
+  *Breaks when:* `tray.py::quit_on_signals()` is not called
+  (`--break signal_orphans_children`).
+
 ## 6. Failure modes
 
 - **No system tray on the desktop**, *on the tray path*. `QSystemTrayIcon.isSystemTrayAvailable()`
@@ -1139,6 +1150,10 @@ unqualified, so the numbers do not move on a split.
   (§4.2). If the session is killed hard enough that no Qt shutdown signal fires,
   the child is orphaned and the next start reports the port in use — which is a
   visible, recoverable state rather than a silent one.
+- **Something outside ends the tray with a signal.** `tray.py::quit_on_signals()`
+  turns `SIGTERM`, `SIGHUP` and `SIGINT` into an ordinary quit, so the same reap
+  runs (INV-99). `SIGKILL` cannot be caught, so it still leaves the children
+  running.
 - **`terminate()` does not stop the child.** `kill()` after the timeout, then
   `wait()`. The user sees the quit take up to two timeouts (ten seconds, §4.1)
   rather than the tray vanishing and the server surviving it.
@@ -1217,6 +1232,7 @@ verification block — five commands — is what a contributor actually runs.
 | `no_orphan_server` | INV-20 |
 | `refresh_reports_the_build` | INV-23 |
 | `tray_headless_when_managed` | INV-25 |
+| `tray_signal_reaps_children` | INV-99 |
 
 LOTTO-0002 §7 states the three constraints binding all thirteen cases — no network,
 no real data, and recomputing rather than importing the judgement under test —
@@ -1420,6 +1436,7 @@ without shipping a second `serve.py`.
 | §4.3 `tray.py` reading `open_on_start`, and its fallback on a corrupt file | **nothing mechanical** — needs a tray and a session. The fallback is what stops a bad settings file hiding the icon, so it is verified by writing a malformed `settings.json` and starting the tray once |
 | §4.1 one reader, with no second copy of it in `serve.py` or `tray.py` | **nothing** — a duplicate that agrees on the day it is written passes every case in `tools/verify_page.py`, because agreeing readers are indistinguishable from one reader until one of them is edited. Found once, by reading, in shipped code (§13) |
 | §4.5 the port being read once and agreeing end to end | `tools/verify_page.py::port_from_environment` (LOTTO-0002 INV-24) — its second half starts a `Supervisor` while the session exports a *different* `$PORT` and asserts the child answers on the supervisor's port. That covers the disagreement §4.2's pinning prevents; a disagreement arising some other way is still only loud at run time, as a 421 on every request |
+| INV-99 a signal to the tray leaves no server or watcher running | `tools/verify_page.py::tray_signal_reaps_children` |
 | INV-25 a managed run has no icon and no path that stops the server | `tools/verify_page.py::tray_headless_when_managed` — and it is the first `tray.py` rule in this table with a checker at all, because the managed path is the one branch of that file that **constructs** no Qt object. The module still imports PySide6 (§4.7), so the case needs it installed; what it does not need is a display |
 | §4.2 the child staying in this process's group — no `start_new_session` | **nothing** — a detached child passes every case here, including `no_orphan_server`, which calls `stop()` explicitly and so never depends on the group. The breach is visible only under a manager, as §6's orphan |
 | §4.7 a manager signalling the process group rather than the tray's pid | **nothing** — it is a requirement on the deployment, outside this project's files entirely. Loud on the next start, as a port already in use |

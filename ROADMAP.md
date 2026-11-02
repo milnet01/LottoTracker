@@ -1772,7 +1772,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: fix.
   Source: in-session-2026-11-02.
 
-- 📋 [LOTTO-0089] **A terminate signal to the tray leaves its server and SMS watcher running, and the next tray collides with them.**
+- ✅ [LOTTO-0089] **A terminate signal to the tray leaves its server and SMS watcher running, and the next tray collides with them.**
   Measured 2026-11-02: kill -TERM on tray.py left serve.py and watch_sms.py alive, re-parented. The next tray could not bind the port, so the old server kept answering, and two watchers ran. The dump's flock (INV-38) and its de-duplication should keep two watchers safe, but that pair was not examined. Whether a real session logout delivers this signal was not measured, and it decides how urgent this is. The menu's Quit was not tested in this run; LOTTO-0013 INV-20 covers reaping.
   Measured 2026-11-02 with a stand-in parent and child under a service
   with the autostart unit's settings (Type=exec, ExitType=cgroup,
@@ -1783,6 +1783,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   makes this less urgent. A real logout was not run. Separately, a tray
   started from a terminal lives in that terminal's service, so closing
   the terminal takes it down.
+  Fixed 2026-11-02: tray.py::quit_on_signals() turns SIGTERM, SIGHUP and
+  SIGINT into an ordinary quit, so the existing reap runs. The managed
+  path is unchanged (INV-25). INV-99, case tray_signal_reaps_children,
+  was observed failing before the fix.
   **Layman:** If the tray is shut down from outside instead of from its menu, the page and the SMS collector keep running, so the next start shows the old page and collects twice.
   Kind: fix.
   Source: in-session-2026-11-02.

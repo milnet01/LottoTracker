@@ -14,6 +14,7 @@ rather than stylistic - see the comments at their sites.
 """
 
 import os
+import signal
 import time
 import webbrowser
 
@@ -29,6 +30,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ICON_RUNNING = os.path.join(HERE, "icons", "tray-running.svg")
 ICON_STOPPED = os.path.join(HERE, "icons", "tray-stopped.svg")
 POLL_MS = 5000  # bounds how long the icon can claim a dead server is running
+SIGNAL_WAKE_MS = 250  # bounds how long a shutdown signal waits to be noticed
 
 
 def managed():
@@ -76,6 +78,29 @@ def run_headless(sup=None):
         print("the server has not answered yet; still waiting", flush=True)
     assert sup.child is not None  # start() spawned it or raised
     return sup.child.wait()
+
+
+def quit_on_signals(app):
+    """Turn an outside request to stop into an ordinary quit (LOTTO-0089, INV-99).
+
+    By default these signals end the process on the spot, so aboutToQuit never
+    fires and the children outlive the tray. The quit is queued rather than
+    called because a quit made before app.exec() does nothing, and a signal can
+    arrive that early.
+
+    Python runs a signal's handler only when it next runs Python code, and
+    inside app.exec() it runs none unless something calls back into it. That is
+    the only job of the timer. run_headless() must not call this: the managed
+    path never stops the server (INV-25).
+    """
+    def on_signal(_signum, _frame):
+        QTimer.singleShot(0, app.quit)
+
+    for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(sig, on_signal)
+    wake = QTimer(app)
+    wake.timeout.connect(lambda: None)
+    wake.start(SIGNAL_WAKE_MS)
 
 
 # ------------------------------------------------------------ background jobs
@@ -371,6 +396,7 @@ def main():
     app = QApplication([])
     app.setApplicationName("Lotto Tracker")
     app.setQuitOnLastWindowClosed(False)  # dismissing a notification must not quit
+    quit_on_signals(app)  # before anything is spawned, so no signal can orphan it
 
     # Before anything is spawned: starting the server and then exiting non-zero
     # would orphan a live child holding the port.
