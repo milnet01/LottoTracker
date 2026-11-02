@@ -2623,6 +2623,33 @@ def app_icon_in_page():
          "page.py found an icon nobody gave it, so it read the disk")
 
 
+def typeface_in_page():
+    """INV-96 — the page carries its own typeface, with no fifth route, and works without."""
+    import base64
+
+    temp_home()
+    srv, _state, port, _t = serve_on(lambda: fixture_model())
+    try:
+        page_bytes = req(port, "GET", "/", host=f"127.0.0.1:{port}")[2].decode()
+    finally:
+        srv.shutdown()
+    face = re.search(r'@font-face\{[^}]*src:url\(data:font/woff2;base64,([A-Za-z0-9+/=]+)\)',
+                     page_bytes)
+    if face is None:
+        raise Fail("the page carries no typeface")
+    font_dir = os.path.join(ROOT, "fonts")
+    with open(os.path.join(font_dir, "AtkinsonHyperlegibleNext-latin-wght.woff2"), "rb") as fh:
+        need(base64.b64decode(face.group(1)) == fh.read(),
+             "the typeface on the page is not the file in fonts/")
+    need(os.path.exists(os.path.join(font_dir, "OFL.txt")),
+         "the typeface ships without its licence, which its licence requires")
+    bare = render_pure(fixture_model())
+    need("@font-face" not in bare,
+         "page.py found a typeface nobody gave it, so it read the disk")
+    need(re.search(r'body\{font:[^;}]*"Atkinson Hyperlegible Next",system-ui,sans-serif', bare),
+         "with no typeface file the page has no system font to fall back on")
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -2651,6 +2678,7 @@ CASES = [
     ("latest_first_and_sortable", "INV-85", latest_first_and_sortable),
     ("page_follows_window_width", "INV-86", page_follows_window_width),
     ("app_icon_in_page", "INV-87", app_icon_in_page),
+    ("typeface_in_page", "INV-96", typeface_in_page),
     ("tabs_never_hide_a_warning", "INV-89", tabs_never_hide_a_warning),
     ("estimate_is_said", "INV-90", estimate_is_said),
     ("buy_again_on_overview", "INV-93", buy_again_on_overview),
@@ -2665,6 +2693,7 @@ BREAKS = {
     "capped_width": "page_follows_window_width",
     "no_cards": "page_follows_window_width",
     "no_icon": "app_icon_in_page",
+    "no_font": "typeface_in_page",
     "warning_in_a_tab": "tabs_never_hide_a_warning",
     "estimate_unmarked": "estimate_is_said",
     "rebuy_judged_at_build": "buy_again_on_overview",
@@ -2781,6 +2810,8 @@ def apply_render_breaks():
         page._pool_name = lambda game, plus_flag: f"{game}/{plus_flag}"
     if broken("no_icon"):
         serve.APP_ICON = None
+    if broken("no_font"):
+        serve.APP_FONT = None
     if broken("quiet_judged_at_build"):
         # The verdict frozen at the date the server started, not the date shown.
         import clock

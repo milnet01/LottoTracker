@@ -17,6 +17,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Make the page look pretty: tickets drawn as lottery slips, a low-vision typeface and a richer dark theme.** (LOTTO-0091)
+  Each running ticket now looks like a real lottery slip, with used draws punched out, and the page uses a typeface made for low vision.
+
 - **The page opens on an overview that says when to buy next, with a ball for every draw a ticket paid for (LOTTO-0090)**
   Further tabs now show the wins the bank has paid, with their numbers. Games go by their names rather than keys such as `lotto/1`, and the text is larger.
 

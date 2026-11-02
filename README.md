@@ -245,7 +245,8 @@ still outstanding, every entry with what it cost and what it won, and what you
 have spent against what you have won. Tabs under a sticky bar take you to each part, and every warning stays above
 them. Ticket tables open latest first, and a
 dropdown or a click on a heading sorts them another way. The page is a centred
-column, 75% of a wide window, and turns each row into a card on a narrow one. A settings panel has two switches: start the icon when you log in, and open the
+column, 75% of a wide window, and turns each row into a card on a narrow one. Text is set in Atkinson Hyperlegible, a typeface
+made for low vision, which ships in `fonts/` under its own licence. A settings panel has two switches: start the icon when you log in, and open the
 page when it starts.
 
 Three things worth knowing:

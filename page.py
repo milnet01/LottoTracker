@@ -859,10 +859,10 @@ DEFAULT_THEME = "dark"
 # because that is the default and the reason this exists.
 THEMES = [
     ("dark", "Dark", {
-        "bg": "#16181d", "fg": "#e8e9ec", "dim": "#9aa0aa", "line": "#2c3038",
-        "panel": "#21242b", "accent": "#d8a13a", "warn": "#f0b45a",
-        "warn-bg": "#2e2716", "bad": "#e8705f", "bad-bg": "#33201d",
-        "on": "#4caf50"}),
+        "bg": "#15131f", "fg": "#f3f1f8", "dim": "#b1adc4", "line": "#3a3650",
+        "panel": "#242033", "accent": "#f5b92e", "warn": "#ffc857",
+        "warn-bg": "#35290d", "bad": "#f0705f", "bad-bg": "#3a1f24",
+        "on": "#4fb563"}),
     ("contrast", "High contrast", {
         "bg": "#000000", "fg": "#ffffff", "dim": "#d6d6d6", "line": "#7a7a7a",
         "panel": "#141414", "accent": "#ffd400", "warn": "#ffd400",
@@ -964,68 +964,87 @@ THEME_BOOT = (
 # variable rather than a hex. That is what makes a new theme a table row instead
 # of a second copy of this stylesheet.
 BASE_CSS = """
-body{font:1.125rem/1.55 system-ui,sans-serif;margin:0;color:var(--fg);background:var(--bg)}
-.column{box-sizing:border-box;width:max(75%,90rem);max-width:100%;margin:0 auto;padding:0 1rem}
-main.column{padding-top:1.25rem;padding-bottom:2rem}
+body{font:1.125rem/1.55 "Atkinson Hyperlegible Next",system-ui,sans-serif;margin:0;
+ color:var(--fg);background:var(--bg)}
+.column{box-sizing:border-box;width:max(75%,90rem);max-width:100%;margin:0 auto;padding:0 1.25rem}
+main.column{padding-top:1.5rem;padding-bottom:3rem}
 .topbar{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line)}
-.bar{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1.5rem;padding-top:.5rem}
-.brand{display:flex;align-items:center;gap:.5rem;padding-bottom:.5rem}
-.brand img{width:1.5rem;height:1.5rem}
-h1{font-size:1.35rem;font-weight:700;margin:0;letter-spacing:-.01em}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 2rem;padding-top:.6rem}
+.brand{display:flex;align-items:center;gap:.6rem;padding-bottom:.6rem}
+.brand img{width:1.75rem;height:1.75rem}
+h1{font-size:1.5rem;font-weight:800;margin:0;letter-spacing:-.015em}
 .tabs{display:flex;flex:1 1 auto;gap:.25rem;overflow-x:auto;scrollbar-width:none;align-self:flex-end}
-.tab{padding:.45rem .8rem .55rem;background:none;border:0;border-bottom:3px solid transparent;
- border-radius:0;color:var(--dim);cursor:pointer;white-space:nowrap}
-.tab:hover{color:var(--fg)}
-.tab[aria-selected=true]{color:var(--fg);font-weight:650;border-bottom-color:var(--accent)}
-.baractions{display:flex;align-items:center;gap:.75rem;padding-bottom:.5rem}
-#top-msg{color:var(--dim);font-size:.9rem}
+.tab{padding:.5rem .9rem .7rem;background:none;border:0;border-bottom:4px solid transparent;
+ border-radius:.4rem .4rem 0 0;color:var(--dim);cursor:pointer;white-space:nowrap;font-weight:700}
+.tab:hover{color:var(--fg);border-bottom-color:var(--line)}
+.tab[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent)}
+.baractions{display:flex;align-items:center;gap:.75rem;padding-bottom:.6rem}
+#top-msg{color:var(--dim);font-size:.95rem}
 .js .tabpanel:not(.on){display:none}
-h2{font-size:1.6rem;font-weight:700;letter-spacing:-.01em;margin:1.5rem 0 .5rem}
-h3{font-size:1.2rem;font-weight:650;margin:1.5rem 0 .4rem}
+h2{font-size:1.75rem;font-weight:800;line-height:1.25;letter-spacing:-.015em;margin:2rem 0 .6rem}
+h3{font-size:1.25rem;font-weight:700;margin:1.5rem 0 .4rem}
 table{border-collapse:collapse;width:100%;margin:.5rem 0}
-th,td{text-align:left;padding:.45rem;border-bottom:1px solid var(--line);font-size:1rem}
-th{font-weight:600;color:var(--dim);border-bottom-width:2px}
+th,td{text-align:left;padding:.6rem .55rem;border-bottom:1px solid var(--line);font-size:1.05rem}
+th{font-weight:700;color:var(--dim);border-bottom:2px solid var(--line)}
 tbody tr:hover td{background:var(--panel)}
 .cards th,.cards td{white-space:nowrap}
 .cards td.wrap{white-space:normal;min-width:14rem}
 .tablewrap{overflow-x:auto}
 .money{text-align:right;font-variant-numeric:tabular-nums}
 .nums{white-space:nowrap}
-.ball{display:inline-block;position:relative;min-width:2rem;height:2rem;line-height:2rem;
+.ball{display:inline-block;position:relative;min-width:2.1rem;height:2.1rem;line-height:2.1rem;
  margin:.08rem .06rem;border-radius:50%;background:#4a5568;color:#fff;text-align:center;
- font-variant-numeric:tabular-nums;font-size:1.05rem;font-weight:600}
+ font-variant-numeric:tabular-nums;font-size:1.1rem;font-weight:700}
 .ball:after{content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;
- background:radial-gradient(circle at 35% 25%,rgba(255,255,255,.24),rgba(255,255,255,0) 55%);
- box-shadow:inset 0 -2px 3px rgba(0,0,0,.28)}
+ background:radial-gradient(circle at 34% 24%,rgba(255,255,255,.34),rgba(255,255,255,0) 48%);
+ box-shadow:inset -1px -3px 5px rgba(0,0,0,.35)}
 .ball.special{background:#6a1b9a;color:#fff}
-[data-game="lotto"] .ball{background:#c62828}
+.runname{background:#4a5568}
+[data-game="lotto"] .ball,[data-game="lotto"] .runname{background:#c62828}
 [data-game="lotto"] .ball.special{background:#6a1b9a}
-[data-game="powerball"] .ball{background:#1565c0}
+[data-game="powerball"] .ball,[data-game="powerball"] .runname{background:#1565c0}
 [data-game="powerball"] .ball.special{background:#bf360c}
-[data-game="daily"] .ball{background:#2e7d32}
-.notcheckable{color:var(--warn);font-style:italic}
+[data-game="daily"] .ball,[data-game="daily"] .runname{background:#2e7d32}
+.notcheckable{color:var(--warn)}
 .muted{color:var(--dim);font-size:1rem}
-.notice{background:var(--warn-bg);border-left:4px solid var(--accent);border-radius:.4rem;
- padding:.7rem 1rem;margin:.8rem 0}
+.notice{background:var(--warn-bg);border-left:6px solid var(--accent);border-radius:.5rem;
+ padding:.8rem 1.1rem;margin:.9rem 0}
 .notice.bad{background:var(--bad-bg);border-left-color:var(--bad)}
 .notice.standing{background:var(--panel);border-left-color:var(--line)}
-.headline{font-size:clamp(1.7rem,3.2vw,2.5rem);line-height:1.2;margin:1.25rem 0 1rem;max-width:40ch;text-wrap:balance}
-.runs{list-style:none;margin:0 0 1.5rem;padding:0}
-.run{display:grid;grid-template-columns:minmax(11rem,16rem) auto 1fr;gap:.4rem 1.5rem;align-items:center;
- padding:.9rem 0;border-top:1px solid var(--line)}
-.runname{font-size:1.25rem;font-weight:650}
-.tag{display:inline-block;margin-left:.4rem;padding:0 .55rem;border-radius:1rem;font-size:.95rem;
- font-weight:650;color:var(--warn);background:var(--warn-bg)}
-.burn{display:flex;flex-wrap:wrap;gap:.3rem}
-.burn .ball{min-width:1.35rem;height:1.35rem;margin:0}
-.burn .ball.used,[data-game] .burn .ball.used{background:none;box-shadow:inset 0 0 0 2px var(--line)}
+.headline{font-size:clamp(2.1rem,4vw,3.25rem);font-weight:800;line-height:1.12;letter-spacing:-.025em;
+ margin:1.75rem 0 1.5rem;text-wrap:balance}
+/* The running tickets are the page's one flourish: each is a lottery slip, with a stub
+   in its game's colour, a perforated tear line, real notches cut by the mask, and one
+   ball per draw paid for, punched out once that draw has happened. The outline sits on
+   the list rather than the slip because a parent's drop-shadow follows the notches. */
+.runs{list-style:none;display:grid;gap:1rem;margin:0 0 2.5rem;padding:0;
+ filter:drop-shadow(0 0 1px var(--line)) drop-shadow(0 0 1px var(--line))}
+.run{--stub:16rem;--notch:.8rem;display:grid;grid-template-columns:var(--stub) minmax(0,max-content) 1fr;
+ align-items:stretch;border-radius:.9rem;overflow:hidden;background:var(--panel);
+ mask:radial-gradient(circle var(--notch) at var(--stub) 0,transparent 97%,#000),
+  radial-gradient(circle var(--notch) at var(--stub) 100%,transparent 97%,#000);
+ mask-composite:intersect}
+.runname{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:.35rem;
+ padding:1.1rem 1.4rem;color:#fff;font-size:1.65rem;font-weight:800;line-height:1.15;letter-spacing:-.015em}
+.runname .muted{color:#fff;font-size:1rem;font-weight:400;letter-spacing:0;line-height:1.3}
+.tag{padding:.1rem .7rem;border-radius:1rem;font-size:1.05rem;font-weight:700;letter-spacing:0;
+ color:var(--warn);background:var(--warn-bg)}
+.burn{display:flex;flex-wrap:wrap;align-content:center;gap:.4rem;padding:1.1rem 1.75rem;
+ border-left:5px dotted var(--bg)}
+.burn .ball{min-width:1.85rem;height:1.85rem;margin:0}
+.burn .ball.used,[data-game] .burn .ball.used{background:var(--bg);
+ box-shadow:inset 0 2px 3px rgba(0,0,0,.45),0 0 0 1px var(--line)}
 .burn .ball.used:after{display:none}
-.glances{display:flex;flex-wrap:wrap;gap:1rem 4rem}
-.glance{flex:1 1 22rem}
-.glance h3{margin-top:.5rem}
-.glance p{margin:.3rem 0 .7rem;max-width:60ch}
-.golink{cursor:pointer}
-.golink:hover{border-color:var(--accent)}
+.runfacts{align-self:center;padding:1.1rem 1.75rem 1.1rem 0}
+.runfacts strong{display:block;font-size:1.5rem;font-weight:800;line-height:1.2;letter-spacing:-.01em}
+.run:has(.tag) .runfacts strong{color:var(--warn)}
+.glances{display:flex;flex-wrap:wrap;gap:1.5rem 4rem}
+.glance{flex:1 1 22rem;border-top:2px solid var(--line)}
+.glance h3{margin-top:.9rem}
+.glance p{margin:.3rem 0 .9rem;max-width:60ch}
+.glance strong{font-size:1.25em;font-variant-numeric:tabular-nums}
+.golink{cursor:pointer;padding:.45rem 1rem;background:none;border:2px solid var(--accent);font-weight:700}
+.golink:hover{background:var(--accent);color:var(--bg)}
 html:not(.js) .golink{display:none}
 tr.soon td{background:var(--warn-bg)}tr.today td{background:var(--bad-bg);font-weight:600}
 .row{display:flex;align-items:center;gap:.6rem;margin:.4rem 0}
@@ -1038,13 +1057,15 @@ tr.soon td{background:var(--warn-bg)}tr.today td{background:var(--bad-bg);font-w
 .switch input:checked+.slider{background:var(--on)}
 .switch input:checked+.slider:before{transform:translateX(1.2rem)}
 .switch input:focus-visible+.slider{outline:2px solid var(--accent);outline-offset:2px}
-footer{margin-top:2rem;color:var(--dim);font-size:1rem}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--dim);font-size:1rem}
 .disclaimer{margin-top:1rem;color:var(--dim);font-size:1rem;max-width:80ch}
-button,select{font:inherit;padding:.3rem .7rem;background:var(--panel);color:var(--fg);
- border:1px solid var(--line);border-radius:.4rem}
+button,select{font:inherit;padding:.35rem .8rem;background:var(--panel);color:var(--fg);
+ border:1px solid var(--line);border-radius:.5rem}
+select{cursor:pointer}
 #refresh{cursor:pointer;background:var(--bg);white-space:nowrap}
 #refresh:hover{border-color:var(--accent)}
-button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.tab:focus-visible{outline-offset:-3px}
 .sorthead{font-weight:600;padding:0;background:none;border:0;color:inherit;cursor:pointer}
 th[aria-sort=descending] .sorthead:after{content:" \\25BC"}
 th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
@@ -1054,7 +1075,7 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
 @media(max-width:90rem){
  .cards thead{display:none}
  .cards table,.cards tbody,.cards tr,.cards td{display:block}
- .cards tr{border:1px solid var(--line);border-radius:.5rem;margin:.6rem 0;padding:.3rem}
+ .cards tr{background:var(--panel);border:1px solid var(--line);border-radius:.7rem;margin:.8rem 0;padding:.6rem .5rem}
  .cards td,.cards td.wrap{position:relative;padding:.2rem .3rem .2rem 8.5rem;border:0;white-space:normal;
   min-width:0;min-height:1.6rem;text-align:left}
  .cards td:before{content:attr(data-label);position:absolute;left:.3rem;width:7.8rem;
@@ -1063,7 +1084,11 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
  .tabs{order:3;flex-basis:100%}
  .baractions{margin-left:auto}
 }
-@media(max-width:60rem){.run{grid-template-columns:1fr}}
+@media(max-width:60rem){
+ .run{grid-template-columns:1fr;mask:none}
+ .burn{border-left:0;border-top:5px dotted var(--bg)}
+ .runfacts{padding:0 1.4rem 1.1rem}
+}
 @media(prefers-reduced-motion:reduce){.slider,.slider:before{transition:none}}
 """
 
@@ -1304,10 +1329,18 @@ def render(model, token):
     # rather than a route, so the server still answers exactly four (LOTTO-0014).
     icon = model.get("icon")
     logo = f'<img src="{_e(icon)}" alt="">' if icon else ""
+    # The same arrangement for the typeface (INV-96). Without it the stack in
+    # BASE_CSS falls through to the system's own font and nothing else changes.
+    font = model.get("font")
+    face = (
+        '@font-face{font-family:"Atkinson Hyperlegible Next";font-weight:200 800;'
+        f'font-display:swap;src:url({_e(font)}) format("woff2")}}'
+        if font else ""
+    )
     head = (
         f"<title>{TITLE}</title>"
         + (f'<link rel="icon" type="image/svg+xml" href="{_e(icon)}">' if icon else "")
-        + f"<style>{CSS}</style>"
+        + f"<style>{face}{CSS}</style>"
         f"<script>{THEME_BOOT}</script>"
     )
     if building and not built:

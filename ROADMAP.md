@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=90 -->
+<!-- ants-roadmap-id-high-water: LOTTO=91 -->
 
 # ROADMAP — LottoTracker
 
@@ -1785,6 +1785,14 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Contract: LOTTO-0002 INV-93 to INV-95.
   For the release that carries this: the Ants Projects Hub website session asked to be told, and retakes its screenshots then. Its trailer shows the old look.
   **Layman:** The page now opens by telling you when to buy your next ticket, and shows game names and larger text.
+  Kind: ux.
+  Source: user-request-2026-11-02.
+
+- ✅ [LOTTO-0091] **Make the page look pretty: tickets drawn as lottery slips, a low-vision typeface and a richer dark theme.**
+  The Overview listed running tickets as plain rows, in the system's font, on a generic dark palette.
+  Now: each ticket is a slip with a stub in its game's colour, a tear line and notches, and one ball per draw, punched out once drawn. Text is Atkinson Hyperlegible Next, carried in the page. The Dark theme, tabs, tables, buttons and cards are restyled; italics are gone. Figures and wording are unchanged.
+  Contract: LOTTO-0002 INV-96.
+  **Layman:** Each running ticket now looks like a real lottery slip, with used draws punched out, and the page uses a typeface made for low vision.
   Kind: ux.
   Source: user-request-2026-11-02.
 

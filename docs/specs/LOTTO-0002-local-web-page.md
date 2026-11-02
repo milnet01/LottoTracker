@@ -23,6 +23,7 @@ findings were folded into the build. INV-68
 (`tools/verify_boards.py::odd_board_is_named`, three breaks) and INV-70
 (`tools/verify_page.py::deadline_only_when_unpaid`) pass, each observed
 failing under its own breaks.
+**Amended 2026-11-02** for LOTTO-0091: §4.1, INV-96, §7, §11.
 **Amended 2026-11-02** for LOTTO-0090: §4.1, §4.5, INV-93 to INV-95, §7, §11.
 **Amended 2026-11-02** for LOTTO-0087: §4.1, §4.5, INV-85 to INV-87, INV-89, §7
 and §11.
@@ -216,6 +217,7 @@ happen in `serve.py`'s builder, not in the renderer.
                                             # judged per GET; LOTTO-0034 INV-84.
                                             # Tells no empty state apart.
   "icon":     str | None,                    # the tab icon as a data: address (INV-87)
+  "font":     str | None,                    # the typeface as a data: address (INV-96)
   "built":    "2026-08-02T14:31:07" | None, # last SUCCESSFUL build (§4.2)
   "stale":    False,                        # last refresh attempt raised
   "error":    None | {"what": str, "pools": [str]}, # §6's results-unavailable
@@ -1357,6 +1359,18 @@ them unqualified.
   *Breaks when:* the icon moves to a route of its own, or is passed only once a
   model exists.
 
+- **INV-96** — The page carries its own typeface, Atkinson Hyperlegible Next, as a
+  `data:` address, so `serve.py` still answers exactly LOTTO-0014's four routes.
+  `serve.py` reads the file; `page.py` still reads no disk. An unreadable file
+  leaves the system's font and a working page. `fonts/OFL.txt` ships beside it.
+  Added 2026-11-02 (LOTTO-0091).
+  *Test:* `tools/verify_page.py`, case `typeface_in_page`. Break `no_font`.
+  **The look itself is not tested**; it was checked by eye in Firefox on
+  2026-11-02, on invented tickets: Dark, Light, High contrast and Sepia, and at
+  three window widths, though not every pairing.
+  *Breaks when:* the typeface moves to a route of its own or a remote address, or
+  the font stack loses its system fallback.
+
 ## 6. Failure modes
 
 - **The operator's API is unreachable.** Four of seven build attempts on
@@ -1482,6 +1496,7 @@ share their fixtures, their temporary-directory setup and their stub builder.
 | `latest_first_and_sortable` | INV-85 |
 | `page_follows_window_width` | INV-86 |
 | `app_icon_in_page` | INV-87 |
+| `typeface_in_page` | INV-96 |
 | `tabs_never_hide_a_warning` | INV-89 |
 | `buy_again_on_overview` | INV-93 |
 | `paid_wins_shown` | INV-94 |
@@ -1647,6 +1662,7 @@ LOTTO-0014 §8.)
 | INV-85 every ticket table opens latest first, with two ways to sort | `tools/verify_page.py::latest_first_and_sortable` — red-tested by `--break oldest_first` and `--break no_sort_dropdown`. **Nothing** runs a click |
 | INV-86 a centred column at 75% of the window, turning to cards when narrow | `tools/verify_page.py::page_follows_window_width` — red-tested by `--break capped_width` and `--break no_cards`. **Nothing** measures a table against a real window |
 | INV-87 the tab icon on every page state, with no fifth route | `tools/verify_page.py::app_icon_in_page` — red-tested by `--break no_icon` |
+| INV-96 the page's own typeface, with no fifth route and a system fallback | `tools/verify_page.py::typeface_in_page` — red-tested by `--break no_font`. **Nothing** judges the look |
 | INV-93 the Overview says when to buy, from the tray's calendar, judged when shown | `tools/verify_page.py::buy_again_on_overview` — red-tested by five breaks. **Layout and the buttons run in the browser and no case runs them**; checked by hand in Firefox on 2026-11-02 |
 | INV-94 a paid win shows its numbers and no deadline | `tools/verify_page.py::paid_wins_shown` — red-tested by `--break no_paid_section` |
 | INV-95 game names, never pool keys | `tools/verify_page.py::games_by_their_names` — red-tested by `--break pool_keys_shown` |
@@ -1782,6 +1798,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| amend-0091 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0091, the user's request to make the page look pretty. Adds the typeface; INV-96. |
 | amend-0090 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0090, the user's request to improve the page's look and flow. Adds the Overview, the paid wins and game names; INV-93 to INV-95. |
 | amend-0087-b | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0087, the user's two further requests that day. INV-86 now holds a centred 75% column; INV-89 adds the tabs and sticky bar. |
 | amend-0087 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0087, the user's request of 2026-11-02. Adds INV-85 to INV-87, and §4.5 item 1 now opens latest first rather than soonest deadline first. |

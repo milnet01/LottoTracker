@@ -55,20 +55,21 @@ SECURITY_HEADERS = (
 ALLOW = {"/": "GET", "/status": "GET", "/refresh": "POST", "/settings": "POST"}
 
 
-def _icon_address():
-    """The tray's icon as a data: address, for the browser tab (INV-87).
+def _data_address(mime, *path):
+    """A file as a data: address, so the page needs no route for it (INV-87, INV-96).
 
-    None if the file is unreadable: a missing tab icon is no reason to refuse to
-    show anyone their tickets.
+    None if the file is unreadable: a missing tab icon or typeface is no reason to
+    refuse to show anyone their tickets.
     """
     try:
-        with open(os.path.join(HERE, "icons", "tray-running.svg"), "rb") as fh:
-            return "data:image/svg+xml;base64," + base64.b64encode(fh.read()).decode()
+        with open(os.path.join(HERE, *path), "rb") as fh:
+            return f"data:{mime};base64," + base64.b64encode(fh.read()).decode()
     except OSError:
         return None
 
 
-APP_ICON = _icon_address()
+APP_ICON = _data_address("image/svg+xml", "icons", "tray-running.svg")
+APP_FONT = _data_address("font/woff2", "fonts", "AtkinsonHyperlegibleNext-latin-wght.woff2")
 
 
 # --------------------------------------------------------------- settings I/O
@@ -863,6 +864,7 @@ def make_server(build_model_fn, token, port):
                     "sms_quiet": sms_quiet_view(model or {}, clock.today()),
                     "running": running_view(model or {}, clock.today()),
                     "icon": APP_ICON,
+                    "font": APP_FONT,
                 }
             )
             if model is None and not error and not building:
