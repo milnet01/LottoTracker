@@ -54,7 +54,9 @@ python3 tools/verify_expiry.py    # INV-49..INV-56, INV-61, INV-64: the re-buy
                                   # ticket is never warned about, that a notice
                                   # is said once and names nothing but game,
                                   # date and count, and that dates are SAST
-                                  # whatever $TZ says; --break/--list like
+                                  # whatever $TZ says. INV-81..INV-83: it finds the
+                                  # dump from any folder, and says when no SMS
+                                  # has arrived for 14 days; --break/--list like
                                   # verify_page
 python3 tools/verify_watch.py     # INV-32..INV-39: the cable-free SMS path writes
                                   # what adb would, never twice, and its child is

@@ -8,6 +8,10 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The app now says when no lottery SMS has arrived for 14 days** (LOTTO-0083)
+  The page shows how long it has been and the date of the newest message. The
+  tray icon reminds you once a day, with no ticket details in the reminder.
+
 - **Every remaining difference from the bank now has a named reason in `check.py`'s report** (LOTTO-0037)
   No figure changes. A difference that fits no reason is printed as `NO REASON FOUND`.
 

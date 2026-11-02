@@ -147,6 +147,30 @@ def _notice(model):
     return ""
 
 
+def _sms_quiet_section(model):
+    """Say the phone has gone quiet, and what that costs (LOTTO-0034 INV-84).
+
+    The page may name the date, where the tray's notice may not: this page
+    already shows every ticket, and it is not logged or synced off the machine.
+    """
+    quiet = model.get("sms_quiet")
+    if not quiet:
+        return ""
+    if quiet["days"] is None:
+        lead = "<strong>No lottery SMS has been read yet.</strong> "
+    else:
+        lead = (
+            f"<strong>No lottery SMS for {_count(quiet['days'], 'day', 'days')}."
+            f"</strong> The newest one here is from {_e(quiet['newest'])}. "
+        )
+    return (
+        f'<div class="notice bad">{lead}If you have bought a ticket since then, '
+        "it is not on this page and the app cannot warn you when it runs out. "
+        "Check that your phone is connected through KDE Connect and that the "
+        "Lotto Tracker tray icon is running.</div>"
+    )
+
+
 def _senders_section(model):
     """Records from a sender the bank is not known to use (LOTTO-0062 s4.4).
 
@@ -898,6 +922,7 @@ def render(model, token):
         body = (
             f"<h1>{TITLE}</h1>"
             + _notice(model)
+            + _sms_quiet_section(model)
             + _senders_section(model)
             + _uncheckable_banner(model.get("uncheckable"))
             + _wins_section(model)

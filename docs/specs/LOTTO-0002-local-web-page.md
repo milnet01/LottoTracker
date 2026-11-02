@@ -196,10 +196,14 @@ happen in `serve.py`'s builder, not in the renderer.
   "won":    {"compared_cents", "lifetime_cents"},  # no unexpired total (§4.6)
             # compared_cents: wins on scorable entries of RESOLVED tickets only
   "settings": {"autostart": bool, "open_on_start": bool},
+  "newest_sms": "2026-08-15" | None,        # newest record; LOTTO-0034 INV-82
 }
 
 # What `State` owns, and what serve.py overlays at render time.
 {
+  "sms_quiet": None | {"newest": str | None, "days": int | None},
+                                            # judged per GET; LOTTO-0034 INV-84.
+                                            # Tells no empty state apart.
   "built":    "2026-08-02T14:31:07" | None, # last SUCCESSFUL build (§4.2)
   "stale":    False,                        # last refresh attempt raised
   "error":    None | {"what": str, "pools": [str]}, # §6's results-unavailable

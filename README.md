@@ -272,6 +272,11 @@ To have the icon start automatically, use the switch on the page rather than
 editing anything: it writes `~/.config/autostart/lotto-tracker-tray.desktop`,
 and turning it off deletes the file again.
 
+**Leave that switch on if you rely on the warnings.** The app can only warn you
+about tickets it has seen. After 14 days with no lottery SMS, the page says so
+and the icon reminds you once a day, in case your phone has stopped reaching it.
+While the icon is not running, nothing can warn you at all.
+
 ## Adding your bank
 
 The results side is bank-independent; only `tickets.py::parse()` knows about

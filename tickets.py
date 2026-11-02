@@ -398,6 +398,26 @@ def load(path="lotto_sms_raw.txt"):
     return out
 
 
+def newest_record_date(today, path="lotto_sms_raw.txt"):
+    """-> The SAST date of the dump's newest record of ANY kind, or None.
+
+    Every kind counts, because this answers "is the phone still reaching us?",
+    and a payout proves that as well as a purchase does (LOTTO-0034 INV-82). A
+    record dated after `today` is ignored: one skewed phone clock would otherwise
+    silence the stale-data notice for as long as that date stays in the future.
+    Raises OSError on a missing dump, as load() does.
+    """
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        raw = fh.read()
+    days = []
+    for _address, date_ms, _body in rows(raw):
+        try:  # load()'s reason, same unbounded date field
+            days.append(clock.from_ms(date_ms).date())
+        except (ValueError, OverflowError, OSError):
+            continue
+    return max((d for d in days if d <= today), default=None)
+
+
 def load_payouts(path="lotto_sms_raw.txt"):
     """-> [Payout], every prize the bank says it paid.
 

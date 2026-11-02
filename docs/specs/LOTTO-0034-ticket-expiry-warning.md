@@ -114,6 +114,17 @@ Items 1 to 4 were preference rather than deduction, taken with the user on
    nothing from the ticket. It is a malformed ticket, not an unknown game, so
    it must not say the draw calendar needs updating. §4.7 holds the wording.
 
+7. **Fourteen days without any lottery SMS is said out loud (LOTTO-0083).** The
+   warning reads only tickets it has, so a ticket bought during a gap gets no
+   warning. The user chose the limit and the once-a-day repeat on 2026-11-02.
+   Measured that day from `tickets.load()`: the median gap between purchase days
+   is 4 days, the 90th percentile 12, the 95th 17 and the longest 31. So some
+   ordinary gaps will draw the notice, which is why it says "if you have bought"
+   rather than claiming a fault.
+   **The limit:** this cannot help while no tray is running, as none was during
+   the gap LOTTO-0083 measured. The tray says it on its next start; only the
+   start-at-login switch closes that gap.
+
 ## 4. Design
 
 ### 4.1 The draw calendar, and why it is hardcoded
@@ -686,6 +697,31 @@ from any ticket. Of the form:
   a normal answer.
   *Breaks when:* the path is relative again (`--break relative_dump`).
 
+- **INV-82** — `supervise.sms_is_quiet()` is true when the dump's newest record
+  of any kind is `SMS_QUIET_DAYS` or more days old, or when there is no record or
+  no dump. `tickets.newest_record_date()` ignores a record dated after today.
+  *Test:* `tools/verify_expiry.py`, case `sms_quiet_rule`.
+  *Breaks when:* the limit moves (`--break quiet_a_day_late`), a future record
+  counts (`--break quiet_counts_future_records`), no record reads as not quiet
+  (`--break quiet_ignores_no_record`), or only tickets count
+  (`--break quiet_counts_tickets_only`).
+
+- **INV-83** — `supervise.sms_quiet_notices()` returns the fixed sentence
+  `SMS_QUIET_NOTICE`, with no date or count. It is in `FAULT_NOTICES`, is
+  recorded nowhere, and so repeats until an SMS arrives. The newest SMS's date is
+  a ticket's purchase date, so §3.3's exception does not reach this notice.
+  *Test:* `tools/verify_expiry.py`, case `sms_quiet_notice_is_fixed`.
+  *Breaks when:* the notice names a date (`--break quiet_notice_names_date`).
+
+- **INV-84** — The page's full body carries the notice while the phone is quiet,
+  judged by `serve.sms_quiet_view()` on each GET and never stored at build time,
+  because a quiet phone triggers no rebuild. A state with no `newest_sms` in its
+  model shows none of it.
+  *Test:* `tools/verify_page.py`, case `sms_quiet_on_page`. One build serves two
+  requests, and only the clock moves between them.
+  *Breaks when:* the verdict is frozen (`--break quiet_judged_at_build`) or the
+  section is dropped (`--break quiet_notice_hidden`).
+
 ## 6. Failure modes
 
 - **The dump is missing or unreadable.** `tickets.load()` **raises**
@@ -786,6 +822,10 @@ for `verify_page.py`.
 | `clock_is_sast_anywhere` | INV-64 |
 | `unsaved_state_pauses_warnings` | INV-65 |
 | `malformed_ticket_is_named` | INV-66 |
+| `tickets_load_from_any_directory` | INV-81 |
+| `sms_quiet_rule` | INV-82 |
+| `sms_quiet_notice_is_fixed` | INV-83 |
+| `sms_quiet_on_page` (in `tools/verify_page.py`) | INV-84 |
 
 **It goes in the data-dependent lane of `local-CI.sh`, not the CI lane.**
 `archive_results.json` is gitignored (`.gitignore` lists it under
@@ -890,6 +930,10 @@ would silently destroy the feature it exists to check, before every push.
 | INV-65 | `tools/verify_expiry.py::unsaved_state_pauses_warnings` |
 | INV-66 | `tools/verify_expiry.py::malformed_ticket_is_named` |
 | INV-81 | `tools/verify_expiry.py::tickets_load_from_any_directory` |
+| INV-82 | `tools/verify_expiry.py::sms_quiet_rule` |
+| INV-83 | `tools/verify_expiry.py::sms_quiet_notice_is_fixed` |
+| INV-84 | `tools/verify_page.py::sms_quiet_on_page` |
+| `tray.py::check_quiet_sms()`: its once-a-day guard and its `SMS_QUIET_GRACE_S` wait | **nothing** — the same exposure as §4.6's date guard above: the project has no Qt-constructing test. |
 | §4.6's date guard firing once a day — INV-53's `sync()` half — and its `bad=` flag | **nothing** — it lives in `tray.py::sync()`, which needs a `QSystemTrayIcon`; the project has no Qt-constructing test. The wording, the selection and the state file are all checkable because §4.7 puts them in `supervise.py`; the call site is not. Same exposure LOTTO-0003 INV-37 records. |
 | A draw day changing in the real world | **nothing in production** — INV-49 catches it only when the verifier is run. Accepted, as for `TIER_PRICES`. |
 | §4.5's write-before-notice ORDERING | **nothing** — inside `expiry_notices()` both orderings look identical to two successive calls, so INV-53 catches the write being removed and not its being moved. Observing it needs the process to die between the two statements. Held by the paragraph in §4.5. |
@@ -941,6 +985,7 @@ would silently destroy the feature it exists to check, before every push.
 | 5 | 2026-10-15 | 2, cold, via `neutral-lane` — genre pinned `spec`; new run, trigger the 2026-10-08 amendment for LOTTO-0007 (p)(q) | 0 | 0 | 1 | 0 | **One verified, one fixed; two dismissed.** Q3, one lane: the amendment adds two notices that report a fault (`WARN_STATE_NOTICE`, `MALFORMED_TICKET_NOTICE`), and `tray.py::note()` shows a failure with `bad=True`, but `expiry_notices()` returns bare strings and §4.6's snippet called `note(body)` — so a builder either shows the paused notice with the success icon or puts a string decision in `tray.py`, which §4.6 forbids. Fixed: `supervise.FAULT_NOTICES` holds the three fault notices and the tray passes `bad=body in supervise.FAULT_NOTICES`; §10's tray row now names the flag as unchecked. Two dismissed as true but changing nothing built, each corrected by deletion only: `TrayIcon.sync()` named a class `tray.py` does not have (it is `LottoTray`), now `sync()`; and §7's *three of the eight cases* / *the other five* against a twelve-row table, both lanes. Two lane open questions resolved clean and counted nowhere: INV-65's case will redden under the existing breaks `never_records` and `swallow_unknown_game`, which the builder declares in the verifier's `ALSO_RED`; and `tray.py::main()`'s comment calling the write path unguarded goes stale when INV-65 is built — code, not this document. `doc_integrity` clean; `spec_lint` only the project-wide INV id gaps; its test-surface checks did not run (ANTS-4393). Lane spend: about 162k and 324k cache-read+write tokens, 4 and 6 turns. |
 | 6 | 2026-10-15 | 2, cold, via `neutral-lane` — identical brief, packet rebuilt from disk | 0 | 1 | 1 | 0 | **Two verified, two fixed; none dismissed. Cap reached (2 for a spec); the run ships and its tail is empty.** Q2, one lane: the Status line's list of amended sections omitted §4.6, where loop 5's fix put the tray-side `bad=` flag — an implementer working from the list would never touch `tray.py`. Now listed. Q3, raised by both lanes as an open question and promoted by the orchestrator: §4.5 said defect notices recur *while paused* but not whether the failing call itself returns them beside `WARN_STATE_NOTICE`, and INV-65's case binds to that list. Now: returned in the failing call and every call after it. **Own-fix share 1 of 2** (the §4.6 omission was caused by loop 5's fix), so a middling cap, neither calm nor oscillating. Second share: the armed span was the 2026-10-08 amendment; all three of this run's verified findings bear on it (the §4.6 and §4.5 text it added, and the notices it introduced). The final loop's two fixes are read by no lane; implementation is their reader. Lane open questions resolved clean: two code comments go stale when INV-65 is built (`tray.py::main()`'s *unguarded* remark and `tools/verify_expiry.py`'s *FIVE cases* docstring) and INV-65's case needs `ALSO_RED` entries for `never_records` and `swallow_unknown_game` — code, for the build. `doc_integrity` clean. Lane spend: about 241k and 230k cache-read+write tokens, 5 turns each. |
 | amend-0086 | 2026-11-02 | none — amendment, no reviewer dispatched | — | — | — | — | **Not a review loop.** Origin: ROADMAP LOTTO-0086. Adds INV-81: the warning finds the dump whatever the working folder is. `tickets_load_from_any_directory` failed on the code before the fix and passes after it. |
+| amend-0083 | 2026-11-02 | none — amendment, no reviewer dispatched | — | — | — | — | **Not a review loop.** Origin: ROADMAP LOTTO-0083 and the user's choices of 2026-11-02. Adds §3 item 7 and INV-82 to INV-84. Each new break reddens the cases `ALSO_RED` declares for it. |
 
 ## 13. Resource cost
 

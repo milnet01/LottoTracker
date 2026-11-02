@@ -494,6 +494,65 @@ def tickets_load_from_any_directory():
     return "the dump is found from a folder that is not the repository"
 
 
+def _dump_with(*days):
+    """A temporary dump holding one record per date. No real data."""
+    folder = tempfile.mkdtemp()
+    _TEMP_DIRS.append(folder)
+    path = os.path.join(folder, "dump.txt")
+    with open(path, "w", encoding="utf-8") as fh:
+        for i, day in enumerate(days):
+            noon = datetime.datetime(day.year, day.month, day.day, 12,
+                                     tzinfo=clock.SAST)
+            fh.write(f"Row: {i} address=STDBANK, "
+                     f"date={int(noon.timestamp() * 1000)}, body=not a ticket\n")
+    return path, folder
+
+
+def sms_quiet_rule():
+    """INV-82: 14 days without a record of any kind is quiet; so is no record.
+
+    Every record here has a body neither parser reads, so a rule looking only at
+    tickets or payouts sees an empty dump and fails the 13-day line. A record
+    dated in the future must not count, or one skewed phone clock silences this.
+    """
+    quiet = [supervise.SMS_QUIET_NOTICE]
+    ago = lambda n: TODAY - datetime.timedelta(days=n)  # noqa: E731
+    path, folder = _dump_with(ago(13))
+    assert supervise.sms_quiet_notices(TODAY, path) == [], "quiet at 13 days"
+    path, _ = _dump_with(ago(14))
+    assert supervise.sms_quiet_notices(TODAY, path) == quiet, "not quiet at 14 days"
+    path, _ = _dump_with(ago(20), TODAY + datetime.timedelta(days=30))
+    assert supervise.sms_quiet_notices(TODAY, path) == quiet, (
+        "a record dated in the future silenced the notice")
+    path, _ = _dump_with()
+    assert supervise.sms_quiet_notices(TODAY, path) == quiet, "an empty dump is not quiet"
+    missing = os.path.join(folder, "absent.txt")
+    assert supervise.sms_quiet_notices(TODAY, missing) == quiet, "a missing dump is not quiet"
+    return "13 days silent, 14 days said; future, empty and missing handled"
+
+
+SMS_QUIET_TEXT = (
+    "No lottery SMS has reached this app for a while, so it cannot warn you "
+    "about a ticket bought since then. Check that your phone is connected "
+    "through KDE Connect."
+)
+
+
+def sms_quiet_notice_is_fixed():
+    """INV-83: the notice is one fixed sentence, reported as a fault, and recurs.
+
+    The newest SMS's date is a ticket's purchase date, so naming it would break
+    the rule that a notification carries no ticket data. Compared whole, for
+    notice_names_nothing_else's reason: anything added fails.
+    """
+    path, _ = _dump_with(TODAY - datetime.timedelta(days=79))
+    for _call in range(2):
+        got = supervise.sms_quiet_notices(TODAY, path)
+        assert got == [SMS_QUIET_TEXT], f"the notice is not the fixed sentence: {got!r}"
+    assert supervise.SMS_QUIET_NOTICE in supervise.FAULT_NOTICES, "not shown as a fault"
+    return "one fixed sentence, a fault, and it is not said only once"
+
+
 def draws_left_today_boundary():
     """INV-61: draws_left is 1 on a ticket's own final draw day, 0 the day after.
 
@@ -596,6 +655,8 @@ CASES = [
     ("unsaved_state_pauses_warnings", "INV-65", unsaved_state_pauses_warnings),
     ("malformed_ticket_is_named", "INV-66", malformed_ticket_is_named),
     ("tickets_load_from_any_directory", "INV-81", tickets_load_from_any_directory),
+    ("sms_quiet_rule", "INV-82", sms_quiet_rule),
+    ("sms_quiet_notice_is_fixed", "INV-83", sms_quiet_notice_is_fixed),
 ]
 
 BREAKS = {
@@ -614,6 +675,11 @@ BREAKS = {
     "pause_forgotten": "unsaved_state_pauses_warnings",
     "malformed_reads_as_unknown_game": "malformed_ticket_is_named",
     "relative_dump": "tickets_load_from_any_directory",
+    "quiet_a_day_late": "sms_quiet_rule",
+    "quiet_counts_future_records": "sms_quiet_rule",
+    "quiet_ignores_no_record": "sms_quiet_rule",
+    "quiet_counts_tickets_only": "sms_quiet_rule",
+    "quiet_notice_names_date": "sms_quiet_notice_is_fixed",
 }
 
 
@@ -645,6 +711,9 @@ ALSO_RED = {
     # and the one INV-65 requires to keep recurring while paused.
     "swallow_unknown_game": ["notice_names_nothing_else",
                              "unsaved_state_pauses_warnings"],
+    # The rule case compares against the notice itself, so changing what the
+    # notice says moves that case too.
+    "quiet_notice_names_date": ["sms_quiet_rule"],
 }
 
 
@@ -720,6 +789,27 @@ def _apply_break(name):
     elif name == "relative_dump":
         # The defect LOTTO-0086 fixed: the path resolves against the working folder.
         supervise.DUMP = "lotto_sms_raw.txt"
+    elif name == "quiet_a_day_late":
+        supervise.SMS_QUIET_DAYS = 15
+    elif name == "quiet_counts_future_records":
+        real_newest = supervise.newest_record_date
+
+        def counts_future(today, path="lotto_sms_raw.txt"):
+            return real_newest(datetime.date.max, path)
+        supervise.newest_record_date = counts_future
+    elif name == "quiet_ignores_no_record":
+        real = supervise.sms_is_quiet
+        supervise.sms_is_quiet = lambda newest, today: (
+            newest is not None and real(newest, today))
+    elif name == "quiet_counts_tickets_only":
+        def tickets_only(today, path):
+            days = [t.bought.date() for t in load(path) if t.bought.date() <= today]
+            return max(days, default=None)
+        supervise.newest_record_date = tickets_only
+    elif name == "quiet_notice_names_date":
+        real = supervise.sms_quiet_notices
+        supervise.sms_quiet_notices = lambda today, path=None: [
+            f"{body} Last seen {today}." for body in real(today, path)]
     elif name == "notice_per_unknown_ticket":
         real = supervise.expiry_notices
 

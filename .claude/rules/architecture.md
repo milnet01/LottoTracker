@@ -119,6 +119,10 @@ tool; an Ants-verb read does not load it.
   opposite direction to every read rule here and is deliberate: a crash then
   costs a missed notice rather than a repeated one, and *say it once* is a user
   decision. Do not harmonise the two.
+  It also owns the **stale-data notice** (LOTTO-0083): `sms_is_quiet()` for the
+  rule and `sms_quiet_notices()` for the fixed sentence. The page's half is
+  judged on each GET by `serve.sms_quiet_view()`, because a quiet phone triggers
+  no rebuild.
   It also owns `new_ticket_notice()`, for the same reason `refresh_message()`
   lives here: **a wording decision inside `tray.py` cannot be checked without
   constructing a `QSystemTrayIcon`**, and the project has no Qt-constructing

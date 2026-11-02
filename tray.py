@@ -14,6 +14,7 @@ rather than stylistic - see the comments at their sites.
 """
 
 import os
+import time
 import webbrowser
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
@@ -144,6 +145,10 @@ class LottoTray(QSystemTrayIcon):
         # The day the re-buy check last ran (LOTTO-0034 §4.6). None so the
         # first sync() after startup always checks.
         self.expiry_checked_on = None
+        # The same for the stale-data check, which also waits out the grace
+        # period from this moment (LOTTO-0034 INV-83).
+        self.quiet_checked_on = None
+        self.started = time.monotonic()
 
         menu = QMenu()
         self.act_open = menu.addAction("Open page", self.open_page)
@@ -183,6 +188,7 @@ class LottoTray(QSystemTrayIcon):
         self.act_open.setEnabled(on)
         self.check_new_tickets()
         self.check_expiring_tickets()
+        self.check_quiet_sms()
 
     def check_new_tickets(self):
         """Notice what the watcher appended, say so, and score it (LOTTO-0003).
@@ -232,6 +238,22 @@ class LottoTray(QSystemTrayIcon):
             # Which strings report a fault is supervise's decision, not this
             # file's (LOTTO-0034 s4.6): a paused or defect notice shows the
             # failure icon, a re-buy notice the ordinary one.
+            self.note(body, bad=body in supervise.FAULT_NOTICES)
+
+    def check_quiet_sms(self):
+        """Say once a day that no SMS has arrived for a while (LOTTO-0083).
+
+        The grace period comes first, so the day is not used up before the
+        watcher has had its chance to catch up. Same date guard as above, and
+        supervise.sms_quiet_notices() holds the decision and the wording.
+        """
+        if time.monotonic() - self.started < supervise.SMS_QUIET_GRACE_S:
+            return
+        today = clock.today()
+        if today == self.quiet_checked_on:
+            return
+        self.quiet_checked_on = today
+        for body in supervise.sms_quiet_notices(today):
             self.note(body, bad=body in supervise.FAULT_NOTICES)
 
     def note(self, body, bad=False):

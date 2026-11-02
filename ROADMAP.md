@@ -1711,8 +1711,13 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: doc.
   Source: user-request-2026-10-16.
 
-- 📋 [LOTTO-0083] **Say when the SMS data has gone stale, so a silent gap cannot hide a ticket running out.**
+- ✅ [LOTTO-0083] **Say when the SMS data has gone stale, so a silent gap cannot hide a ticket running out.**
   Measured 2026-10-30: the newest record in `lotto_sms_raw.txt` was dated 2026-08-15 and no `tray.py` or `watch_sms.py` was running. A search of `page.py`, `serve.py`, `supervise.py`, `tray.py` and `watch_sms.py` found no notice about the age of the dump; `serve.py`'s `stale` means a failed rebuild, not old data. The re-buy warning reads the tickets it has, so a ticket bought during such a gap gets no warning and nothing says so. This is sign 1's failure in its quietest form. To settle before building: how old counts as stale, given how often this user buys.
+  Settled 2026-11-02 with the user: 14 days, and the tray repeats once a
+  day. Spec: `docs/specs/LOTTO-0034-ticket-expiry-warning.md` §3 item 7,
+  INV-82 to INV-84. It cannot speak while no tray is running; the
+  start-at-login switch covers that, and LOTTO-0086 made that route warn
+  correctly.
   **Layman:** The app warns you when it has not heard from your phone for a long time, because it cannot warn about tickets it never saw.
   Kind: fix.
   Source: in-session-2026-10-30 (found by LOTTO-0037).

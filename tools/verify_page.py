@@ -2276,6 +2276,47 @@ def disclaimer_on_every_state():
     need(wording in readme, "the README does not carry the disclaimer")
 
 
+def sms_quiet_on_page():
+    """INV-84 — the page says when the phone went quiet, judged as it is shown.
+
+    A quiet phone triggers no rebuild, so a verdict stored at build time would
+    never turn true on a page left running: that is the failure this item exists
+    to end. So one build serves both requests, and only the clock moves.
+    """
+    import datetime
+
+    import clock
+
+    temp_home()
+    real_today = clock.today
+    newest = real_today() - datetime.timedelta(days=1)
+    build = lambda: fixture_model(newest_sms=newest.isoformat())  # noqa: E731
+    srv, state, port, _t = serve_on(build)
+    host = f"127.0.0.1:{port}"
+    try:
+        need(serve.refresh(state, build), "the opening refresh was declined")
+        need(state.wait_idle(5), "the opening build did not finish")
+        fresh = req(port, "GET", "/", host=host)[2]
+        need(b"No lottery SMS" not in fresh, "a recent SMS still drew the notice")
+
+        clock.today = lambda: newest + datetime.timedelta(days=14)
+        try:
+            old = req(port, "GET", "/", host=host)[2]
+        finally:
+            clock.today = real_today
+        need(b"No lottery SMS for 14 days." in old,
+             "14 days on, with no rebuild, the page does not say so")
+        need(newest.isoformat().encode() in old, "the notice names no date")
+    finally:
+        srv.shutdown()
+
+    empty = render_pure(fixture_model(sms_quiet={"newest": None, "days": None}))
+    need("No lottery SMS has been read yet." in empty,
+         "a dump with no record draws no notice")
+    need(serve.sms_quiet_view({"no_dump": True}, real_today()) is None,
+         "a state with its own notice also drew this one")
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -2300,6 +2341,7 @@ CASES = [
     ("deadline_only_when_unpaid", "INV-70", deadline_only_when_unpaid),
     ("unscored_month_not_zero", "INV-71", unscored_month_not_zero),
     ("disclaimer_on_every_state", "INV-78", disclaimer_on_every_state),
+    ("sms_quiet_on_page", "INV-84", sms_quiet_on_page),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -2344,11 +2386,21 @@ BREAKS = {
     "plural_ignored": "counts_read_as_english",
     "deadline_on_paid_win": "deadline_only_when_unpaid",
     "unscored_month_shows_zero": "unscored_month_not_zero",
+    "quiet_judged_at_build": "sms_quiet_on_page",
+    "quiet_notice_hidden": "sms_quiet_on_page",
 }
 
 
 def apply_render_breaks():
     """Breaks that live in the renderer rather than the server."""
+    if broken("quiet_judged_at_build"):
+        # The verdict frozen at the date the server started, not the date shown.
+        import clock
+
+        started, real_view = clock.today(), serve.sms_quiet_view
+        serve.sms_quiet_view = lambda model, today: real_view(model, started)
+    if broken("quiet_notice_hidden"):
+        page._sms_quiet_section = lambda model: ""
     if broken("disclaimer_with_data_only"):
         # Where a footer-only disclaimer would land: on the full page and on
         # none of the states that show no ticket data.

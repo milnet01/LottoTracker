@@ -67,6 +67,7 @@ from supervise import (  # noqa: E402
     autostart_path,
     read_settings,
     settings_path,
+    sms_is_quiet,
     write_atomic,
 )
 
@@ -436,8 +437,31 @@ def build_model():
         # LOTTO-0062 s4.4: records from a sender the bank is not known to use.
         # Still counted everywhere above; listed so a forgery is visible.
         "unknown_senders": check.unknown_senders(all_tickets, bank_paid),
+        # LOTTO-0083. The date, not a verdict: sms_quiet_view() judges it each
+        # time the page is shown, because a quiet phone triggers no rebuild.
+        "newest_sms": _iso(tickets.newest_record_date(today, DUMP)),
         "settings": _settings_snapshot(),
     }
+
+
+def _iso(day):
+    return day.isoformat() if day else None
+
+
+def sms_quiet_view(model, today):
+    """What the page says about the phone going quiet, or None (LOTTO-0034 INV-84).
+
+    Pure, like mark_current(). A model with no `newest_sms` key says nothing:
+    those are the states with their own notice and no ticket data. A key holding
+    None is a dump with no record in it, which is quiet with no date to name.
+    """
+    if "newest_sms" not in model:
+        return None
+    newest = model["newest_sms"]
+    day = datetime.date.fromisoformat(newest) if newest else None
+    if not sms_is_quiet(day, today):
+        return None
+    return {"newest": newest, "days": (today - day).days if day else None}
 
 
 # ------------------------------------------------------------------- state
@@ -761,6 +785,7 @@ def make_server(build_model_fn, token, port):
                     # model could never reach it. `found` deliberately does NOT
                     # join it - nothing in page.py renders it (§4.2).
                     "requests": requests,
+                    "sms_quiet": sms_quiet_view(model or {}, clock.today()),
                 }
             )
             if model is None and not error and not building:

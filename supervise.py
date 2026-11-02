@@ -26,6 +26,7 @@ import urllib.request
 
 import expiry
 from tickets import load as load_tickets
+from tickets import newest_record_date
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # Anchored here, never to the working folder: a tray started at login does not
@@ -171,10 +172,24 @@ WARN_STATE_NOTICE = (
     "save which tickets it has already warned you about. Check that your "
     "settings folder can be written to."
 )
+# LOTTO-0083. The user's choice, 2026-11-02, from the gaps between their
+# purchases: long enough that most ordinary gaps stay quiet, short enough that a
+# ticket bought during a gap may still be running.
+SMS_QUIET_DAYS = 14
+# How long a freshly started tray waits before judging. The watcher is still
+# catching up then, so the notice could be false within a minute of being said.
+SMS_QUIET_GRACE_S = 600
+# A fixed sentence with no date or count: the newest SMS's date is a ticket's
+# purchase date, and a notification carries no ticket data (CLAUDE.md, INV-83).
+SMS_QUIET_NOTICE = (
+    "No lottery SMS has reached this app for a while, so it cannot warn you "
+    "about a ticket bought since then. Check that your phone is connected "
+    "through KDE Connect."
+)
 # The notices that report a fault. tray.py shows these with note()'s failure
 # icon, and asks this set rather than deciding which strings are faults itself.
 FAULT_NOTICES = frozenset({UNKNOWN_GAME_NOTICE, MALFORMED_TICKET_NOTICE,
-                           WARN_STATE_NOTICE})
+                           WARN_STATE_NOTICE, SMS_QUIET_NOTICE})
 
 # Set by the first failed state-file write; cleared only by a restart (s4.5).
 _warn_state_unsaved = False
@@ -184,6 +199,30 @@ _warn_state_unsaved = False
 _DAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 _MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def sms_is_quiet(newest, today):
+    """Has the phone gone quiet? LOTTO-0034 INV-82.
+
+    `newest` is the date of the dump's newest record. None means there is no
+    record to be recent, so it counts as quiet.
+    """
+    return newest is None or (today - newest).days >= SMS_QUIET_DAYS
+
+
+def sms_quiet_notices(today, path=None):
+    """The stale-data notice, if one is owed today. LOTTO-0034 INV-82, INV-83.
+
+    Recorded nowhere, so it recurs each day until an SMS arrives: the user chose
+    that on 2026-11-02, and it is a report that collection may have stopped
+    rather than a re-buy nudge. A missing dump is quiet too. Nothing may raise
+    from here, because this runs in the tray's timer slot.
+    """
+    try:
+        newest = newest_record_date(today, path or DUMP)
+    except OSError:
+        newest = None
+    return [SMS_QUIET_NOTICE] if sms_is_quiet(newest, today) else []
 
 
 def expiry_notice(game_name, final_draw, draws_left):
