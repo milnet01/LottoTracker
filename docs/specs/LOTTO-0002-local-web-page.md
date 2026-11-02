@@ -23,6 +23,7 @@ findings were folded into the build. INV-68
 (`tools/verify_boards.py::odd_board_is_named`, three breaks) and INV-70
 (`tools/verify_page.py::deadline_only_when_unpaid`) pass, each observed
 failing under its own breaks.
+**Amended 2026-11-02** for LOTTO-0093: INV-100, §7, §11.
 **Amended 2026-11-02** for LOTTO-0092: §4.1, §4.9, INV-63, INV-97, INV-98, §7, §13.
 **Amended 2026-11-02** for LOTTO-0091: §4.1, INV-96, §7, §11.
 **Amended 2026-11-02** for LOTTO-0090: §4.1, §4.5, INV-93 to INV-95, §7, §11.
@@ -1399,6 +1400,16 @@ them unqualified.
   contrast at one.
   *Breaks when:* a bar is drawn for a month with no bucket, or a zero gets a sliver.
 
+- **INV-100** — A date in a table reads as `9 May 2026`, and a table sorted by date
+  orders on the cell's `data-sort`, which holds the ISO date. Added 2026-11-02
+  (LOTTO-0093). A reason in the *Why not* column is out of scope: `check.py` writes it
+  and the terminal output shares it, so it can still hold an ISO date.
+  *Test:* `tools/verify_page.py`, case `dates_read_as_words`. Breaks `iso_dates_shown`
+  and `sort_reads_the_words`. **What a click does is not tested**; it was checked in
+  Firefox on 2026-11-02, on the Every entry table in both directions. So was the look:
+  Dark at three window widths, Light at one, with no table overflowing at the widest.
+  *Breaks when:* the sort goes back to reading the cell's words, which do not order.
+
 ## 6. Failure modes
 
 - **The operator's API is unreachable.** Four of seven build attempts on
@@ -1527,6 +1538,7 @@ share their fixtures, their temporary-directory setup and their stub builder.
 | `typeface_in_page` | INV-96 |
 | `matched_balls_marked` | INV-97 |
 | `period_bars_say_the_figures` | INV-98 |
+| `dates_read_as_words` | INV-100 |
 | `tabs_never_hide_a_warning` | INV-89 |
 | `buy_again_on_overview` | INV-93 |
 | `paid_wins_shown` | INV-94 |
@@ -1695,6 +1707,7 @@ LOTTO-0014 §8.)
 | INV-96 the page's own typeface, with no fifth route and a system fallback | `tools/verify_page.py::typeface_in_page` — red-tested by `--break no_font`. **Nothing** judges the look |
 | INV-97 a win's balls say what matched, by the engine's rule | `tools/verify_page.py::matched_balls_marked` — red-tested by three breaks |
 | INV-98 a period's bars draw its figures, and a zero draws nothing | `tools/verify_page.py::period_bars_say_the_figures` — red-tested by `--break bars_ignore_zero`. **Nothing** judges the look |
+| INV-100 a table's dates read as words and sort on their ISO form | `tools/verify_page.py::dates_read_as_words` — red-tested by `--break iso_dates_shown` and `--break sort_reads_the_words` |
 | INV-93 the Overview says when to buy, from the tray's calendar, judged when shown | `tools/verify_page.py::buy_again_on_overview` — red-tested by five breaks. **Layout and the buttons run in the browser and no case runs them**; checked by hand in Firefox on 2026-11-02 |
 | INV-94 a paid win shows its numbers and no deadline | `tools/verify_page.py::paid_wins_shown` — red-tested by `--break no_paid_section` |
 | INV-95 game names, never pool keys | `tools/verify_page.py::games_by_their_names` — red-tested by `--break pool_keys_shown` |

@@ -23,6 +23,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Dates read like 9 May 2026, and the page has larger slips, stronger figures and quieter chrome** (LOTTO-0093)
+  The wins table no longer cuts off its Expires column. Won amounts stand out in the theme's accent colour, and the note about unchecked entries gives up its box. No figure changes.
+
 - **The wins show which numbers matched, spending draws bars, and themes show previews** (LOTTO-0092)
   A matched number is a filled ball and a missed one a ring. Tables have game-coloured
   dots, money headings over their figures and bold prizes. Settings shows each colour

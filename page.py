@@ -13,6 +13,7 @@ cell, a dash, a zero, or an absence from the table.
 
 import html
 import json
+from datetime import date
 
 TITLE = "Lotto Tracker"  # constant: INV-21 forbids ticket data in the title
 
@@ -164,12 +165,34 @@ def _boards_cell(boards):
     return f'<td class="nums">{"".join(parts)}</td>'
 
 
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _long_date(iso):
+    """9 May 2026, from 2026-05-09. Anything else comes back as it was."""
+    try:
+        d = date.fromisoformat(iso)
+    except (TypeError, ValueError):
+        return iso
+    return f"{d.day} {MONTHS[d.month - 1]} {d.year}"
+
+
+def _date_cell(iso, after="", cls=""):
+    """A date for a person, with the form that sorts in data-sort (INV-100). The
+    script orders on the attribute, so the words can change freely."""
+    attr = f' class="{cls}"' if cls else ""
+    if not iso:
+        return f"<td{attr}>{_e(iso)}{after}</td>"
+    return f'<td{attr} data-sort="{_e(iso)}">{_e(_long_date(iso))}{after}</td>'
+
+
 def _bought_cell(entry):
     """When the ticket was bought. Absent is said in words, like any other gap."""
     bought = entry.get("bought")
     if not bought:
         return '<td class="notcheckable">not recorded</td>'
-    return f"<td>{_e(bought)}</td>"
+    return _date_cell(bought)
 
 
 def _newest_first(items, date_key):
@@ -403,8 +426,8 @@ def _win_cells(w):
         _game_cell(w["game"], w["plus_flag"])
         + _win_number_cells(w)
         + f'<td>{_e(w.get("division"))}</td><td>{_e(w.get("matched"))}</td>'
-        f'<td>{_e(w.get("date"))}</td>'
-        f'<td class="money">{_e(_rands(w["amount_cents"]))}'
+        + _date_cell(w.get("date"))
+        + f'<td class="money">{_e(_rands(w["amount_cents"]))}'
         + (' <span class="muted">estimate</span>' if w.get("estimate") else "")
         + "</td>"
     )
@@ -437,25 +460,27 @@ def _wins_section(model):
             d = w.get("expires_in_days")
             cls = "soon" if d is not None and d <= 30 else ""
             if d == 0:
-                cls, when = "today", "today"
+                cls = "today"
+                expires = f'<td class="stack" data-sort="{_e(w.get("expires"))}">today</td>'
             elif d is not None and d < 0:
                 # Past its claim date. Not "today" - and s4.5 requires every
                 # win to name its date, which the old `d <= 0` branch threw
                 # away along with the distinction.
                 cls = "today"
-                when = (
-                    f'{_e(w.get("expires"))} '
-                    '<span class="muted">(claim date passed)</span>'
-                )
+                expires = _date_cell(
+                    w.get("expires"), ' <span class="muted">(claim date passed)</span>', "stack")
             else:
-                when = f"{_e(w.get('expires'))}"
-                if d is not None:
-                    when += f' <span class="muted">({_count(d, "day", "days")})</span>'
+                expires = _date_cell(
+                    w.get("expires"),
+                    "" if d is None
+                    else f' <span class="muted">({_count(d, "day", "days")})</span>',
+                    "stack")
             rows.append(
                 f'<tr class="{cls}" data-game="{_e(w["game"])}">'
                 + _win_cells(w)
                 + _payment_cell(w)
-                + f"<td>{when}</td></tr>"
+                + expires
+                + "</tr>"
             )
         body = _sorted_table(
             "wins",
@@ -508,7 +533,7 @@ def _outstanding_section(model):
         out = []
         for e in _newest_first(entries, "bought"):
             out.append(
-                f'<tr data-game="{_e(e["game"])}"><td>{_e(e["ref"])}</td>'
+                f'<tr data-game="{_e(e["game"])}"><td class="ref">{_e(e["ref"])}</td>'
                 + _bought_cell(e)
                 + _game_cell(e["game"], e["plus_flag"])
                 + _boards_cell(e.get("boards"))
@@ -558,7 +583,7 @@ def _entries_section(model):
         pool = f"{e['game']}/{e['plus_flag']}"
         rows.append(
             f'<tr data-game="{_e(e["game"])}" data-pool="{_e(pool)}">'
-            f'<td>{_e(e["ref"])}</td>'
+            f'<td class="ref">{_e(e["ref"])}</td>'
             + _bought_cell(e)
             + _game_cell(e["game"], e["plus_flag"])
             + f'<td class="money">{_e(_rands(e["cost_cents"]))}</td>'
@@ -674,7 +699,7 @@ def _glance_wins(model):
         soonest = min(w.get("expires") or "9999" for w in waiting)
         said = (
             f"<strong>{_count(len(waiting), 'win', 'wins')}</strong> waiting on "
-            f"the bank. The first claim deadline is {_e(soonest)}."
+            f"the bank. The first claim deadline is {_e(_long_date(soonest))}."
         )
     return (
         f'<div class="glance"><h3>Prizes</h3><p>{said}</p>'
@@ -691,7 +716,7 @@ def _glance_money(model):
         said = "No draw has been checked against a result yet, so there is nothing to compare."
     else:
         said = (
-            f'In {_e(year["label"])}, on the draws checked so far: spent '
+            f'Draws checked in {_e(year["label"])}: spent '
             f'<strong>{_e(_rands(year["spend_cents"]))}</strong>, won '
             f'<strong>{_e(_rands(year["won_cents"]))}</strong>.'
         )
@@ -755,12 +780,12 @@ def _spend_section(model):
         "spend against it would turn every unscorable entry into a loss.</p>"
         "<table><tbody>"
         f'<tr><td>Spent on entries that could be scored</td><td class="money">'
-        f'{_e(_rands(s.get("compared_cents", 0)))}</td><td>the comparison</td></tr>'
+        f'{_e(_rands(s.get("compared_cents", 0)))}</td><td class="muted">the comparison</td></tr>'
         f'<tr><td>Won on those same entries</td><td class="money">'
-        f'{_e(_rands(w.get("compared_cents", 0)))}</td><td>the comparison</td></tr>'
+        f'{_e(_rands(w.get("compared_cents", 0)))}</td><td class="muted">the comparison</td></tr>'
         f'<tr><td>Lifetime spend, every entry</td><td class="money">'
         f'{_e(_rands(s.get("lifetime_cents", 0)))}</td>'
-        "<td>separate figure &mdash; never subtracted from the line above</td></tr>"
+        '<td class="muted">separate figure &mdash; never subtracted from the line above</td></tr>'
         f"{unresolved}</tbody></table></section>"
     )
 
@@ -1070,14 +1095,17 @@ body{font:1.125rem/1.55 "Atkinson Hyperlegible Next",system-ui,sans-serif;margin
  color:var(--fg);background:var(--bg)}
 .column{box-sizing:border-box;width:max(75%,90rem);max-width:100%;margin:0 auto;padding:0 1.25rem}
 main.column{padding-top:1.5rem;padding-bottom:3rem}
-.topbar{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line)}
+.topbar{position:sticky;top:0;z-index:10;background:var(--panel);
+ background:color-mix(in srgb,var(--panel) 90%,transparent);backdrop-filter:blur(12px);
+ border-bottom:1px solid var(--line)}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 2rem;padding-top:.6rem}
 .brand{display:flex;align-items:center;gap:.6rem;padding-bottom:.6rem}
 .brand img{width:1.75rem;height:1.75rem}
 h1{font-size:1.5rem;font-weight:800;margin:0;letter-spacing:-.015em}
 .tabs{display:flex;flex:1 1 auto;gap:.25rem;overflow-x:auto;scrollbar-width:none;align-self:flex-end}
 .tab{padding:.5rem .9rem .7rem;background:none;border:0;border-bottom:4px solid transparent;
- border-radius:.4rem .4rem 0 0;color:var(--dim);cursor:pointer;white-space:nowrap;font-weight:700}
+ border-radius:.4rem .4rem 0 0;color:var(--dim);cursor:pointer;white-space:nowrap;font-weight:700;
+ transition:color .15s,border-color .15s}
 .tab:hover{color:var(--fg);border-bottom-color:var(--line)}
 .tab[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent)}
 .baractions{display:flex;align-items:center;gap:.75rem;padding-bottom:.6rem}
@@ -1091,9 +1119,12 @@ th{font-weight:700;color:var(--dim);border-bottom:2px solid var(--line)}
 tbody tr:hover td{background:var(--panel)}
 .cards th,.cards td{white-space:nowrap}
 .cards td.wrap{white-space:normal;min-width:14rem}
+#wins th,#wins td,#paid th,#paid td{padding-left:.4rem;padding-right:.4rem}
 .tablewrap{overflow-x:auto}
 .money{text-align:right;font-variant-numeric:tabular-nums}
-.won{font-weight:700}
+.won{font-weight:700;color:var(--accent)}
+td.ref{color:var(--dim)}
+td.stack .muted{display:block}
 .nil{color:var(--dim)}
 #wins td.money,#paid td.money{font-size:1.2rem;font-weight:700}
 .pip{display:inline-block;width:.8em;height:.8em;margin-right:.5em;border-radius:50%;background:#4a5568}
@@ -1127,7 +1158,11 @@ tbody tr:hover td{background:var(--panel)}
 .notice{background:var(--warn-bg);border-left:6px solid var(--accent);border-radius:.5rem;
  padding:.8rem 1.1rem;margin:.9rem 0}
 .notice.bad{background:var(--bad-bg);border-left-color:var(--bad)}
-.notice.standing{background:var(--panel);border-left-color:var(--line)}
+/* Above every tab by rule (INV-89), but nothing to act on: it keeps its place and gives
+   up its box, so the Overview's headline is the first thing that looks like news. */
+.notice.standing{background:none;border-left:3px solid var(--line);border-radius:0;
+ padding:.1rem 0 .1rem 1rem;color:var(--dim);font-size:1rem;max-width:90ch}
+.notice.standing strong{color:var(--fg)}
 .headline{font-size:clamp(2.1rem,4vw,3.25rem);font-weight:800;line-height:1.12;letter-spacing:-.025em;
  margin:1.75rem 0 1.5rem;text-wrap:balance}
 /* The running tickets are the page's one flourish: each is a lottery slip, with a stub
@@ -1136,24 +1171,25 @@ tbody tr:hover td{background:var(--panel)}
    the list rather than the slip because a parent's drop-shadow follows the notches. */
 .runs{list-style:none;display:grid;gap:1rem;margin:0 0 2.5rem;padding:0;
  filter:drop-shadow(0 0 1px var(--line)) drop-shadow(0 0 1px var(--line))}
-.run{--stub:16rem;--notch:.8rem;display:grid;grid-template-columns:var(--stub) minmax(0,max-content) 1fr;
+.run{--stub:16rem;--notch:.8rem;display:grid;grid-template-columns:var(--stub) minmax(0,1fr) minmax(15rem,24rem);
  align-items:stretch;border-radius:.9rem;overflow:hidden;background:var(--panel);
  mask:radial-gradient(circle var(--notch) at var(--stub) 0,transparent 97%,#000),
   radial-gradient(circle var(--notch) at var(--stub) 100%,transparent 97%,#000);
  mask-composite:intersect}
 .runname{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:.35rem;
- padding:1.1rem 1.4rem;color:#fff;font-size:1.65rem;font-weight:800;line-height:1.15;letter-spacing:-.015em}
+ padding:1.25rem 1.4rem;color:#fff;font-size:1.65rem;font-weight:800;line-height:1.15;letter-spacing:-.015em;
+ background-image:linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,0) 65%)}
 .runname .muted{color:#fff;font-size:1rem;font-weight:400;letter-spacing:0;line-height:1.3}
 .tag{padding:.1rem .7rem;border-radius:1rem;font-size:1.05rem;font-weight:700;letter-spacing:0;
  color:var(--warn);background:var(--warn-bg)}
-.burn{display:flex;flex-wrap:wrap;align-content:center;gap:.4rem;padding:1.1rem 1.75rem;
+.burn{display:flex;flex-wrap:wrap;align-content:center;gap:.5rem;padding:1.25rem 1.75rem;
  border-left:5px dotted var(--bg)}
-.burn .ball{min-width:1.85rem;height:1.85rem;margin:0}
+.burn .ball{min-width:2.4rem;height:2.4rem;margin:0}
 .burn .ball.used,[data-game] .burn .ball.used{background:var(--bg);
  box-shadow:inset 0 2px 3px rgba(0,0,0,.45),0 0 0 1px var(--line)}
 .burn .ball.used:after{display:none}
-.runfacts{align-self:center;padding:1.1rem 1.75rem 1.1rem 0}
-.runfacts strong{display:block;font-size:1.5rem;font-weight:800;line-height:1.2;letter-spacing:-.01em}
+.runfacts{align-self:center;padding:1.25rem 1.75rem 1.25rem 0}
+.runfacts strong{display:block;font-size:1.75rem;font-weight:800;line-height:1.2;letter-spacing:-.01em}
 .run:has(.tag){background:var(--warn-bg)}
 .run:has(.tag) .runfacts strong{color:var(--warn)}
 @keyframes punch{from{background:var(--g,#4a5568);box-shadow:none}}
@@ -1162,21 +1198,24 @@ tbody tr:hover td{background:var(--panel)}
 @media(prefers-reduced-motion:no-preference){
  html:not(.seen) .burn .ball.used{animation:punch .45s ease-out backwards;animation-delay:calc(var(--i)*70ms)}
 }
-.glances{display:flex;flex-wrap:wrap;gap:1.5rem 4rem}
-.glance{flex:1 1 22rem;border-top:2px solid var(--line)}
-.glance h3{margin-top:.9rem}
-.glance p{margin:.3rem 0 .9rem;max-width:60ch}
-.glance strong{font-size:1.25em;font-variant-numeric:tabular-nums}
-.golink{cursor:pointer;padding:.45rem 1rem;background:none;border:2px solid var(--accent);font-weight:700}
+.glances{display:flex;flex-wrap:wrap;gap:1rem}
+.glance{flex:1 1 22rem;display:flex;flex-direction:column;align-items:flex-start;
+ padding:.25rem 1.75rem 1.5rem;border-radius:.9rem;background:var(--panel)}
+.glance h3{margin-top:1rem}
+.glance p{flex:1;margin:.3rem 0 1.1rem;max-width:60ch;line-height:1.7}
+.glance strong{font-size:1.3em;font-weight:800;font-variant-numeric:tabular-nums}
+.golink{cursor:pointer;padding:.45rem 1rem;background:none;border:2px solid var(--accent);font-weight:700;
+ transition:background-color .15s,color .15s}
 .golink:hover{background:var(--accent);color:var(--bg)}
 html:not(.js) .golink{display:none}
 tr.soon td{background:var(--warn-bg)}tr.today td{background:var(--bad-bg);font-weight:600}
 .row{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1.25rem;margin:.5rem 0}
 section>p.muted{max-width:75ch}
 #panel-spending table{max-width:68rem}
-.bars{display:grid;grid-template-columns:auto 1fr;gap:.3rem .7rem;align-items:center;min-width:14rem;
+#periods td.money{font-size:1.5rem;font-weight:800}
+.bars{display:grid;grid-template-columns:auto 1fr;gap:.4rem .7rem;align-items:center;min-width:14rem;
  color:var(--dim);font-size:.95rem}
-.track{display:block;height:.9rem;border-radius:.45rem;background:var(--panel);overflow:hidden}
+.track{display:block;height:1.1rem;border-radius:.55rem;background:var(--panel);overflow:hidden}
 .fill{display:block;height:100%;border-radius:inherit}
 .spent{background:var(--dim)}
 .gain{background:var(--accent)}
@@ -1205,7 +1244,16 @@ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:v
 .disclaimer{margin-top:1rem;color:var(--dim);font-size:1rem;max-width:80ch}
 button,select{font:inherit;padding:.35rem .8rem;background:var(--panel);color:var(--fg);
  border:1px solid var(--line);border-radius:.5rem}
-select{cursor:pointer}
+/* The arrow is two triangles of the text colour, so each theme gets its own. */
+select{cursor:pointer;appearance:none;padding-right:2.2rem;
+ background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),
+  linear-gradient(135deg,currentColor 50%,transparent 50%);
+ background-size:.4rem .4rem;background-repeat:no-repeat;
+ background-position:right 1.1rem center,right .7rem center}
+select:hover{border-color:var(--dim)}
+html{scrollbar-color:var(--line) var(--bg)}
+html.seen .tabpanel.on{animation:appear .16s ease-out}
+@keyframes appear{from{opacity:0}}
 #refresh{cursor:pointer;background:var(--bg);white-space:nowrap}
 #refresh:hover{border-color:var(--accent)}
 button:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
@@ -1239,12 +1287,15 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
 }
 @media(max-width:36rem){
  .burn{padding:.9rem 1.2rem;gap:.25rem}
- .burn .ball{min-width:1.55rem;height:1.55rem}
+ .burn .ball{min-width:1.7rem;height:1.7rem}
  #periods tr{display:grid;grid-template-columns:1fr auto auto}
  #periods th:last-child{display:none}
  #periods td:last-child{grid-column:1/-1}
 }
-@media(prefers-reduced-motion:reduce){.slider,.slider:before{transition:none}}
+@media(prefers-reduced-motion:reduce){
+ .slider,.slider:before,.tab,.golink{transition:none}
+ html.seen .tabpanel.on{animation:none}
+}
 """
 
 CSS = _themes_css() + BASE_CSS
@@ -1343,7 +1394,7 @@ if(plf)plf.addEventListener("change",applyEntryFilter);
 function sortKey(row,col,kind){
  var t=row.cells[col]?row.cells[col].textContent.trim():"";
  if(kind==="num"){var n=parseFloat(t.replace(/[R, ]/g,""));return isNaN(n)?null:n}
- if(kind==="date")return /^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(t)?t:null;
+ if(kind==="date")return row.cells[col]&&row.cells[col].getAttribute("data-sort")||null;
  return t||null;
 }
 function sortTable(table,col,dir){
@@ -1579,7 +1630,8 @@ def render(model, token):
             )
             + "<footer>"
             + (
-                f"Results last checked: {_e(str(built)[:16].replace('T', ' at '))}."
+                f"Results last checked: {_e(_long_date(str(built)[:10]))} "
+                f"at {_e(str(built)[11:16])}."
                 if built
                 else "No successful build yet."
             )

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=92 -->
+<!-- ants-roadmap-id-high-water: LOTTO=93 -->
 
 # ROADMAP — LottoTracker
 
@@ -1813,6 +1813,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Now: on a win, a matched number is a filled ball and a missed one a ring. Money headings sit over their figures, each row has a dot in its game's colour, prizes are bold and a checked R0.00 steps back. A period draws Spent and Won as bars. Settings shows one preview per theme. The buy-soon slip is tinted, used draws punch out once on opening, and ten balls fit on a phone's line. Narrow-window cards lay their fields across, with labels above. Figures are unchanged.
   Contract: docs/specs/LOTTO-0002-local-web-page.md, INV-63, INV-97, INV-98.
   **Layman:** The wins now show at a glance which numbers matched, spending has bars, and you choose a colour theme by seeing it.
+  Kind: ux.
+  Source: user-request-2026-11-02.
+
+- ✅ [LOTTO-0093] **Read dates as words, keep the wins table on one screen and give the buy-again slips more room.**
+  The Expires column of the wins table was cut off in Firefox at a 1510-pixel window (measured 2026-11-02: 18 pixels of overflow at the first attempt, 0 after). Table dates keep their ISO form in data-sort, so sorting is unchanged (INV-100). The standing notice keeps its place above the tabs (INV-89) and loses its box.
+  **Layman:** Dates read like 9 May 2026, the widest table no longer cuts off its last column, and the ticket slips and money figures are larger.
   Kind: ux.
   Source: user-request-2026-11-02.
 

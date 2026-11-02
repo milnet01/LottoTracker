@@ -2430,6 +2430,23 @@ def sms_quiet_on_page():
          "a state with its own notice also drew this one")
 
 
+def dates_read_as_words():
+    """INV-100 — a table's dates read "1 Jul 2026", and sorting never reads them."""
+    html = render_pure(fixture_model())
+    tables = "".join(re.findall(r"<table id=.*?</table>", html, re.S))
+    need(tables, "the fixture rendered no table")
+    words = re.sub(r"<[^>]*>", " ", tables)
+    left = re.findall(r"\b20[0-9]{2}-[0-9]{2}-[0-9]{2}\b", words)
+    need(not left, f"a table still shows these dates as digits: {left}")
+    need(">1 Jul 2026<" in tables, "a date did not come out as 1 Jul 2026")
+    need('data-sort="2026-07-01"' in tables, "a date cell carries no sort key")
+    need('getAttribute("data-sort")' in page.JS,
+         "the table sort does not read the sort key, so it would order by the words")
+    need(page._long_date("not a date") == "not a date",
+         "text that is not a date did not come back unchanged")
+    need(page._long_date(None) is None, "a missing date was turned into something")
+
+
 def latest_first_and_sortable():
     """INV-85 — every ticket table opens latest first and offers other orders.
 
@@ -2455,17 +2472,17 @@ def latest_first_and_sortable():
         return t.group(0)
 
     html = render_pure(fixture_model(entries=ents + unchecked[:0], wins=wins))
-    got = re.findall(r"<td>ticket-([0-9a-z-]+)</td>", order("entries", html))
+    got = re.findall(r'<td class="ref">ticket-([0-9a-z-]+)</td>', order("entries", html))
     need(got == want, f"Every entry opens in the order {got}, want {want}")
-    draws = re.findall(r"<td>(2026-[0-9-]+)</td>", order("wins", html))
+    draws = re.findall(r'<td data-sort="(2026-[0-9-]+)">', order("wins", html))
     need(draws == ["2026-06-01", "2026-04-01", "2026-02-01"],
          f"Not yet paid opens in the order {draws}, want latest draw first")
 
     html = render_pure(fixture_model(entries=coming))
-    got = re.findall(r"<td>ticket-([0-9a-z-]+)</td>", order("coming", html))
+    got = re.findall(r'<td class="ref">ticket-([0-9a-z-]+)</td>', order("coming", html))
     need(got == want, f"Draws still to come opens in the order {got}")
     html = render_pure(fixture_model(entries=unchecked))
-    got = re.findall(r"<td>ticket-([0-9a-z-]+)</td>", order("unchecked", html))
+    got = re.findall(r'<td class="ref">ticket-([0-9a-z-]+)</td>', order("unchecked", html))
     need(got == want, f"Not checkable opens in the order {got}")
     need("not recorded" in order("unchecked", html),
          "a ticket with no purchase date does not say so")
@@ -2681,6 +2698,7 @@ def paid_wins_shown():
          "the paid win's drawn numbers are missing")
     need("Expires" not in table.group(0), "the paid table offers a deadline")
     need("2027-06-06" not in html, "a paid win's deadline is on the page")
+    need("6 Jun 2027" not in html, "a paid win's deadline is on the page, in words")
     need('<span class="ball">16</span>' not in table.group(0), "an unpaid win is filed as paid")
     none = render_pure(fixture_model(wins=[unpaid]))
     need("No win here has a matching payment" in none, "no paid win leaves the section blank")
@@ -2876,6 +2894,7 @@ CASES = [
     ("disclaimer_on_every_state", "INV-78", disclaimer_on_every_state),
     ("sms_quiet_on_page", "INV-84", sms_quiet_on_page),
     ("latest_first_and_sortable", "INV-85", latest_first_and_sortable),
+    ("dates_read_as_words", "INV-100", dates_read_as_words),
     ("page_follows_window_width", "INV-86", page_follows_window_width),
     ("app_icon_in_page", "INV-87", app_icon_in_page),
     ("typeface_in_page", "INV-96", typeface_in_page),
@@ -2891,6 +2910,8 @@ CASES = [
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
 BREAKS = {
     "oldest_first": "latest_first_and_sortable",
+    "iso_dates_shown": "dates_read_as_words",
+    "sort_reads_the_words": "dates_read_as_words",
     "no_sort_dropdown": "latest_first_and_sortable",
     "capped_width": "page_follows_window_width",
     "no_cards": "page_follows_window_width",
@@ -2961,6 +2982,10 @@ def apply_render_breaks():
     if broken("oldest_first"):
         page._newest_first = lambda items, key: sorted(
             items, key=lambda i: i.get(key) or "")
+    if broken("iso_dates_shown"):
+        page._long_date = lambda iso: iso
+    if broken("sort_reads_the_words"):
+        page.JS = page.JS.replace('.getAttribute("data-sort")', ".textContent")
     if broken("no_sort_dropdown"):
         real_table = page._sorted_table
         page._sorted_table = lambda *a, **k: re.sub(
