@@ -175,6 +175,7 @@ happen in `serve.py`'s builder, not in the renderer.
                "payment": str,              # check.payment_status(), LOTTO-0001 §4.4
                "ref_paid_cents": int|None,  # what the bank paid on this REFERENCE
                "ref_computed_cents": int|None} ],  # what the app computed for it
+  # Each win also carries "estimate": bool (LOTTO-0001 INV-90).
   "entries":[ {"ref", "bought", "game", "plus_flag", "pool_id", "cost_cents",
                "scorable": bool, "reason": str|None,   # serve.entry_reason(), §4.5
                "won_cents": int|None,                  # None iff not scorable

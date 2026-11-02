@@ -1722,8 +1722,14 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: fix.
   Source: in-session-2026-10-30 (found by LOTTO-0037).
 
-- 📋 [LOTTO-0084] **Price Daily Lotto from the results page, because the feed's Daily table is not what a draw paid.**
+- ✅ [LOTTO-0084] **Price Daily Lotto from the results page, because the feed's Daily table is not what a draw paid.**
   Measured 2026-10-30: the feed returned the same Daily Lotto prize table for two draws weeks apart, while the results page differed per draw and equalled the bank's message on all six wins checked. Today these read `high` with the reason `feed_price` (LOTTO-0029 INV-80). `check.py::amount()` prices every API-era draw from the feed. To settle before building: what the app shows when the page is not published yet, since INV-22 forbids a zero. Lotto and PowerBall feed prices agree with the bank, so the change is Daily Lotto's alone.
+  Shipped 2026-11-02; contract LOTTO-0001 INV-90. The open question is
+  settled: a page not yet published means the feed's figure, marked
+  "estimate" on the page, since INV-22 forbids a zero. Measured
+  2026-11-02 on the real data: the page differed from the feed on 9 of
+  10 Daily Lotto win lines. Records agreeing with the bank rose from 210
+  to 214, and the feed_price and unnamed reasons fell to none.
   **Layman:** The app shows the real Daily Lotto prize instead of a slightly wrong one from the official feed.
   Kind: fix.
   Source: in-session-2026-10-30 (found by LOTTO-0037).

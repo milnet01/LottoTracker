@@ -64,7 +64,8 @@ tool; an Ants-verb read does not load it.
   shapes; **`history.py`** normalises both into one draw record
   `{date, main, special, issue, source}` and is the only place that merges them.
   `issue` (the draw number) exists only for API draws — that asymmetry is why
-  `check.py::amount()` has two pricing paths.
+  `check.py::priced()` has two pricing paths. Daily Lotto takes the archive's path
+  on API draws too, because the feed's Daily prizes are wrong (INV-90).
 - **`check.py`** scores and prices. Prize divisions are read from the live
   source, never hardcoded (INV-5).
 - **The port is `$PORT`, else `$LOTTO_PORT`, else 4322** — the same precedence in

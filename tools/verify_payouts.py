@@ -443,8 +443,9 @@ def disagreements_are_named():
     a classifier that names everything is the failure sign of success 5 fears,
     because it empties the pile by hiding what is in it.
     """
-    def win(cents, date, game="lotto", source="archive"):
-        return dict(_win(SENTINEL, cents, date), game=game, source=source)
+    def win(cents, date, game="lotto", source="archive", estimate=False):
+        return dict(_win(SENTINEL, cents, date), game=game, source=source,
+                    estimate=estimate)
 
     def pay(cents, day):
         return tickets.Payout(SENTINEL, cents, datetime.strptime(day, "%Y-%m-%d"))
@@ -464,8 +465,12 @@ def disagreements_are_named():
          [pay(500, a), pay(333, a), pay(333, b)], "unnamed"),
         ("a small unknown excess", "low", 100, whole, [win(500, a)],
          [pay(600, a)], "unnamed"),
-        ("a feed price", "high", -19, whole, [win(500, a, "daily", "api")],
+        ("a feed price", "high", -19, whole, [win(500, a, "daily", "api", True)],
          [pay(481, a)], "feed_price"),
+        ("a low feed price", "low", 19, whole, [win(500, a, "daily", "api", True)],
+         [pay(519, a)], "feed_price"),
+        ("a page price is no estimate", "high", -19, whole,
+         [win(500, a, "daily", "api")], [pay(481, a)], "unnamed"),
         ("a win after the dump", "high", -1111, whole, [win(500, a), win(1111, late)],
          [pay(500, a)], "after_last_message"),
         ("one draw unpaid", "high", -1234, whole, [win(500, a), win(1234, b)],
@@ -487,11 +492,92 @@ def disagreements_are_named():
     return f"{len(cases)} reasons and near misses; reconcile() moves no figure"
 
 
+def daily_priced_from_its_page():
+    """INV-90 - a Daily Lotto draw is priced from its results page.
+
+    Stubs both sources, so it needs no network: which one answers is the question.
+    """
+    t = _ticket(SENTINEL, "daily", ((0, 100),), start=_STUB_START,
+                boards=[("A", [1, 2, 3, 4, 5], None)])
+    draw = {"date": "2026-07-01", "issue": 9, "main": [1, 2, 3, 6, 7], "special": None}
+    feed = [{"matches": check.api_label("daily", 3, None), "winAmount": 2000}]
+    real_pay, real_div = check.payouts, check.divisions
+
+    def gone(*_a):
+        raise OSError("the page is not there")
+
+    try:
+        check.divisions = lambda *a, **k: feed
+        for name, page, want in (
+            ("the page has the prize", lambda *a: {"3": 19.4}, (19.4, False)),
+            ("the page is out with no prizes", lambda *a: {}, (20.0, True)),
+            ("the page cannot be fetched", gone, (20.0, True)),
+        ):
+            check.payouts = page
+            got = check.priced(t, 0, 100, draw, 3, None)
+            assert got == want, f"{name}: {got}, want {want}"
+        # Neither source can say: a known win still raises, never prices at zero.
+        check.payouts, check.divisions = (lambda *a: {}), (lambda *a, **k: [])
+        try:
+            check.priced(t, 0, 100, draw, 3, None)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("no price anywhere did not raise (INV-22)")
+        # The other games keep the feed, whose prices agree with the bank.
+        lotto = _ticket(SENTINEL, start=_STUB_START)
+        check.payouts = lambda *a: {"3": 99.0}
+        check.divisions = lambda *a, **k: [
+            {"matches": check.api_label("lotto", 3, False), "winAmount": 2000}]
+        got = check.priced(lotto, 0, 100, draw, 3, False)
+        assert got == (20.0, False), f"Lotto left the feed: {got}"
+    finally:
+        check.payouts, check.divisions = real_pay, real_div
+
+    # A page with no prizes is not kept, or it would stay empty for good.
+    import backfill
+    import tempfile
+    import urllib.request
+
+    class Reply:
+        def __init__(self, body):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+        def read(self):
+            return self.body
+
+    row = b"<table><tr><td>1</td><td>3</td><td>R19.40</td></tr></table>"
+    real_cache, real_open, real_sleep = (
+        backfill.CACHE, urllib.request.urlopen, backfill.time.sleep)
+    with tempfile.TemporaryDirectory() as tmp:
+        backfill.CACHE, backfill.time.sleep = tmp, lambda _s: None
+        try:
+            urllib.request.urlopen = lambda *a, **k: Reply(b"<p>not out yet</p>")
+            assert backfill.payouts("daily", 0, "2026-07-01") == {}
+            assert not os.listdir(tmp), "a page with no prizes was cached"
+            urllib.request.urlopen = lambda *a, **k: Reply(row)
+            assert backfill.payouts("daily", 0, "2026-07-01") == {"3": 19.4}
+            assert len(os.listdir(tmp)) == 1, "a page with prizes was not cached"
+            urllib.request.urlopen = gone
+            assert backfill.payouts("daily", 0, "2026-07-01") == {"3": 19.4}
+        finally:
+            backfill.CACHE, backfill.time.sleep = real_cache, real_sleep
+            urllib.request.urlopen = real_open
+    return "the page answers first, the feed is marked, an empty page is not kept"
+
+
 CASES = [
     ("purchase_is_not_a_payout", "INV-40", purchase_is_not_a_payout),
     ("multiple_payouts_sum", "INV-41", multiple_payouts_sum),
     ("cents_not_floats", "INV-42", cents_not_floats),
     ("disagreement_keeps_both", "INV-43", disagreement_keeps_both),
+    ("daily_priced_from_its_page", "INV-90", daily_priced_from_its_page),
     ("unscored_is_not_unexplained", "INV-44", unscored_is_not_unexplained),
     ("categories_partition", "INV-45", categories_partition),
     ("unpaid_carries_draw_date", "INV-46", unpaid_carries_draw_date),
@@ -506,6 +592,7 @@ ACTIVE_CASE = None  # set by main(); a break fires only in its own case
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
 BREAKS = {
+    "daily_from_feed": "daily_priced_from_its_page",
     "accept_debits": "purchase_is_not_a_payout",
     "payout_per_message": "multiple_payouts_sum",
     "compare_in_rands": "cents_not_floats",
@@ -568,6 +655,9 @@ def _apply_break(name):
             return False, expires                  # the far side never fires
 
         check.claim_deadline = broken_cd
+        return
+    if name == "daily_from_feed":
+        check.daily_page_price = lambda *a: None
         return
     if name == "reason_never_unnamed":
         real_why = check.disagreement_reason

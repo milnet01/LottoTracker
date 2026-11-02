@@ -4,6 +4,7 @@
 Prize lookup differs by era, which is the only real complexity here:
   - API draws (2026-06-01 on) carry a draw number, so divisions() prices them
   - archive draws do not, so the payout page for that date is scraped instead
+  - Daily Lotto takes the page in both eras, as the feed's prizes are wrong (INV-90)
 
 Both are cached, so a re-run is cheap.
 """
@@ -214,8 +215,31 @@ def retired_divisions(game, plus_flag=0, pool_id=100):
     return _retired[key]
 
 
+def daily_page_price(ticket, plus_flag, draw, hits, special):
+    """A Daily Lotto draw's prize from its results page, or None (INV-90).
+
+    The feed's Daily table is not what a draw paid: measured 2026-10-30 it held
+    one table for draws weeks apart, while the page differed per draw and equalled
+    the bank's message. None means the page cannot say yet, usually because the
+    draw is too recent, and never that the prize was zero.
+    """
+    try:
+        table = payouts(ticket.game, plus_flag, draw["date"])
+    except OSError:  # URLError and HTTPError are both OSError: the page is not there
+        return None
+    return table.get(site_label(ticket.game, hits, special))
+
+
 def amount(ticket, plus_flag, pool_id, draw, hits, special):
-    """What this match paid, in rands. Raises if the price cannot be read.
+    """What this match paid, in rands. See priced()."""
+    return priced(ticket, plus_flag, pool_id, draw, hits, special)[0]
+
+
+def priced(ticket, plus_flag, pool_id, draw, hits, special):
+    """(rands, estimate) for this match. Raises if the price cannot be read.
+
+    `estimate` is True only for a Daily Lotto prize taken from the feed because
+    its results page cannot say yet (INV-90), and the page says so beside it.
 
     The pool comes from the entry being scored, never from the ticket's top
     tier: each tier runs its own draw with its own prize pool, so pricing a
@@ -232,12 +256,18 @@ def amount(ticket, plus_flag, pool_id, draw, hits, special):
     0.0, because the source stated it.
     """
     where = f"{ticket.game}/{plus_flag} pool {pool_id} draw {draw['date']}"
+    estimate = False
     if draw["issue"] is not None:
+        if ticket.game == "daily":
+            price = daily_page_price(ticket, plus_flag, draw, hits, special)
+            if price is not None:
+                return price, False
+            estimate = True
         want = api_label(ticket.game, hits, special)
         rows = divisions(ticket.game, draw["issue"], pool_id, plus_flag)
         for lvl in rows:
             if lvl["matches"].upper().strip() == want:
-                return lvl["winAmount"] / 100
+                return lvl["winAmount"] / 100, estimate
         raise RuntimeError(
             f"{where}: won {want!r} but the API's division table "
             f"{'is empty' if not rows else 'does not carry that label'} - "
@@ -245,12 +275,12 @@ def amount(ticket, plus_flag, pool_id, draw, hits, special):
         )
     table = payouts(ticket.game, plus_flag, draw["date"])
     if (exact := site_label(ticket.game, hits, special)) in table:
-        return table[exact]
+        return table[exact], False
     # Pre-handover draws did not all share one division structure: some list a
     # bottom tier of "2 + Bonus", others a plain "2". When the bonus-qualified
     # label is absent, the plain match is the tier that actually paid.
     if (plain := str(hits)) in table:
-        return table[plain]
+        return table[plain], False
     raise RuntimeError(
         f"{where}: won {exact!r} but the payout page "
         f"{'could not be parsed' if not table else f'carries no {exact!r} or {plain!r} row'}"
@@ -300,6 +330,7 @@ def check(tickets=None, today=None):
                         continue
                     drawn = datetime.strptime(d["date"], "%Y-%m-%d")
                     expired, expires = claim_deadline(drawn, today)
+                    rands, estimate = priced(t, plus_flag, pool_id, d, hits, special)
                     wins.append(
                         {
                             "ref": t.ref,
@@ -320,7 +351,8 @@ def check(tickets=None, today=None):
                             "date": d["date"],
                             "division": pays[label],
                             "matched": site_label(t.game, hits, special),
-                            "amount": amount(t, plus_flag, pool_id, d, hits, special),
+                            "amount": rands,
+                            "estimate": estimate,
                             "source": d["source"],
                             "expired": expired,
                             "expires": expires,
@@ -415,8 +447,10 @@ def disagreement_reason(category, gap, tix, ref_wins, ref_payouts, newest_paid):
         same = Counter((p.cents, str(p.received)[:10]) for p in ref_payouts)
         if gap == sum(cents * (n - 1) for (cents, _), n in same.items()):
             return "repeated_message"
+        if any(w.get("estimate") for w in ref_wins):
+            return "feed_price"
         return "unnamed"
-    if any(w["game"] == "daily" and w["source"] == "api" for w in ref_wins):
+    if any(w.get("estimate") for w in ref_wins):
         return "feed_price"
     per_draw = {}
     for w in ref_wins:
@@ -590,7 +624,7 @@ CATEGORY_NOTE = {
 REASON_NOTE = {
     "unscorable_entry": "an entry nothing can score, such as Daily Lotto Plus, may have won",
     "repeated_message": "the bank sent the same amount twice on one day",
-    "feed_price": "the results feed's Daily Lotto prize is not what the draw paid",
+    "feed_price": "a Daily Lotto prize is an estimate until its results page is out",
     "after_last_message": "drawn after the newest bank message in the dump",
     "no_message_for_draw": "the dump holds no bank message for one draw",
     "unnamed": "NO REASON FOUND",

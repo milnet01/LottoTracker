@@ -358,7 +358,9 @@ def _wins_section(model):
                 + _numbers_cell(w.get("drawn_main"), w.get("drawn_special"))
                 + f'<td>{_e(w.get("division"))}</td><td>{_e(w.get("matched"))}</td>'
                 f'<td>{_e(w.get("date"))}</td>'
-                f'<td class="money">{_e(_rands(w["amount_cents"]))}</td>'
+                f'<td class="money">{_e(_rands(w["amount_cents"]))}'
+                + (' <span class="muted">estimate</span>' if w.get("estimate") else "")
+                + "</td>"
                 + _payment_cell(w)
                 + f"<td>{when}</td></tr>"
             )

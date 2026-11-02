@@ -2403,6 +2403,17 @@ def page_follows_window_width():
          "ordinary cells can still wrap")
 
 
+def estimate_is_said():
+    """INV-90, the page half: a prize still from the feed says it is an estimate."""
+    base = dict(fixture_model()["wins"][0], payment="unpaid")
+    said = render_pure(fixture_model(wins=[dict(base, estimate=True)]))
+    need('<span class="muted">estimate</span>' in said,
+         "a Daily Lotto prize from the feed is not marked as an estimate")
+    plain = render_pure(fixture_model(wins=[dict(base, estimate=False)]))
+    need('<span class="muted">estimate</span>' not in plain,
+         "a prize read from its results page is marked as an estimate")
+
+
 def tabs_never_hide_a_warning():
     """INV-89 — the sections sit in tabs, and no warning sits inside one.
 
@@ -2500,6 +2511,7 @@ CASES = [
     ("page_follows_window_width", "INV-86", page_follows_window_width),
     ("app_icon_in_page", "INV-87", app_icon_in_page),
     ("tabs_never_hide_a_warning", "INV-89", tabs_never_hide_a_warning),
+    ("estimate_is_said", "INV-90", estimate_is_said),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -2510,6 +2522,7 @@ BREAKS = {
     "no_cards": "page_follows_window_width",
     "no_icon": "app_icon_in_page",
     "warning_in_a_tab": "tabs_never_hide_a_warning",
+    "estimate_unmarked": "estimate_is_said",
     "no_drawn_numbers": "numbers_chosen_and_drawn",
     "blank_numbers_cell": "numbers_chosen_and_drawn",
     "disclaimer_with_data_only": "disclaimer_on_every_state",
@@ -2568,6 +2581,10 @@ def apply_render_breaks():
         page.CSS = page.CSS.replace("width:max(75%,90rem)", "width:64rem")
     if broken("no_cards"):
         page.CSS = page.CSS.replace("@media(max-width:90rem)", "@media print")
+    if broken("estimate_unmarked"):
+        real_render_e = page.render
+        page.render = lambda model, token: real_render_e(model, token).replace(
+            ' <span class="muted">estimate</span>', "")
     if broken("warning_in_a_tab"):
         real_wins = page._wins_section
         real_quiet = page._sms_quiet_section

@@ -224,23 +224,35 @@ PAYOUT_SLUG = {
 
 
 def payouts(game, plus_flag, date):
-    """{'3': 19.40, '2 + Bonus': 30.00, ...} in rands, for one archive draw."""
+    """{'3': 19.40, '2 + Bonus': 30.00, ...} in rands, for one draw.
+
+    Only a page that has prizes on it is kept. A draw's page can be fetched before
+    its prizes are published, and caching that would freeze it empty for good, so
+    an empty answer is fetched again next time (LOTTO-0001 INV-90).
+    """
     y, m, d = date.split("-")
     slug = PAYOUT_SLUG[(game, plus_flag)]
     month = [k for k, v in MONTHS.items() if v == int(m)][0]
     path = f"{CACHE}/payout-{slug}-{date}.html"
     if os.path.exists(path):
         with open(path, encoding="utf-8", errors="replace") as fh:
-            html = fh.read()
-    else:
-        url = f"{BASE}/{slug}/results/{int(d):02d}-{month}-{y}"
-        req = urllib.request.Request(url, headers={"User-Agent": UA})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            html = r.read().decode("utf-8", "replace")
+            out = _prize_rows(fh.read())
+        if out:
+            return out
+    url = f"{BASE}/{slug}/results/{int(d):02d}-{month}-{y}"
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        html = r.read().decode("utf-8", "replace")
+    time.sleep(1)
+    out = _prize_rows(html)
+    if out:
         os.makedirs(CACHE, exist_ok=True)
         _write_atomic(path, html)
-        time.sleep(1)
+    return out
 
+
+def _prize_rows(html):
+    """A payout page's division rows: {label: rands}. {} when it carries none."""
     out = {}
     for row in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S):
         cells = [

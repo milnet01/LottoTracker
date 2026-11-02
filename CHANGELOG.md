@@ -24,6 +24,8 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Price Daily Lotto from the results page, because the feed's Daily table is not what a draw paid.** (LOTTO-0084)
+
 - **The SMS catch-up read a conversation list still empty as finished, and reported nothing to collect.** (LOTTO-0088)
 
 - **Re-buy warnings now work when the tray icon starts by itself at login** (LOTTO-0086)
