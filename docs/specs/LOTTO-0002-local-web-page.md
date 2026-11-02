@@ -723,7 +723,8 @@ The page renders per entry:
   cell in a money column reads as nil, which is the failure this project exists
   to prevent.
 - A ticket checkable in one pool and not another renders **both** facts on the
-  same row. All 11 `Daily Lotto Plus` tickets are this shape; a page that files
+  same row. A `Daily Lotto Plus` ticket older than that pool's first listed draw
+  is this shape; a page that files
   each ticket under one heading would have to pick a wrong one.
 - The counts banner (974 of 1,233 entries, 426 tickets wholly and 11 partly)
   renders above the wins, not below, and is not collapsible. It names each

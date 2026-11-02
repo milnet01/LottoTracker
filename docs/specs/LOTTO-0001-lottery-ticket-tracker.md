@@ -54,7 +54,7 @@ things make manual checking impractical, and each shapes the design:
    **every** pool they were entered in, which is a per-pool gate and not one
    global cutoff date (§4.4, §9). Of those
    132, 11 are checkable in one pool and not another, because no source
-   publishes `daily/1`; LOTTO-0009 scores those on the pools that remain and
+   then published `daily/1` (LOTTO-0085 scores it); LOTTO-0009 scores those on the pools that remain and
    counts in **entries** rather than tickets, since one ticket is entered in
    every tier its price paid for.
    `python3 -c "from tickets import load; ts=load(); print(len(ts), sum(len(t.boards) for t in ts))"` → `558 745`
@@ -223,14 +223,13 @@ table alone reproduces the bug LOTTO-0009 removed.
 | `Lotto 5 Max` | lotto | 2 | 102 — the June 2026 name for Lotto Plus 2, an alias (LOTTO-0031) |
 | `PowerBall XTRA` | powerball | 1 | 101 — the June 2026 name for Powerball Plus, an alias (LOTTO-0031) |
 | `Daily Lotto` | daily | 0 | 100 |
-| `Daily Lotto Plus` | daily | 1 | 101 — **no source carries this pool** |
+| `Daily Lotto Plus` | daily | 1 | 101 — **the archive alone carries this pool** |
 
-`Daily Lotto Plus` appears on 11 tickets and has no pool in either results
-source. It resolves to an always-empty pool so those **entries** report as
-uncheckable; aliasing it onto plain Daily Lotto would score them against a
-different game. Since LOTTO-0009 the tickets themselves are not uncheckable —
-their `daily/0` entry is scored, and they are reported as *partly*
-uncheckable. API `gameId`s are LOTTO 11101, POWERBALL 11201,
+`Daily Lotto Plus` has its own pool in the archive and none in the feed
+(ADR-0014). Aliasing it onto plain Daily Lotto would score it against a
+different game. An entry older than the pool's first listed draw reports as
+uncheckable; its ticket's `daily/0` entry is still scored, so the ticket is
+*partly* uncheckable. API `gameId`s are LOTTO 11101, POWERBALL 11201,
 DAILY_LOTTO 11001 — observed constants, taken from the site's own bundle.
 
 Two traps, both of which produce plausible-looking wrong answers:
@@ -312,12 +311,12 @@ strings are not derivable from `(game, plus_flag)` — two of them are the June
 | powerball, 0 | `PowerBall` |
 | powerball, 1 | `PowerBall XTRA` — **not** "PowerBall Plus" |
 | daily, 0 | `DAILY LOTTO` |
-| daily, 1 | `DAILY LOTTO PLUS` — no source publishes it (§4.2) |
+| daily, 1 | `DAILY LOTTO PLUS` — the feed never carried it (§4.2) |
 
 An implementer who guesses these gets **zero API draws for `lotto/2` and
 `powerball/1`** with no error — the pool simply never matches, which is the
 cardinal failure one layer below scoring. The seven rows are also what INV-26's
-ceiling of six live pools counts.
+ceiling of seven live pools counts.
 
 The API is unauthenticated and needs no key. Endpoints were found by reading
 the site's own JavaScript bundle; they are what its results page calls.
@@ -375,8 +374,9 @@ record silently takes the first N draws the record *does* hold — real draws,
 wrong ones — and every count-based check still reports it as correct.
 **Since LOTTO-0006 (2026-08-31) that window is empty**: the archive reaches back
 to the year of the earliest purchase SMS, so no entry predates its pool's data.
-Every uncheckable entry today is uncheckable for the *other* reason — `daily/1`,
-which no source publishes (§4.2). **The gate is not thereby spent**, and neither
+LOTTO-0085 (2026-11-02) reopened it: `daily/1` entries older than that pool's
+first listed draw fall in it, and no entry today is uncheckable for the *other*
+reason. **The gate is not thereby spent**, and neither
 is the split: the window reopens the moment an older ticket is imported, which
 is precisely the failure this exists to make safe. The two reasons are counted
 separately and must stay that way: merging them is how "nobody publishes this"
@@ -570,8 +570,9 @@ in the project, not the next free number in this file.
   draw, and the run exits non-zero if any does not. Without that floor a
   renamed pool contributes nothing and the run still passes on the strength of
   the other five, which is the regression the floor exists to catch. `daily:1`
-  (Daily Lotto Plus) is exempt via `EXPECTED_EMPTY` — no source publishes it,
-  so zero overlap is its correct state, not rot. The comparison is
+  (Daily Lotto Plus) is exempt via `EXPECTED_EMPTY` — the feed never carried it,
+  so zero overlap is its correct state, not rot, and the run fails if the
+  archive holds none of its draws. The comparison is
   order-insensitive by design — the archive sorts ascending, the API preserves
   drawn order.
 
@@ -691,11 +692,14 @@ in the project, not the next free number in this file.
   division retired before that draw is outside this invariant entirely — it is
   §4.4's silent-drop case, and INV-31 below is what covers it.
   *Test:* `python3 tools/verify_pools.py` (repo root, after `backfill.py`) →
-  `division-label reach: 6 live pools, 0 unreachable divisions, 0 vacuous`
-  (2026-08-03) for the sweep, and
+  `division-label reach: 7 live pools, 0 unreachable divisions, 0 vacuous`
+  (2026-11-02) for the sweep, and
   `unnameable-division guard: 3 probes, 0 unguarded` (2026-08-04) for the
-  raise. Six is also the **ceiling**: `history.py::POOL_NAMES` holds
-  seven pools and `daily/1` can never pass `reaches()`, so unlike every other
+  raise. `daily/1` has no feed, so `archive_divisions()` reads its
+  divisions from its newest results page and refuses the same way
+  (`archive-page divisions: 4 probes, 0 wrong`, 2026-11-02; ADR-0014).
+  Seven is also the **ceiling**: `history.py::POOL_NAMES` holds
+  seven pools, so unlike every other
   count in this document the pool count cannot grow — it can only fall, and
   falling is what the floor below exists to catch.
   **The floor is part of the check, as it is for INV-3 and INV-6.** The pool
@@ -787,8 +791,8 @@ in the project, not the next free number in this file.
   follow-up this makes possible, and is worth building once there is something
   to count.
   *Test:* `python3 tools/verify_pools.py` (repo root, after `backfill.py`) →
-  `retired-division guard: 6 live pools, 0 carrying a retired division, 3
-  probes, 0 blind` (2026-08-12). Zero is the entire live population today,
+  `retired-division guard: 7 live pools, 0 carrying a retired division, 3
+  probes, 0 blind` (2026-11-02). Zero is the entire live population today,
   which is precisely why the three probes are part of the check rather than a
   supplement to it: a detector that has gone blind and a set of healthy pools
   print the same zero. Both directions were observed red before the case was

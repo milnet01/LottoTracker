@@ -17,6 +17,7 @@ file. That bullet is the rule; the record is its reasoning.
 - [ADR-0008 — The re-buy warning reads the calendar, never the results](ADR-0008-rebuy-reads-calendar.md)
 - [ADR-0009 — Every date is South African time, read through `clock.py`](ADR-0009-dates-are-sast.md)
 - [ADR-0010 — `paying_combinations()` raises on a pool with no recent draw](ADR-0010-paying-combinations-raises.md)
-- [ADR-0011 — Daily Lotto Plus maps to a pool no source carries](ADR-0011-daily-plus-unmapped.md)
+- [ADR-0011 — Daily Lotto Plus maps to a pool no source carries](ADR-0011-daily-plus-unmapped.md) (superseded by ADR-0014)
 - [ADR-0012 — Source-agreement comparison is set-based](ADR-0012-source-agreement-set-based.md)
 - [ADR-0013 — Payout slugs use the post-rebrand names for historic draws](ADR-0013-rebrand-slugs.md)
+- [ADR-0014 — Daily Lotto Plus is scored from the archive alone](ADR-0014-daily-plus-archive-only.md)

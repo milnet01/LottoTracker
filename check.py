@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 
 import clock
 from backfill import payouts
-from history import POOL_NAMES, all_draws, covered, scorable
+from history import ARCHIVE_ONLY, POOL_NAMES, all_draws, covered, scorable
 from results import divisions, draws
 from tickets import load, load_payouts, terminal_safe
 
@@ -42,6 +42,8 @@ def paying_combinations(game, plus_flag=0, pool_id=100):
     the divisions from, and a division read but unnameable (INV-26).
     """
     key = (game, plus_flag, pool_id)
+    if key not in _struct and (game, plus_flag) in ARCHIVE_ONLY:
+        _struct[key] = archive_divisions(game, plus_flag)
     if key not in _struct:
         # ONE pool selector for the project. history.py picks the same rows out
         # of the same feed by winPoolName; a second encoding here on plusFlag
@@ -74,6 +76,28 @@ def paying_combinations(game, plus_flag=0, pool_id=100):
             )
         _struct[key] = table
     return _struct[key]
+
+
+def archive_divisions(game, plus_flag):
+    """paying_combinations() for a pool the feed never carried (ADR-0014).
+
+    Read from the results page of the pool's newest draw, so the divisions are
+    still read and never hardcoded (INV-5). The page lists them best first,
+    which is their division number. Raises for paying_combinations()'s reasons.
+    """
+    rows = all_draws(game, plus_flag)
+    page = payouts(game, plus_flag, rows[-1]["date"]) if rows else {}
+    named = {
+        site_label(game, hits, False): api_label(game, hits, False)
+        for hits in range(MAINS[game] + 1)
+    }
+    if not page or set(page) - set(named):
+        raise RuntimeError(
+            f"{game} plusFlag={plus_flag}: its newest results page carries "
+            f"divisions {sorted(page)}, which cannot be named as a complete set, "
+            f"so nothing in this pool can be scored"
+        )
+    return {named[label]: f"DIV {n}" for n, label in enumerate(page, 1)}
 
 
 def match(ticket, board, draw):

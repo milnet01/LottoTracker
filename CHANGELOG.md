@@ -8,6 +8,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Daily Lotto Plus entries are now checked, from the results site's own pages** (LOTTO-0085)
+  Its draws and prizes come from the scraped archive, as the official feed never
+  carried the game. Every ticket with a Plus win now agrees with the bank to the
+  cent. Run `python3 backfill.py` once to fetch them. Entries older than the first
+  listed draw, 2025-09-26, stay not checkable.
+
 - **The app now says when no lottery SMS has arrived for 14 days** (LOTTO-0083)
   The page shows how long it has been and the date of the newest message. The
   tray icon reminds you once a day, with no ticket details in the reminder.

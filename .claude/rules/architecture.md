@@ -190,9 +190,10 @@ Each is one rule; its full reasoning is the linked record in
 - **`paying_combinations()` raises** rather than returning `{}` when a pool
   has no recent draw.
   [ADR-0010](../../docs/decisions/ADR-0010-paying-combinations-raises.md)
-- **`daily/1` (Daily Lotto Plus) is deliberately mapped to a pool no source
-  carries** — never aliased onto plain Daily Lotto.
-  [ADR-0011](../../docs/decisions/ADR-0011-daily-plus-unmapped.md)
+- **`daily/1` (Daily Lotto Plus) is its own pool, scored from the archive
+  alone** — never aliased onto plain Daily Lotto, and declared in
+  `history.py::ARCHIVE_ONLY`, so a pool the feed renamed still raises.
+  [ADR-0014](../../docs/decisions/ADR-0014-daily-plus-archive-only.md)
 - **Source-agreement comparison is set-based**: the archive sorts numbers
   ascending, the API preserves drawn order.
   [ADR-0012](../../docs/decisions/ADR-0012-source-agreement-set-based.md)

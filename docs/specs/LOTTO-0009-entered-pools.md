@@ -165,7 +165,8 @@ makes the match in §4.3 unambiguous.
 
 Sources: the game rules PDFs cited in §2 for the Ithuba figures;
 https://www.lottery.co.za/2026-south-africa-lottery-changes for the handover
-change. Daily Lotto Plus ran 2025-09-21 to 2026-05-31 only.
+change. Daily Lotto Plus ran 2025-09-21 to 2026-05-31 only; the results site lists its
+draws from 2025-09-26 (ADR-0014).
 
 **These prices are hardcoded, and that is a rot risk with a named guard.** They
 are not published in any results feed, so there is nothing to read them from at
@@ -370,7 +371,8 @@ the pool it was actually won in.
 
 LOTTO-0001's load-bearing rule is that no-data must never read as a loss. It now
 has a case it did not have before: **a ticket can be checkable in one pool and
-not another.** All 11 `Daily Lotto Plus` tickets are exactly this.
+not another.** A `Daily Lotto Plus` ticket older than that pool's first listed
+draw is exactly this (ADR-0014).
 
 So `check.py` reports uncheckable **entries**, and states the ticket count
 separately as *wholly* and *partly* uncheckable. A partly-uncheckable ticket must

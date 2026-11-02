@@ -101,7 +101,7 @@ _STUB = {
                     "special": 7, "issue": None, "source": "stub"}],
     ("daily", 0): [{"date": _STUB_START, "main": [1, 2, 3, 4, 5],
                     "special": None, "issue": None, "source": "stub"}],
-    ("daily", 1): [],          # the pool no source carries - unscorable
+    ("daily", 1): [],          # a pool with no draws - unscorable
 }
 
 
@@ -221,8 +221,8 @@ def unscored_is_not_unexplained():
     """INV-44: a paid reference with an unscorable entry is reported apart."""
     ok = _scorable_start()
     every = [_ticket(SENTINEL, pools=((0, 100),), start=ok)]
-    # daily/1 is Daily Lotto Plus, which NO source carries - the project's only
-    # genuinely unscorable pool (LOTTO-0009). lotto/1 does NOT work here: it
+    # daily/1 has no draws in this file's stub, so it is unscorable here, though
+    # the real archive carries it (ADR-0014). lotto/1 does NOT work here: it
     # has draws, so both entries would be scorable and `unexplained` would be
     # the correct answer, which is what this fixture got wrong first time.
     mixed = [_ticket(SYNTH_C, game="daily",

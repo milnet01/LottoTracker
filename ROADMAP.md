@@ -1734,8 +1734,16 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: fix.
   Source: in-session-2026-10-30 (found by LOTTO-0037).
 
-- 📋 [LOTTO-0085] **Check whether Daily Lotto Plus can be scored from the results site now.**
+- ✅ [LOTTO-0085] **Check whether Daily Lotto Plus can be scored from the results site now.**
   ADR-0011 maps Daily Lotto Plus to a pool no source carries. The saved results pages' own menu lists a Daily Lotto Plus section, seen 2026-10-30; its results were not read. These entries are the `unscorable_entry` reason and likely some `unscored` references. If the section holds that game's draws and prices, the ADR's premise has changed. Check first that it is the same game the tickets bought, since aliasing the wrong one is what the ADR exists to stop.
+  Answered yes and built, 2026-11-02. The results site lists the game's
+  draws from 2025-09-26 to 2026-05-31, with prizes. Same game: every
+  reference with a Plus win now agrees with the bank to the cent, and no
+  Plus win falls on a reference the bank paid nothing on. All `low`
+  references with reason `unscorable_entry` and all `unscored`
+  references are gone. Entries older than the first listed draw stay not
+  checkable, because the site has no page for them. ADR-0014 supersedes
+  ADR-0011.
   **Layman:** Tickets with Daily Lotto Plus could be checked in full, instead of that part being marked not checkable.
   Kind: investigate.
   Source: in-session-2026-10-30 (found by LOTTO-0037).

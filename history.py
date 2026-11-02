@@ -31,8 +31,13 @@ POOL_NAMES = {
     ("powerball", 0): "PowerBall",
     ("powerball", 1): "PowerBall XTRA",
     ("daily", 0): "DAILY LOTTO",
-    ("daily", 1): "DAILY LOTTO PLUS",  # no source carries it; always empty
+    ("daily", 1): "DAILY LOTTO PLUS",  # the feed never carried it: ARCHIVE_ONLY
 }
+
+# Pools the official feed never carried, whose draws and prizes come from the
+# scraped archive alone. Declared rather than inferred, because a pool with no
+# feed rows is otherwise a renamed pool, which must stay loud (ADR-0014).
+ARCHIVE_ONLY = {("daily", 1)}
 
 _cache: dict = {}
 
@@ -99,14 +104,15 @@ def scorable(ticket, plus_flag):
     takes the first N draws it does reach -- real draws, wrong ones -- and
     every check downstream reports it as fine because the count matches.
     LOTTO-0006 pushed the archive back to the earliest purchase SMS, so the
-    window is now empty of whole tickets; what remains is the daily/1 pool no
-    source carries. The guard stays: the window reopens the moment an older
-    ticket is imported, which is the safe failure this exists for.
+    window is now empty of whole tickets; what remains is a few daily/1 entries
+    older than that pool's first listed draw. The guard stays: the window reopens
+    the moment an older ticket is imported, which is the safe failure this
+    exists for.
 
     The pool is passed in rather than read off the ticket: a ticket is entered
     in every tier its price paid for, and one of them can be checkable while
-    another is not. All 11 Daily Lotto Plus tickets are exactly that -- no
-    source carries daily/1, but their daily/0 entry scores normally.
+    another is not. A Daily Lotto Plus ticket older than daily/1's first listed
+    draw is exactly that: its daily/0 entry still scores normally.
     """
     # A board too big for one line of its game makes every entry of the
     # ticket unscorable, whatever its draws (LOTTO-0001 INV-67). getattr, so a

@@ -71,7 +71,8 @@ compare" and "spent nothing" are different things.
 separate assumptions are baked in:
 
 - **The lottery** is the South African National Lottery — Lotto, Lotto Plus 1,
-  Lotto 5 Max, PowerBall, PowerBall XTRA and Daily Lotto. Results come from
+  Lotto 5 Max, PowerBall, PowerBall XTRA, Daily Lotto and, until it ended on
+  31 May 2026, Daily Lotto Plus. Results come from
   the operator's own public feed.
 - **The SMS format** is Standard Bank's. The parser understands both the
   wording used before the 2026-06-01 operator handover and the wording used
@@ -191,9 +192,9 @@ python3 check.py       # score every ticket
 ```
 
 ```
-11 of 1238 ENTRIES CANNOT BE CHECKED. They are not counted below, and are NOT losses.
-  11 in a pool no results source carries: daily/1
-  affecting 0 tickets wholly and 11 tickets partly
+2 of 1246 ENTRIES CANNOT BE CHECKED. They are not counted below, and are NOT losses.
+  2 predate all draw data for their pool (earliest: 2025-09-26)
+  affecting 0 tickets wholly and 2 tickets partly
     a partly-checkable ticket IS scored on its remaining pools, below
 
 123 winning lines total; 1 not yet paid

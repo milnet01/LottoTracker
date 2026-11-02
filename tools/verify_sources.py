@@ -5,19 +5,22 @@ Set-based on purpose. The archive sorts numbers ascending; the API preserves
 drawn order. Comparing them as lists reports every single draw as a conflict.
 """
 
+import contextlib
+import io
 import json
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import backfill  # noqa: E402
 from backfill import parse_page  # noqa: E402
 from history import ARCHIVE, POOL_NAMES  # noqa: E402
 from results import draws  # noqa: E402
 
-# Pools that legitimately have no results anywhere, so zero overlap is the
-# expected state and not the rot signal the floor below is looking for.
-# Standard Bank sells "Daily Lotto Plus" but no source publishes such a pool.
+# Pools the feed never carried, so zero OVERLAP is the expected state and not
+# the rot signal the floor below is looking for. The archive alone holds their
+# draws (ADR-0014), and main() fails if it holds none.
 EXPECTED_EMPTY = {("daily", 1)}
 
 
@@ -42,8 +45,30 @@ def parse_page_reads_months():
     return True
 
 
+def build_asks_only_for_years_a_game_ran():
+    """LOTTO-0085: a closed game's other years are 404s, and build() refuses on one.
+
+    Pure, like the case above: fetch() is replaced, so nothing touches the site.
+    """
+    asked = []
+    real_fetch, backfill.fetch = backfill.fetch, lambda slug, y: asked.append((slug, y)) or ""
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            backfill.build(range(2022, 2028))
+    finally:
+        backfill.fetch = real_fetch
+    got = sorted(y for slug, y in asked if slug == "daily-lotto-plus")
+    full = sorted(y for slug, y in asked if slug == "daily-lotto")
+    if got != [2025, 2026] or full != list(range(2022, 2028)):
+        print(f"  YEARS: daily-lotto-plus asked {got}, daily-lotto asked {full}")
+        return False
+    return True
+
+
 def main():
     if not parse_page_reads_months():
+        return 1
+    if not build_asks_only_for_years_a_game_ran():
         return 1
     if not os.path.exists(ARCHIVE):
         sys.exit(f"{ARCHIVE} missing - run `python3 backfill.py` first")
@@ -97,6 +122,8 @@ def main():
             # DRAW_DAYS and the same argument applies here.
             if overlap != before:
                 unexpected.append(f"{game}:{plus} ({pool})")
+            if not rows:
+                starved.append(f"{game}:{plus} ({pool})")
             continue
 
         # A pool contributing nothing is the "game naming changed" breakage
@@ -127,8 +154,8 @@ def main():
     for s in starved:
         print(f"  NO OVERLAP {s} - renamed pool, or archive missing this game")
     for s in unexpected:
-        print(f"  UNEXPECTEDLY PRESENT {s} - EXPECTED_EMPTY says no source "
-              f"carries this pool, and one now does: drop the exemption")
+        print(f"  UNEXPECTEDLY PRESENT {s} - EXPECTED_EMPTY says the feed "
+              f"never carried this pool, and now it does: drop the exemption")
 
     print(f"{overlap} overlapping draws, {agree} agree, {overlap - agree} disagree")
     return (0 if overlap and agree == overlap

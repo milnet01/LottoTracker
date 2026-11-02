@@ -1,6 +1,6 @@
 # ADR-0011 — Daily Lotto Plus maps to a pool no source carries
 
-**Status:** Accepted, 2026-08-01 (first recorded in `CLAUDE.md`, commit 57933a9).
+**Status:** Superseded 2026-11-02 by [ADR-0014](ADR-0014-daily-plus-archive-only.md). Accepted 2026-08-01 (first recorded in `CLAUDE.md`, commit 57933a9).
 **Enforced by:** `tools/verify_sources.py`'s `EXPECTED_EMPTY` exemption.
 
 ## Context

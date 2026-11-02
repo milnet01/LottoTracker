@@ -44,7 +44,14 @@ SLUGS = {
     "powerball": ("powerball", 0),
     "powerball-plus": ("powerball", 1),
     "daily-lotto": ("daily", 0),
+    "daily-lotto-plus": ("daily", 1),
 }
+
+# The years a game ran, for a game that did not run in all of them. The site
+# answers 404 for any other year's archive, and build() rightly refuses on a
+# 404: Daily Lotto Plus's first draw here is 2025-09-26 and its last 2026-05-31
+# (LOTTO-0085). Without the upper bound the whole backfill fails each January.
+YEARS_RAN = {"daily-lotto-plus": (2025, 2026)}
 
 MONTHS = {
     m: i
@@ -84,6 +91,7 @@ SHAPE = {
     "powerball": (5, True),
     "powerball-plus": (5, True),
     "daily-lotto": (5, False),
+    "daily-lotto-plus": (5, False),
 }
 
 
@@ -187,7 +195,8 @@ def build(years=None):
     archive, failed = {}, []
     for slug, (game, plus) in SLUGS.items():
         rows = {}
-        for y in years:
+        first, last = YEARS_RAN.get(slug, (min(years), max(years)))
+        for y in (y for y in years if first <= y <= last):
             try:
                 rows.update(parse_page(fetch(slug, y), slug))
             except urllib.error.HTTPError as e:
@@ -220,6 +229,7 @@ PAYOUT_SLUG = {
     ("powerball", 0): "powerball",
     ("powerball", 1): "powerball-xtra",
     ("daily", 0): "daily-lotto",
+    ("daily", 1): "daily-lotto-plus",
 }
 
 

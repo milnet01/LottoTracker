@@ -251,10 +251,10 @@ def main(argv=()):
         and not all(reaches(t, pf) for pf, _ in t.pools)
     ]
     # And a floor for this sweep, because `wrong` cannot be non-empty unless
-    # `partly` is. The known population is the 11 Daily Lotto Plus tickets,
-    # which exist only because GAME_MAP maps that name onto a pool no source
-    # carries - so a GAME_MAP or parse() regression that drops them (LOTTO-0031's
-    # exact shape, a rebranded name parsing to None) empties `partly`, and this
+    # `partly` is. The known population is the Daily Lotto Plus tickets older
+    # than that pool's first listed draw (LOTTO-0085) - so a GAME_MAP or parse()
+    # regression that drops them (LOTTO-0031's exact shape, a rebranded name
+    # parsing to None) empties `partly`, and this
     # whole INV-11 sweep reports zeroes and passes. The detector would be
     # killed by the same event that most needs one.
     if not partly:
@@ -341,9 +341,9 @@ def main(argv=()):
     # ("MATCH 6" is NOT the example to reach for: mains caps daily at five, so
     # that label is never built for it in the first place.)
     #
-    # Live pools only, derived from the tickets rather than listed here, which
-    # is also what keeps daily/1 out: no source publishes it, so
-    # paying_combinations() would (correctly) raise for it.
+    # Live pools only, derived from the tickets rather than listed here. daily/1
+    # is one since LOTTO-0085, its divisions read from its archive page: its
+    # "feed pays" below means that page.
     unreachable = vacuous = 0
     mains = {"lotto": 6, "powerball": 5, "daily": 5}
     pools = sorted(
@@ -457,6 +457,41 @@ def main(argv=()):
         f"{unguarded} unguarded"
     )
 
+    # ADR-0014: the same refusal for a pool whose divisions come from a page. And
+    # the bypass must stay declared: a pool the feed dropped by RENAME has no rows
+    # either, and it must still raise (ADR-0010) rather than read old pages.
+    real_all, real_payouts = check.all_draws, check.payouts
+    page_probes = [
+        ("a page with no prize rows", ("daily", 1, 101), {}, True),
+        ("a page with a division it cannot name", ("daily", 1, 101),
+         {"5": 1.0, "2 + Star": 2.0}, True),
+        ("a good page", ("daily", 1, 101),
+         {"5": 9.0, "4": 3.0, "3": 2.0, "2": 1.0}, False),
+        ("a feed pool with no rows, with draws in the archive", ("lotto", 2, 102),
+         {"3": 1.0}, True),
+    ]
+    named_wrong = 0
+    try:
+        check.all_draws = lambda *a: [{"date": "2026-05-31", "source": "archive"}]
+        check.draws = lambda *a, **k: []
+        for name, (game, plus_flag, pool_id), page, want_raise in page_probes:
+            check.payouts = lambda *a, _p=page: _p
+            check._struct.clear()
+            try:
+                got = check.paying_combinations(game, plus_flag, pool_id)
+            except RuntimeError:
+                got = None
+            if (got is None) != want_raise or (
+                got is not None and got.get(check.api_label(game, 2, False)) != "DIV 4"
+            ):
+                print(f"  PAGE PROBE WRONG: {name}")
+                named_wrong += 1
+    finally:
+        check.all_draws, check.payouts = real_all, real_payouts
+        check.draws = real_draws
+        check._struct.clear()
+    print(f"archive-page divisions: {len(page_probes)} probes, {named_wrong} wrong")
+
     # INV-31 (LOTTO-0023): the reach check above asks whether every division
     # the feed publishes TODAY can be named. This asks the same question of the
     # era that ended - a division the archive era paid and the current set does
@@ -534,6 +569,7 @@ def main(argv=()):
         and not unreachable
         and not vacuous
         and not unguarded
+        and not named_wrong
         and not stale
         and not blind
         else 1
