@@ -984,7 +984,7 @@ h1{font-size:1.5rem;font-weight:800;margin:0;letter-spacing:-.015em}
 h2{font-size:1.75rem;font-weight:800;line-height:1.25;letter-spacing:-.015em;margin:2rem 0 .6rem}
 h3{font-size:1.25rem;font-weight:700;margin:1.5rem 0 .4rem}
 table{border-collapse:collapse;width:100%;margin:.5rem 0}
-th,td{text-align:left;padding:.6rem .55rem;border-bottom:1px solid var(--line);font-size:1.05rem}
+th,td{text-align:left;padding:.6rem .35rem;border-bottom:1px solid var(--line);font-size:1.05rem}
 th{font-weight:700;color:var(--dim);border-bottom:2px solid var(--line)}
 tbody tr:hover td{background:var(--panel)}
 .cards th,.cards td{white-space:nowrap}
@@ -992,7 +992,7 @@ tbody tr:hover td{background:var(--panel)}
 .tablewrap{overflow-x:auto}
 .money{text-align:right;font-variant-numeric:tabular-nums}
 .nums{white-space:nowrap}
-.ball{display:inline-block;position:relative;min-width:2.1rem;height:2.1rem;line-height:2.1rem;
+.ball{display:inline-block;position:relative;min-width:2rem;height:2rem;line-height:2rem;
  margin:.08rem .06rem;border-radius:50%;background:#4a5568;color:#fff;text-align:center;
  font-variant-numeric:tabular-nums;font-size:1.1rem;font-weight:700}
 .ball:after{content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;
