@@ -23,6 +23,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The wins show which numbers matched, spending draws bars, and themes show previews** (LOTTO-0092)
+  A matched number is a filled ball and a missed one a ring. Tables have game-coloured
+  dots, money headings over their figures and bold prizes. Settings shows each colour
+  theme as a preview you click. Narrow windows and phones lay their cards out better.
+  No figure changes.
+
 - **Make the page look pretty: tickets drawn as lottery slips, a low-vision typeface and a richer dark theme.** (LOTTO-0091)
   Each running ticket now looks like a real lottery slip, with used draws punched out, and the page uses a typeface made for low vision.
 

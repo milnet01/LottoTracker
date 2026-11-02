@@ -614,7 +614,7 @@ def uncheckable_not_a_loss():
 
     # The scorable half of the partly-uncheckable ticket must render too, or the
     # invariant's second clause has no assertion at all.
-    scorable_rows = [r for r in rows if "<td>Daily Lotto</td>" in r]
+    scorable_rows = [r for r in rows if '</span>Daily Lotto</td>' in r]
     need(scorable_rows, "the scorable pool of the partly uncheckable ticket is missing")
     need("R0.00" in scorable_rows[0], "a scored-but-lost entry should show R0.00")
 
@@ -2030,15 +2030,15 @@ def numbers_chosen_and_drawn():
     temp_home()
     import re
 
-    real_cell = page._numbers_cell
+    real_cells = page._win_number_cells
     real_boards = page._boards_cell
     if broken("no_drawn_numbers"):
         # Show what the user picked and not what came up. The likeliest real
         # regression: the chosen half is easy and the drawn half needs the
         # model to carry per-win draw detail, so the drawn half is what a
         # half-finished change drops.
-        page._numbers_cell = lambda nums, special=None: (
-            "<td></td>" if nums == DRAWN_MAIN else real_cell(nums, special)
+        page._win_number_cells = lambda w: (
+            page._numbers_cell(w.get("numbers"), w.get("special")) + "<td></td>"
         )
     if broken("blank_numbers_cell"):
         # Blank ONLY the absent case, leaving every real set rendered normally.
@@ -2115,7 +2115,7 @@ def numbers_chosen_and_drawn():
              "the chosen and drawn cells rendered identically - one is a copy")
     finally:
         if broken("no_drawn_numbers"):
-            page._numbers_cell = real_cell
+            page._win_number_cells = real_cells
         if broken("blank_numbers_cell"):
             page._boards_cell = real_boards
 
@@ -2232,6 +2232,11 @@ def theme_is_dark_and_readable():
         need(html.index("lotto-theme") < html.index("<body>"),
              "the stored theme is applied after <body> — the page paints the "
              "default first and then jumps")
+
+        # The previews offer the same themes, and only move the dropdown.
+        previews = re.findall(r'data-pick="([a-z0-9-]+)"', html)
+        need(previews == [t for t, _l, _c in page.THEMES],
+             f"the previews offer {previews}, not the themes that exist")
 
         # 6. INV-63: the theme writes one browser key and nothing else. No URL
         #    is touched, and no ticket data is stored anywhere.
@@ -2566,7 +2571,8 @@ def paid_wins_shown():
     table = re.search(r'<table id="paid">.*?</table>', html, re.S)
     if table is None:
         raise Fail("a paid win has no table at all")
-    need('<span class="ball">42</span>' in table.group(0), "the paid win's drawn numbers are missing")
+    need(re.search(r'<span class="ball[^"]*">42</span>', table.group(0)),
+         "the paid win's drawn numbers are missing")
     need("Expires" not in table.group(0), "the paid table offers a deadline")
     need("2027-06-06" not in html, "a paid win's deadline is on the page")
     need('<span class="ball">16</span>' not in table.group(0), "an unpaid win is filed as paid")
@@ -2650,6 +2656,93 @@ def typeface_in_page():
          "with no typeface file the page has no system font to fall back on")
 
 
+def matched_balls_marked():
+    """INV-97 - a win's balls say what matched, by the engine's own rule."""
+    from types import SimpleNamespace
+
+    import check
+
+    def filled(cell):
+        balls = re.findall(r'<span class="ball( special)?( miss)?">(\d+)</span>', cell)
+        need(balls, "a numbers cell holds no balls")
+        return ([int(n) for sp, miss, n in balls if not sp and not miss],
+                [int(n) for sp, miss, n in balls if sp and not miss])
+
+    combos = [
+        # The PowerBall equal to a chosen MAIN number is the trap: it is no match.
+        ("powerball", [12, 14, 22, 35, 41], 3, [5, 14, 28, 39, 48], 12),
+        ("powerball", [7, 14, 22, 35, 41], 12, [5, 14, 28, 39, 48], 12),
+        ("powerball", [5, 14, 28, 39, 48], 1, [5, 14, 28, 39, 48], 2),
+        # The bonus counts against every number on the board, Multiplay included.
+        ("lotto", [4, 11, 19, 21, 38, 52], None, [4, 11, 19, 30, 46, 49], 21),
+        ("lotto", [4, 11, 19, 27, 38, 52], None, [4, 11, 19, 30, 46, 49], 21),
+        ("lotto", [4, 11, 19, 21, 38, 52, 1, 2], None, [4, 11, 19, 30, 46, 49], 21),
+        ("daily", [3, 8, 17, 25, 33], None, [3, 8, 18, 26, 34], None),
+    ]
+    for game, mine, special, drawn, drawn_special in combos:
+        cells = page._win_number_cells({
+            "game": game, "numbers": mine, "special": special,
+            "drawn_main": drawn, "drawn_special": drawn_special})
+        chosen, shown = re.findall(r'<td class="nums">(.*?)</td>', cells)
+        hits, special_hit = check.match(
+            SimpleNamespace(game=game), (None, mine, special),
+            {"main": drawn, "special": drawn_special})
+        my_main, my_special = filled(chosen)
+        their_main, their_special = filled(shown)
+        bonus = 1 if game == "lotto" and special_hit else 0
+        need(len(my_main) == hits + bonus,
+             f"{game}: {len(my_main)} chosen balls filled, the engine matched "
+             f"{hits} and {bonus} bonus")
+        need(len(their_main) == hits,
+             f"{game}: {len(their_main)} drawn balls filled, the engine matched {hits}")
+        if game == "powerball":
+            need(bool(my_special) == special_hit,
+                 f"chosen PowerBall filled={bool(my_special)}, engine says {special_hit}")
+        if drawn_special is not None:
+            need(bool(their_special) == special_hit,
+                 f"{game}: drawn special filled={bool(their_special)}, "
+                 f"engine says {special_hit}")
+
+    # Against numbers nobody has, "did not match" cannot be said.
+    for absent in ({"numbers": [1, 2, 3], "drawn_main": []},
+                   {"numbers": [], "drawn_main": [1, 2, 3]}):
+        unknown = page._win_number_cells(dict(absent, game="lotto"))
+        need(" miss" not in unknown, "a ball is hollow against an unknown set")
+        need("not recorded" in unknown, "an absent set is not said in words")
+    # A ticket's own numbers, with no draw beside them, are not marked either way.
+    boards = page._boards_cell([{"line": "A", "numbers": [1, 2, 3], "special": None}])
+    need(" miss" not in boards, "a ball with no draw beside it is hollow")
+    # The reader is told what the two looks mean, once, where they can appear.
+    key = 'class="ballkey"'
+    need(render_pure(fixture_model()).count(key) == 1, "the wins do not explain the balls")
+    need(key not in render_pure(fixture_model(wins=[])), "a key explains balls that are not there")
+
+
+def period_bars_say_the_figures():
+    """INV-98 - a period's bars draw its two figures, and a zero draws nothing."""
+    def widths(spend, won):
+        bars = page._period_bars({"spend_cents": spend, "won_cents": won})
+        need('aria-hidden="true"' in bars, "the bars repeat the figures to a screen reader")
+        got = re.findall(r'class="fill (spent|gain)" style="width:([0-9.]+)%"', bars)
+        need(len(got) == 2, "a period does not draw both its bars")
+        return dict((k, float(v)) for k, v in got)
+
+    even = widths(8000, 4000)
+    need(even["spent"] == 100 and even["gain"] == 50,
+         f"R80 against R40 draws {even}, not full and half")
+    need(widths(4000, 8000)["gain"] == 100, "a win bigger than the spend overruns its track")
+    need(widths(8000, 0)["gain"] == 0, "a checked R0.00 draws a bar")
+    need(widths(0, 0) == {"spent": 0, "gain": 0}, "two zeroes draw a bar")
+    need(0 < widths(10000000, 50)["gain"] < 5, "a small win beside a large spend vanishes")
+    model = fixture_model()
+    model["periods"] = dict(model["periods"], current_month={"key": "2031-01", "label": "January 2031"})
+    row = re.search(r'<tr data-period="2031-01".*?</tr>', render_pure(model), re.S)
+    if row is None:
+        raise Fail("the unscored month has no row")
+    need("fill" not in row.group(0), "a month nobody checked draws a bar")
+    need('colspan="3"' in row.group(0), "the unscored month's sentence does not span the row")
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -2684,6 +2777,8 @@ CASES = [
     ("buy_again_on_overview", "INV-93", buy_again_on_overview),
     ("paid_wins_shown", "INV-94", paid_wins_shown),
     ("games_by_their_names", "INV-95", games_by_their_names),
+    ("matched_balls_marked", "INV-97", matched_balls_marked),
+    ("period_bars_say_the_figures", "INV-98", period_bars_say_the_figures),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -2702,6 +2797,11 @@ BREAKS = {
     "no_overview_answer": "buy_again_on_overview",
     "overview_money_zero": "buy_again_on_overview",
     "no_paid_section": "paid_wins_shown",
+    "powerball_read_as_bonus": "matched_balls_marked",
+    "unknown_set_marked_miss": "matched_balls_marked",
+    "no_ball_key": "matched_balls_marked",
+    "bars_ignore_zero": "period_bars_say_the_figures",
+    "theme_preview_dropped": "theme_is_dark_and_readable",
     "pool_keys_shown": "games_by_their_names",
     "no_drawn_numbers": "numbers_chosen_and_drawn",
     "blank_numbers_cell": "numbers_chosen_and_drawn",
@@ -2806,6 +2906,25 @@ def apply_render_breaks():
             "Spent R0.00, nothing to compare.")
     if broken("no_paid_section"):
         page._paid_section = lambda model: ""
+    if broken("powerball_read_as_bonus"):
+        real_cells = page._win_number_cells
+        page._win_number_cells = lambda w: real_cells(dict(w, game="lotto"))
+    if broken("unknown_set_marked_miss"):
+        real_unknown = page._win_number_cells
+        page._win_number_cells = lambda w: (
+            real_unknown(w) if w.get("numbers") and w.get("drawn_main")
+            else '<td class="nums">' + page._balls(
+                w.get("numbers") or w.get("drawn_main"), None, set()) + "</td>not recorded")
+    if broken("no_ball_key"):
+        page._ball_key = lambda model: ""
+    if broken("bars_ignore_zero"):
+        real_bars = page._period_bars
+        page._period_bars = lambda b: real_bars(dict(b, won_cents=b["won_cents"] or 1000))
+    if broken("theme_preview_dropped"):
+        real_settings = page._settings_section
+        page._settings_section = lambda model: re.sub(
+            r'<button type="button" class="swatch" data-pick="nord".*?</button>', "",
+            real_settings(model), flags=re.S)
     if broken("pool_keys_shown"):
         page._pool_name = lambda game, plus_flag: f"{game}/{plus_flag}"
     if broken("no_icon"):

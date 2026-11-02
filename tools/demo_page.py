@@ -49,7 +49,7 @@ entries = [
 
 wins = [
     {"ref": "demo-lotto", "game": "lotto", "plus_flag": 0, "pool_id": 0,
-     "date": "2026-07-18", "division": "Division 7", "matched": "MATCH 3",
+     "date": "2026-07-18", "division": "Division 7", "matched": "3",
      "amount_cents": 5000, "expires": "2027-07-18", "expires_in_days": 296,
      "expired": False, "source": "api",
      "numbers": [4, 11, 19, 27, 38, 52], "drawn_main": [4, 11, 19, 30, 46, 49],
@@ -57,7 +57,7 @@ wins = [
      # Paid by the bank, so section 1 does not list it (LOTTO-0011).
      "payment": "paid", "ref_paid_cents": 5000, "ref_computed_cents": 5000},
     {"ref": "demo-powerball", "game": "powerball", "plus_flag": 0, "pool_id": 0,
-     "date": "2026-09-05", "division": "Division 9", "matched": "MATCH 1 + PB",
+     "date": "2026-09-05", "division": "Division 9", "matched": "1 + PowerBall",
      "amount_cents": 1500, "expires": "2027-09-05", "expires_in_days": 345,
      "expired": False, "source": "api",
      "numbers": [7, 14, 22, 35, 41], "special": 12,

@@ -79,8 +79,11 @@ def _money_cell(won_cents):
     the empty-looking strings INV-15 forbids.
     """
     if won_cents is None:
-        return '<td class="notcheckable">not checkable</td>'
-    return f'<td class="money">{_e(_rands(won_cents))}</td>'
+        return '<td class="notcheckable money">not checkable</td>'
+    # A prize stands out and a checked zero steps back, in weight as well as in
+    # colour. Both still print their figure, so R0.00 cannot read as no data.
+    look = "money won" if won_cents else "money nil"
+    return f'<td class="{look}">{_e(_rands(won_cents))}</td>'
 
 
 def _draws_cell(value):
@@ -94,23 +97,55 @@ def _draws_cell(value):
     return f"<td>{_e(value)}</td>"
 
 
-def _balls(numbers, special=None):
+def _balls(numbers, special=None, hits=None, special_hit=False):
     """One set of numbers as markup, main numbers then any special (LOTTO-0035).
 
     The cardinal rule reaches here too: an absent set is said in words, never
     rendered as an empty cell. An empty list is absence, not "no numbers" - a
     board always has numbers, so nothing to show means nothing was known.
+
+    `hits` is None except on a win, where a ball outside it is drawn hollow
+    (INV-97). A ball on any other row is never marked either way.
     """
+    def look(hit):
+        return "" if hits is None or hit else " miss"
+
     if not numbers:
         return '<span class="notcheckable">not recorded</span>'
-    out = " ".join(f'<span class="ball">{_e(n)}</span>' for n in numbers)
+    out = " ".join(
+        f'<span class="ball{look(hits and n in hits)}">{_e(n)}</span>' for n in numbers
+    )
     if special is not None:
-        out += f' <span class="ball special">{_e(special)}</span>'
+        out += f' <span class="ball special{look(special_hit)}">{_e(special)}</span>'
     return out
 
 
 def _numbers_cell(numbers, special=None):
     return f"<td class=\"nums\">{_balls(numbers, special)}</td>"
+
+
+def _win_number_cells(w):
+    """The chosen and drawn cells of one win, with what matched filled (INV-97).
+
+    The same rule as check.py::match(), which this file may not import. A PowerBall
+    meets only a PowerBall, so a main number equal to it is no match, while a Lotto
+    bonus ball counts against every number on the board. Daily Lotto has neither.
+    With either side unknown nothing is marked: a hollow ball says "did not match",
+    and that cannot be said against numbers nobody has.
+    """
+    mine, drawn = w.get("numbers") or [], w.get("drawn_main") or []
+    special, drawn_special = w.get("special"), w.get("drawn_special")
+    if not mine or not drawn:
+        return _numbers_cell(mine, special) + _numbers_cell(drawn, drawn_special)
+    game = w.get("game")
+    powerball_hit = game == "powerball" and special == drawn_special
+    bonus_hit = game == "lotto" and drawn_special in mine
+    my_hits = set(drawn) | ({drawn_special} if game == "lotto" else set())
+    return (
+        f'<td class="nums">{_balls(mine, special, my_hits, powerball_hit)}</td>'
+        f'<td class="nums">'
+        f"{_balls(drawn, drawn_special, set(mine), powerball_hit or bonus_hit)}</td>"
+    )
 
 
 def _boards_cell(boards):
@@ -152,6 +187,14 @@ SORT_WORDS = {
 }
 
 
+MONEY_HEADINGS = {"Amount", "Cost", "Won"}
+
+
+def _game_cell(game, plus_flag):
+    """A game's name with a dot in its colour, read from the row's data-game."""
+    return f'<td class="game"><span class="pip"></span>{_e(_pool_name(game, plus_flag))}</td>'
+
+
 def _sorted_table(table_id, columns, rows, default_col, default_dir="desc"):
     """A table with sortable headings and the same choices in a dropdown.
 
@@ -170,8 +213,10 @@ def _sorted_table(table_id, columns, rows, default_col, default_dir="desc"):
         if i == default_col:
             word = "descending" if default_dir == "desc" else "ascending"
             current = f' aria-sort="{word}"'
+        # Right-aligned like the figures under them (LOTTO-0007 (w)).
+        money = ' class="money"' if heading in MONEY_HEADINGS else ""
         heads.append(
-            f'<th data-kind="{kind}"{current}><button type="button" '
+            f'<th data-kind="{kind}"{money}{current}><button type="button" '
             f'class="sorthead">{_e(heading)}</button></th>'
         )
         for direction, words in SORT_WORDS[kind]:
@@ -306,9 +351,14 @@ def _uncheckable_banner(u):
         # against" is false of an oversized board whose pool has draws (INV-68).
         "</strong> They are <strong>not losses</strong> &mdash; none of them "
         f"could be scored. {_e(detail)}. This affects "
-        f"{_count(u.get('wholly', 0), 'ticket', 'tickets')} wholly and "
-        f"{u.get('partly', 0):,} "
-        "partly; a partly-checkable ticket is still scored on its other pools."
+        + (
+            # "0 tickets wholly and 1 partly" says nothing with its first half.
+            f"{_count(u.get('wholly', 0), 'ticket', 'tickets')} wholly and "
+            f"{u.get('partly', 0):,} partly"
+            if u.get("wholly")
+            else f"{_count(u.get('partly', 0), 'ticket', 'tickets')} partly"
+        )
+        + "; a partly-checkable ticket is still scored on its other pools."
         "</div>"
     )
 
@@ -350,14 +400,23 @@ WIN_COLUMNS = [("Game", "text"), ("Your numbers", None), ("Drawn", None),
 
 def _win_cells(w):
     return (
-        f'<td>{_e(_pool_name(w["game"], w["plus_flag"]))}</td>'
-        + _numbers_cell(w.get("numbers"), w.get("special"))
-        + _numbers_cell(w.get("drawn_main"), w.get("drawn_special"))
+        _game_cell(w["game"], w["plus_flag"])
+        + _win_number_cells(w)
         + f'<td>{_e(w.get("division"))}</td><td>{_e(w.get("matched"))}</td>'
         f'<td>{_e(w.get("date"))}</td>'
         f'<td class="money">{_e(_rands(w["amount_cents"]))}'
         + (' <span class="muted">estimate</span>' if w.get("estimate") else "")
         + "</td>"
+    )
+
+
+def _ball_key(model):
+    """What a hollow ball means, said once, and only where one can appear (INV-97)."""
+    if not model.get("wins"):
+        return ""
+    return (
+        '<p class="ballkey"><span class="ball" aria-hidden="true"></span> matched '
+        '<span class="ball miss" aria-hidden="true"></span> did not match</p>'
     )
 
 
@@ -451,7 +510,7 @@ def _outstanding_section(model):
             out.append(
                 f'<tr data-game="{_e(e["game"])}"><td>{_e(e["ref"])}</td>'
                 + _bought_cell(e)
-                + f'<td>{_e(_pool_name(e["game"], e["plus_flag"]))}</td>'
+                + _game_cell(e["game"], e["plus_flag"])
                 + _boards_cell(e.get("boards"))
                 + (
                     f"<td>{e['draws_remaining']}</td>"
@@ -501,8 +560,8 @@ def _entries_section(model):
             f'<tr data-game="{_e(e["game"])}" data-pool="{_e(pool)}">'
             f'<td>{_e(e["ref"])}</td>'
             + _bought_cell(e)
-            + f'<td>{_e(_pool_name(e["game"], e["plus_flag"]))}</td>'
-            f'<td class="money">{_e(_rands(e["cost_cents"]))}</td>'
+            + _game_cell(e["game"], e["plus_flag"])
+            + f'<td class="money">{_e(_rands(e["cost_cents"]))}</td>'
             + _draws_cell(e.get("draws_covered"))
             + _money_cell(e.get("won_cents"))
             + f'<td class="notcheckable wrap">{_e(e.get("reason") or "")}</td></tr>'
@@ -522,11 +581,11 @@ def _entries_section(model):
         for g, f in pools
     )
     return (
-        "<section><h2>Every entry</h2>"
+        '<section><h2>Every entry</h2><div class="row">'
         '<label>Filter by game <select id="gamefilter">'
         f'<option value="">all</option>{opts}</select></label> '
         '<label>Exact game <select id="poolfilter">'
-        f'<option value="">all</option>{popts}</select></label>'
+        f'<option value="">all</option>{popts}</select></label></div>'
         + _sorted_table(
             "entries",
             [("Ticket", "text"), ("Bought", "date"), ("Game", "text"),
@@ -577,7 +636,7 @@ def _draw_balls(row):
     used = row["ndraws"] - row["left"]
     return (
         '<div class="burn" aria-hidden="true">'
-        + '<span class="ball used"></span>' * used
+        + "".join(f'<span class="ball used" style="--i:{i}"></span>' for i in range(used))
         + '<span class="ball"></span>' * row["left"]
         + "</div>"
     )
@@ -706,6 +765,31 @@ def _spend_section(model):
     )
 
 
+def _period_bars(bucket):
+    """One period's two figures as bars, the larger filling the track.
+
+    Hidden from a screen reader, because the two cells beside it say the same. A
+    bucket's figures are always integers, so no bar here stands for "no data": a
+    zero draws an empty track, which is R0.00 said again (INV-98).
+    """
+    most = max(bucket["spend_cents"], bucket["won_cents"], 1)
+
+    def track(label, look, cents):
+        # A sliver at least, or a small win beside a large spend looks like none.
+        width = max(100 * cents / most, 1.5) if cents else 0
+        return (
+            f'<span>{label}</span><span class="track">'
+            f'<span class="fill {look}" style="width:{width:.1f}%"></span></span>'
+        )
+
+    return (
+        '<td aria-hidden="true"><div class="bars">'
+        + track("Spent", "spent", bucket["spend_cents"])
+        + track("Won", "gain", bucket["won_cents"])
+        + "</div></td>"
+    )
+
+
 def _periods_section(model):
     """Spend against winnings, one period at a time (LOTTO-0036).
 
@@ -739,7 +823,8 @@ def _periods_section(model):
             f'<tr data-period="{_e(b["key"])}"{hide}>'
             f'<td>{_e(b["label"])}</td>'
             f'<td class="money">{_e(_rands(b["spend_cents"]))}</td>'
-            f'<td class="money">{_e(_rands(b["won_cents"]))}</td></tr>'
+            f'<td class="money">{_e(_rands(b["won_cents"]))}</td>'
+            f"{_period_bars(b)}</tr>"
         )
         opts[b["kind"]].append(
             f'<option value="{_e(b["key"])}">{_e(b["label"])}</option>'
@@ -754,7 +839,7 @@ def _periods_section(model):
             0,
             f'<tr data-period="{_e(cur["key"])}" style="display:none">'
             f'<td>{_e(cur["label"])}</td>'
-            '<td colspan="2" class="notcheckable">Nothing in this month has '
+            '<td colspan="3" class="notcheckable">Nothing in this month has '
             "been checked against a result yet.</td></tr>",
         )
         opts["month"].insert(
@@ -771,7 +856,7 @@ def _periods_section(model):
         )
     return (
         '<section><h2>Spend against winnings by period</h2>'
-        '<p class="muted">By the date of the DRAW, not of the purchase: a '
+        '<p class="muted">By the date of the draw, not of the purchase: a '
         "ticket's price is spread over the draws it paid for, so a period's "
         "two figures describe the same draws. Drawn over the same entries as "
         "the comparison below, which is why it starts where the results do "
@@ -784,6 +869,7 @@ def _periods_section(model):
         # Right-aligned like the figures under them, or each figure sits
         # under the NEXT column's heading (LOTTO-0007 (w)).
         '<th class="money">Spent</th><th class="money">Won</th>'
+        '<th>Side by side</th>'
         "</tr></thead><tbody>"
         + "".join(rows["year"] + rows["month"])
         + f"</tbody></table>{residue}</section>"
@@ -820,14 +906,30 @@ def _settings_section(model):
         + f">{_e(label)}</option>"
         for tid, label, _colours in THEMES
     )
+    # The previews drive the dropdown rather than replace it: with no script the
+    # dropdown is what shows, and the script keeps one place that applies a theme.
+    # Their colours are the themes' own, so a preview is right under any theme.
+    swatches = "".join(
+        f'<button type="button" class="swatch" data-pick="{_e(tid)}" aria-pressed="false" '
+        f'style="background:{colours["bg"]};color:{colours["fg"]}">'
+        '<span class="swatchface"><span class="swatchaa">Aa</span>'
+        f'<span class="swatchline" style="background:{colours["panel"]};'
+        f'border-color:{colours["line"]}"></span>'
+        f'<span class="swatchdot" style="background:{colours["accent"]}"></span></span>'
+        f'<span class="swatchname">{_e(label)}</span></button>'
+        for tid, label, colours in THEMES
+    )
     theme = (
-        '<div class="row"><label for="theme">Colour theme</label>'
+        "<h3>Colour theme</h3>"
+        f'<div class="swatches" role="group" aria-label="Colour theme">{swatches}</div>'
+        '<div class="row themerow"><label for="theme">Colour theme</label>'
         f'<select id="theme">{opts}</select></div>'
     )
 
     return (
         "<section><h2>Settings</h2>"
         + theme
+        + "<h3>Tray</h3>"
         + sw("autostart", "Start the tray when I log in")
         + sw("open_on_start", "Open this page when the tray starts")
         # role=status + aria-live: the switches write their result here, and
@@ -984,13 +1086,17 @@ h1{font-size:1.5rem;font-weight:800;margin:0;letter-spacing:-.015em}
 h2{font-size:1.75rem;font-weight:800;line-height:1.25;letter-spacing:-.015em;margin:2rem 0 .6rem}
 h3{font-size:1.25rem;font-weight:700;margin:1.5rem 0 .4rem}
 table{border-collapse:collapse;width:100%;margin:.5rem 0}
-th,td{text-align:left;padding:.6rem .35rem;border-bottom:1px solid var(--line);font-size:1.05rem}
+th,td{text-align:left;padding:.6rem .6rem;border-bottom:1px solid var(--line);font-size:1.05rem}
 th{font-weight:700;color:var(--dim);border-bottom:2px solid var(--line)}
 tbody tr:hover td{background:var(--panel)}
 .cards th,.cards td{white-space:nowrap}
 .cards td.wrap{white-space:normal;min-width:14rem}
 .tablewrap{overflow-x:auto}
 .money{text-align:right;font-variant-numeric:tabular-nums}
+.won{font-weight:700}
+.nil{color:var(--dim)}
+#wins td.money,#paid td.money{font-size:1.2rem;font-weight:700}
+.pip{display:inline-block;width:.8em;height:.8em;margin-right:.5em;border-radius:50%;background:#4a5568}
 .nums{white-space:nowrap}
 .ball{display:inline-block;position:relative;min-width:2rem;height:2rem;line-height:2rem;
  margin:.08rem .06rem;border-radius:50%;background:#4a5568;color:#fff;text-align:center;
@@ -1000,11 +1106,22 @@ tbody tr:hover td{background:var(--panel)}
  box-shadow:inset -1px -3px 5px rgba(0,0,0,.35)}
 .ball.special{background:#6a1b9a;color:#fff}
 .runname{background:#4a5568}
-[data-game="lotto"] .ball,[data-game="lotto"] .runname{background:#c62828}
+[data-game="lotto"] .ball,[data-game="lotto"] .runname,[data-game="lotto"] .pip{background:#c62828}
 [data-game="lotto"] .ball.special{background:#6a1b9a}
-[data-game="powerball"] .ball,[data-game="powerball"] .runname{background:#1565c0}
+[data-game="powerball"] .ball,[data-game="powerball"] .runname,[data-game="powerball"] .pip{background:#1565c0}
 [data-game="powerball"] .ball.special{background:#bf360c}
-[data-game="daily"] .ball,[data-game="daily"] .runname{background:#2e7d32}
+[data-game="daily"] .ball,[data-game="daily"] .runname,[data-game="daily"] .pip{background:#2e7d32}
+[data-game="lotto"]{--g:#c62828;--gs:#6a1b9a}
+[data-game="powerball"]{--g:#1565c0;--gs:#bf360c}
+[data-game="daily"]{--g:#2e7d32}
+/* A number that did not match is a ring, not a dimmer disc: the difference has to
+   survive low vision, so it is filled against empty rather than one colour against
+   another. Its figure takes the theme's foreground, which INV-62 holds readable. */
+.ball.miss,[data-game] .ball.miss{background:none;color:var(--fg);box-shadow:inset 0 0 0 2.5px var(--g,#4a5568)}
+.ball.special.miss,[data-game] .ball.special.miss{box-shadow:inset 0 0 0 2.5px var(--gs,#6a1b9a)}
+.ball.miss:after{display:none}
+.ballkey{display:flex;align-items:center;gap:.5rem;margin:.6rem 0 0;color:var(--dim)}
+.ballkey .ball:not(:first-child){margin-left:.9rem}
 .notcheckable{color:var(--warn)}
 .muted{color:var(--dim);font-size:1rem}
 .notice{background:var(--warn-bg);border-left:6px solid var(--accent);border-radius:.5rem;
@@ -1037,7 +1154,14 @@ tbody tr:hover td{background:var(--panel)}
 .burn .ball.used:after{display:none}
 .runfacts{align-self:center;padding:1.1rem 1.75rem 1.1rem 0}
 .runfacts strong{display:block;font-size:1.5rem;font-weight:800;line-height:1.2;letter-spacing:-.01em}
+.run:has(.tag){background:var(--warn-bg)}
 .run:has(.tag) .runfacts strong{color:var(--warn)}
+@keyframes punch{from{background:var(--g,#4a5568);box-shadow:none}}
+/* The page's one unprompted movement: on opening, the draws already used are punched
+   out in order. Once the reader leaves the Overview it never replays. */
+@media(prefers-reduced-motion:no-preference){
+ html:not(.seen) .burn .ball.used{animation:punch .45s ease-out backwards;animation-delay:calc(var(--i)*70ms)}
+}
 .glances{display:flex;flex-wrap:wrap;gap:1.5rem 4rem}
 .glance{flex:1 1 22rem;border-top:2px solid var(--line)}
 .glance h3{margin-top:.9rem}
@@ -1047,7 +1171,27 @@ tbody tr:hover td{background:var(--panel)}
 .golink:hover{background:var(--accent);color:var(--bg)}
 html:not(.js) .golink{display:none}
 tr.soon td{background:var(--warn-bg)}tr.today td{background:var(--bad-bg);font-weight:600}
-.row{display:flex;align-items:center;gap:.6rem;margin:.4rem 0}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1.25rem;margin:.5rem 0}
+section>p.muted{max-width:75ch}
+#panel-spending table{max-width:68rem}
+.bars{display:grid;grid-template-columns:auto 1fr;gap:.3rem .7rem;align-items:center;min-width:14rem;
+ color:var(--dim);font-size:.95rem}
+.track{display:block;height:.9rem;border-radius:.45rem;background:var(--panel);overflow:hidden}
+.fill{display:block;height:100%;border-radius:inherit}
+.spent{background:var(--dim)}
+.gain{background:var(--accent)}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(12rem,1fr));gap:.75rem;margin:.5rem 0 1rem}
+.swatch{display:block;padding:0;border:2px solid var(--line);border-radius:.7rem;overflow:hidden;cursor:pointer;text-align:left}
+.swatch:hover{border-color:var(--dim)}
+.swatch[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.swatchface{display:flex;align-items:center;gap:.6rem;padding:.55rem .8rem .3rem}
+.swatchaa{font-size:1.6rem;font-weight:800;line-height:1.2}
+.swatchline{flex:1;height:.75rem;border:1px solid;border-radius:.4rem}
+.swatchdot{flex:none;width:1.1rem;height:1.1rem;border-radius:50%}
+.swatchname{display:block;padding:0 .8rem .55rem;font-weight:700}
+.swatch[aria-pressed=true] .swatchname:after{content:" \\2713"}
+html:not(.js) .swatches{display:none}
+.js .themerow{display:none}
 .switch{position:relative;display:inline-block;width:2.6rem;height:1.4rem;flex:none}
 .switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
 .slider{position:absolute;inset:0;background:var(--line);border-radius:1rem;transition:.15s;
@@ -1067,6 +1211,7 @@ select{cursor:pointer}
 button:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .tab:focus-visible{outline-offset:-3px}
 .sorthead{font-weight:600;padding:0;background:none;border:0;color:inherit;cursor:pointer}
+.sorthead:hover{color:var(--fg);text-decoration:underline}
 th[aria-sort=descending] .sorthead:after{content:" \\25BC"}
 th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
 /* Narrower than the column's 90rem floor, which is what the widest table needs: each
@@ -1076,10 +1221,9 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
  .cards thead{display:none}
  .cards table,.cards tbody,.cards tr,.cards td{display:block}
  .cards tr{background:var(--panel);border:1px solid var(--line);border-radius:.7rem;margin:.8rem 0;padding:.6rem .5rem}
- .cards td,.cards td.wrap{position:relative;padding:.2rem .3rem .2rem 8.5rem;border:0;white-space:normal;
-  min-width:0;min-height:1.6rem;text-align:left}
- .cards td:before{content:attr(data-label);position:absolute;left:.3rem;width:7.8rem;
-  color:var(--dim);font-size:.88rem;font-weight:600;font-style:normal}
+ .cards td,.cards td.wrap{padding:.35rem .5rem;border:0;white-space:normal;min-width:0;text-align:left}
+ .cards td:before{content:attr(data-label);display:block;color:var(--dim);font-size:.9rem;font-weight:600}
+ .cards td:empty{display:none}
  tbody tr:hover td{background:none}
  .tabs{order:3;flex-basis:100%}
  .baractions{margin-left:auto}
@@ -1089,15 +1233,27 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
  .burn{border-left:0;border-top:5px dotted var(--bg)}
  .runfacts{padding:0 1.4rem 1.1rem}
 }
+/* Room for more than one column: a card lays its fields out across, not one long list. */
+@media(min-width:36rem) and (max-width:90rem){
+ .cards tr{display:grid;grid-template-columns:repeat(auto-fill,minmax(17rem,1fr));gap:0 1rem}
+}
+@media(max-width:36rem){
+ .burn{padding:.9rem 1.2rem;gap:.25rem}
+ .burn .ball{min-width:1.55rem;height:1.55rem}
+ #periods tr{display:grid;grid-template-columns:1fr auto auto}
+ #periods th:last-child{display:none}
+ #periods td:last-child{grid-column:1/-1}
+}
 @media(prefers-reduced-motion:reduce){.slider,.slider:before{transition:none}}
 """
 
 CSS = _themes_css() + BASE_CSS
 
-# Six jobs and no others (LOTTO-0002 §4.1): the two POSTs (custom header, so a
+# Seven jobs and no others (LOTTO-0002 §4.1): the two POSTs (custom header, so a
 # cross-origin form post cannot forge them), filtering and sorting (must never
 # touch the URL - INV-21), the headings copied onto a phone's card rows, switching
-# tabs (the same rule, INV-89), and polling /status while a build is in flight.
+# tabs (the same rule, INV-89), applying a colour theme (INV-63), and polling
+# /status while a build is in flight.
 JS = """
 var TOKEN=%s;
 function post(path,body,done){
@@ -1141,9 +1297,17 @@ if(th){
      if(saved){for(var i=0;i<th.options.length;i++){
        if(th.options[i].value===saved){th.value=saved;break}}}
  }catch(e){}
+ // A preview only moves the dropdown, so one place still applies a theme.
+ var picks=[].slice.call(document.querySelectorAll(".swatch"));
+ function markPick(){picks.forEach(function(b){
+  b.setAttribute("aria-pressed",b.getAttribute("data-pick")===th.value?"true":"false")})}
+ picks.forEach(function(b){b.addEventListener("click",function(){
+  th.value=b.getAttribute("data-pick");th.dispatchEvent(new Event("change"))})});
+ markPick();
  th.addEventListener("change",function(){
   document.documentElement.setAttribute("data-theme",th.value);
   try{localStorage.setItem("lotto-theme",th.value)}catch(e){}
+  markPick();
   msg("Theme applied.");
  });
 }
@@ -1229,6 +1393,7 @@ function wireTable(table){
 // running script, so with no script every section is simply on the page.
 var tabs=[].slice.call(document.querySelectorAll(".tab"));
 function showTab(tab,focus){
+ document.documentElement.classList.add("seen");
  tabs.forEach(function(t){
   var on=t===tab;
   t.setAttribute("aria-selected",on?"true":"false");
@@ -1382,7 +1547,7 @@ def render(model, token):
         # is not on this page" must not be something a tab can hide (INV-89).
         tabs = [
             ("overview", "Overview", _overview_section(model)),
-            ("wins", "Wins", _wins_section(model) + _paid_section(model)),
+            ("wins", "Wins", _ball_key(model) + _wins_section(model) + _paid_section(model)),
             ("outstanding", "Still outstanding", _outstanding_section(model)),
             ("entries", "Every entry", _entries_section(model)),
             ("spending", "Spending", _periods_section(model) + _spend_section(model)),

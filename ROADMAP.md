@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=91 -->
+<!-- ants-roadmap-id-high-water: LOTTO=92 -->
 
 # ROADMAP — LottoTracker
 
@@ -1801,6 +1801,14 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Now: each ticket is a slip with a stub in its game's colour, a tear line and notches, and one ball per draw, punched out once drawn. Text is Atkinson Hyperlegible Next, carried in the page. The Dark theme, tabs, tables, buttons and cards are restyled; italics are gone. Figures and wording are unchanged.
   Contract: LOTTO-0002 INV-96.
   **Layman:** Each running ticket now looks like a real lottery slip, with used draws punched out, and the page uses a typeface made for low vision.
+  Kind: ux.
+  Source: user-request-2026-11-02.
+
+- ✅ [LOTTO-0092] **Carry the look past the Overview: wins show what matched, spending draws bars, themes show previews.**
+  The Overview looked finished and every other tab was a plain table. A win showed the same balls for numbers that matched and numbers that did not.
+  Now: on a win, a matched number is a filled ball and a missed one a ring. Money headings sit over their figures, each row has a dot in its game's colour, prizes are bold and a checked R0.00 steps back. A period draws Spent and Won as bars. Settings shows one preview per theme. The buy-soon slip is tinted, used draws punch out once on opening, and ten balls fit on a phone's line. Narrow-window cards lay their fields across, with labels above. Figures are unchanged.
+  Contract: docs/specs/LOTTO-0002-local-web-page.md, INV-63, INV-97, INV-98.
+  **Layman:** The wins now show at a glance which numbers matched, spending has bars, and you choose a colour theme by seeing it.
   Kind: ux.
   Source: user-request-2026-11-02.
 

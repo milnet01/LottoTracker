@@ -23,6 +23,7 @@ findings were folded into the build. INV-68
 (`tools/verify_boards.py::odd_board_is_named`, three breaks) and INV-70
 (`tools/verify_page.py::deadline_only_when_unpaid`) pass, each observed
 failing under its own breaks.
+**Amended 2026-11-02** for LOTTO-0092: §4.1, §4.9, INV-63, INV-97, INV-98, §7, §13.
 **Amended 2026-11-02** for LOTTO-0091: §4.1, INV-96, §7, §11.
 **Amended 2026-11-02** for LOTTO-0090: §4.1, §4.5, INV-93 to INV-95, §7, §11.
 **Amended 2026-11-02** for LOTTO-0087: §4.1, §4.5, INV-85 to INV-87, INV-89, §7
@@ -412,11 +413,11 @@ reads, which the third defines:
 to. LOTTO-0014 §4.3 owns that rule and the reason for it.
 
 `page.py` emits the page's inline JavaScript along with its markup. It has
-exactly six jobs and no others: the two POSTs (which must carry a custom
+exactly seven jobs and no others: the two POSTs (which must carry a custom
 header, LOTTO-0014 §4.3), filtering the ticket table (which must not touch the
 URL, LOTTO-0014 INV-21), sorting it under the same rule (INV-85), copying each
 heading onto its cells for a narrow window's cards (INV-86), switching tabs
-(INV-89), and **polling `GET /status` every 2 s while `building`
+(INV-89), applying a colour theme (INV-63), and **polling `GET /status` every 2 s while `building`
 is true, or after a `POST /refresh`, reloading when `built` changes**. **The poll also
 terminates on failure**: a refresh that raises leaves `built` unchanged and
 `building` false, so a poll watching only `built` waits for a change that never
@@ -985,7 +986,9 @@ and no per-number colour — so it is the distinction that exists to follow.
 Holding them still is a legibility decision rather than an aesthetic one: a
 colour that moved with the theme would need its contrast re-checked against
 every theme, and each ball states its own background *and* its own foreground
-so that no theme can decide whether a number is visible.
+so that no theme can decide whether a number is visible. A number that did not
+match (INV-97) is the one exception: a ring in its game's colour, with its figure in
+the theme's foreground, which INV-62 holds readable in every theme.
 
 **The choice lives in the browser, not in `settings.json`.** Routing it through
 `POST /settings` would give that file a second writer for something the tray
@@ -1055,10 +1058,13 @@ them unqualified.
   no ticket data, and no second writer for `settings.json`. Added 2026-09-06
   (LOTTO-0076). This is INV-21's rule reaching a control that did not exist
   when INV-21 was written, and §4.7's one-reader rule reaching a preference
-  that had no reason to be shared with the tray.
+  that had no reason to be shared with the tray. Settings shows one preview per
+  theme, and a preview only moves the dropdown, so one place applies a theme. With
+  no script the dropdown shows instead (LOTTO-0092). **What a click does runs in
+  the browser and no case runs it**; it was checked in Chrome on 2026-11-02.
   *Test:* `tools/verify_page.py`, case `theme_is_dark_and_readable` — the
   rendered page must carry exactly one `setItem(`, for the theme name, and none
-  of the URL-writing calls INV-21 already forbids.
+  of the URL-writing calls INV-21 already forbids. Break `theme_preview_dropped`.
 
 - **INV-15** — An entry nothing can score renders as "not checkable" with its
   reason, and never as a blank, a dash, a zero, or an omission; a ticket
@@ -1372,6 +1378,27 @@ them unqualified.
   *Breaks when:* the typeface moves to a route of its own or a remote address, or
   the font stack loses its system fallback.
 
+- **INV-97** — On a win, a number that matched is a filled ball and one that did not
+  is a ring, in both the chosen and the drawn cell, by `check.py::match()`'s rule: a
+  PowerBall meets only a PowerBall, and a Lotto bonus ball counts against every number
+  on the board. With either set unknown nothing is marked, and a ball with no draw
+  beside it is never marked. The Wins tab says what the two looks mean. `page.py` may
+  not import `check.py`, so the rule is written twice and this case holds the two
+  together. Added 2026-11-02 (LOTTO-0092).
+  *Test:* `tools/verify_page.py`, case `matched_balls_marked`, against `check.match()`.
+  Breaks `powerball_read_as_bonus`, `unknown_set_marked_miss` and `no_ball_key`.
+  *Breaks when:* a new game or special is scored in `check.match()` and not here.
+
+- **INV-98** — A period's row draws its two figures as bars, from those two figures
+  alone, the larger filling the track. R0.00 draws an empty track, and a month nothing
+  has checked draws no bar. The bars are hidden from a screen reader, because the cells
+  say the same. Added 2026-11-02 (LOTTO-0092).
+  *Test:* `tools/verify_page.py`, case `period_bars_say_the_figures`. Break
+  `bars_ignore_zero`. **The look is not tested**; it was checked by eye in Chrome on
+  2026-11-02, on invented tickets: Dark at four window widths, and Light and High
+  contrast at one.
+  *Breaks when:* a bar is drawn for a month with no bucket, or a zero gets a sliver.
+
 ## 6. Failure modes
 
 - **The operator's API is unreachable.** Four of seven build attempts on
@@ -1498,6 +1525,8 @@ share their fixtures, their temporary-directory setup and their stub builder.
 | `page_follows_window_width` | INV-86 |
 | `app_icon_in_page` | INV-87 |
 | `typeface_in_page` | INV-96 |
+| `matched_balls_marked` | INV-97 |
+| `period_bars_say_the_figures` | INV-98 |
 | `tabs_never_hide_a_warning` | INV-89 |
 | `buy_again_on_overview` | INV-93 |
 | `paid_wins_shown` | INV-94 |
@@ -1664,6 +1693,8 @@ LOTTO-0014 §8.)
 | INV-86 a centred column at 75% of the window, turning to cards when narrow | `tools/verify_page.py::page_follows_window_width` — red-tested by `--break capped_width` and `--break no_cards`. **Nothing** measures a table against a real window |
 | INV-87 the tab icon on every page state, with no fifth route | `tools/verify_page.py::app_icon_in_page` — red-tested by `--break no_icon` |
 | INV-96 the page's own typeface, with no fifth route and a system fallback | `tools/verify_page.py::typeface_in_page` — red-tested by `--break no_font`. **Nothing** judges the look |
+| INV-97 a win's balls say what matched, by the engine's rule | `tools/verify_page.py::matched_balls_marked` — red-tested by three breaks |
+| INV-98 a period's bars draw its figures, and a zero draws nothing | `tools/verify_page.py::period_bars_say_the_figures` — red-tested by `--break bars_ignore_zero`. **Nothing** judges the look |
 | INV-93 the Overview says when to buy, from the tray's calendar, judged when shown | `tools/verify_page.py::buy_again_on_overview` — red-tested by five breaks. **Layout and the buttons run in the browser and no case runs them**; checked by hand in Firefox on 2026-11-02 |
 | INV-94 a paid win shows its numbers and no deadline | `tools/verify_page.py::paid_wins_shown` — red-tested by `--break no_paid_section` |
 | INV-95 game names, never pool keys | `tools/verify_page.py::games_by_their_names` — red-tested by `--break pool_keys_shown` |
@@ -1799,6 +1830,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| amend-0092 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0092, the user's request to keep improving the look. Adds matched balls, period bars and theme previews; INV-97, INV-98. |
 | amend-0091 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0091, the user's request to make the page look pretty. Adds the typeface; INV-96. |
 | amend-0090 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0090, the user's request to improve the page's look and flow. Adds the Overview, the paid wins and game names; INV-93 to INV-95. |
 | amend-0087-b | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0087, the user's two further requests that day. INV-86 now holds a centred 75% column; INV-89 adds the tabs and sticky bar. |
