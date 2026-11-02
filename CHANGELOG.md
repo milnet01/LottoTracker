@@ -13,6 +13,10 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Re-buy warnings now work when the tray icon starts by itself at login** (LOTTO-0086)
+  A tray started at login looked for the SMS file in the wrong folder, found no
+  tickets and warned about nothing, without saying so.
+
 - **Lotto wins with two numbers and no bonus ball now count, for draws from 2025-09-24 to the June 2026 handover** (LOTTO-0033)
   The app scored them as losses, so its totals ran below what the bank paid. All references the app could not explain now match the bank exactly.
 

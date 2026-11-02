@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=85 -->
+<!-- ants-roadmap-id-high-water: LOTTO=86 -->
 
 # ROADMAP — LottoTracker
 
@@ -1728,6 +1728,13 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** Tickets with Daily Lotto Plus could be checked in full, instead of that part being marked not checkable.
   Kind: investigate.
   Source: in-session-2026-10-30 (found by LOTTO-0037).
+
+- ✅ [LOTTO-0086] **A tray started at login gives no re-buy warnings, because it looks for the dump in the wrong folder.**
+  Measured 2026-11-02: `supervise.expiry_notices()` calls `tickets.load()` with its default relative path. The autostart entry `serve.py` writes sets no working folder, so outside the repository the load raises `FileNotFoundError`, the catch turns that into no tickets, and no re-buy notice is ever selected. Run from `/tmp`, the call returned no notices and said nothing.
+  Spec: `docs/specs/LOTTO-0034-ticket-expiry-warning.md` INV-81.
+  **Layman:** Re-buy warnings now work when the tray icon starts by itself at login, not only when it is started from the project folder.
+  Kind: fix.
+  Source: in-session-2026-11-02 (found while building LOTTO-0083).
 
 ## Hardening
 

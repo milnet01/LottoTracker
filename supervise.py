@@ -28,6 +28,9 @@ import expiry
 from tickets import load as load_tickets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# Anchored here, never to the working folder: a tray started at login does not
+# run in the repository (LOTTO-0034 INV-81).
+DUMP = os.path.join(HERE, "lotto_sms_raw.txt")
 DEFAULT_PORT = 4322
 MIN_PORT, MAX_PORT = 1024, 65535
 
@@ -365,7 +368,7 @@ def expiry_notices(today, tickets=None, state_path=None):
         # so the catch is here rather than left to the caller: this runs inside
         # the tray's timer slot, where an exception kills the tray.
         try:
-            tickets = load_tickets()
+            tickets = load_tickets(DUMP)
         except (OSError, ValueError):
             tickets = []
     path = state_path or expiry_state_path()

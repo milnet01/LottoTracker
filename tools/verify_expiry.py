@@ -29,10 +29,10 @@ verifier echoing real content puts it where verify_privacy.py cannot see it.
 The two constructed fixtures use the one sentinel reference and a name that is
 not reference-shaped at all.
 
-The SEVEN cases that call expiry_notices() each pass a temporary state_path -
+Every case that calls expiry_notices() passes a temporary state_path -
 expired_tickets_are_silent, notice_is_said_once, notice_names_nothing_else,
-state_file_is_pruned, unknown_game_is_loud, unsaved_state_pauses_warnings and
-malformed_ticket_is_named. The isolation is that injected
+state_file_is_pruned, unknown_game_is_loud, unsaved_state_pauses_warnings,
+malformed_ticket_is_named and tickets_load_from_any_directory. The isolation is that injected
 argument, never $XDG_CONFIG_HOME: _tmp_state() returns a path under
 tempfile.mkdtemp() and nothing here touches the environment.
 
@@ -464,6 +464,36 @@ def malformed_ticket_is_named():
     return "one notice for 3 malformed tickets, never the unknown-game one"
 
 
+def tickets_load_from_any_directory():
+    """INV-81: the warning reads the real dump whatever folder the tray started in.
+
+    A tray started at login does not run in the repository, and the autostart
+    entry sets no working folder. A relative path then raises, the catch in
+    expiry_notices() turns that into no tickets, and the project's primary job
+    stops in silence. The spy is what makes that visible: no notice is a normal
+    answer, so the return value alone could not tell the two apart.
+    """
+    real, loaded = supervise.load_tickets, []
+
+    def spy(*args, **kwargs):
+        out = real(*args, **kwargs)
+        loaded.append(len(out))
+        return out
+
+    here, away = os.getcwd(), tempfile.mkdtemp()
+    _TEMP_DIRS.append(away)
+    supervise.load_tickets = spy
+    try:
+        os.chdir(away)
+        supervise.expiry_notices(TODAY, None, _tmp_state())
+    finally:
+        os.chdir(here)
+        supervise.load_tickets = real
+    assert loaded and loaded[0] > 0, (
+        "started outside the repository, the warning loaded no tickets")
+    return "the dump is found from a folder that is not the repository"
+
+
 def draws_left_today_boundary():
     """INV-61: draws_left is 1 on a ticket's own final draw day, 0 the day after.
 
@@ -565,6 +595,7 @@ CASES = [
     ("clock_is_sast_anywhere", "INV-64", clock_is_sast_anywhere),
     ("unsaved_state_pauses_warnings", "INV-65", unsaved_state_pauses_warnings),
     ("malformed_ticket_is_named", "INV-66", malformed_ticket_is_named),
+    ("tickets_load_from_any_directory", "INV-81", tickets_load_from_any_directory),
 ]
 
 BREAKS = {
@@ -582,6 +613,7 @@ BREAKS = {
     "write_failure_escapes": "unsaved_state_pauses_warnings",
     "pause_forgotten": "unsaved_state_pauses_warnings",
     "malformed_reads_as_unknown_game": "malformed_ticket_is_named",
+    "relative_dump": "tickets_load_from_any_directory",
 }
 
 
@@ -685,6 +717,9 @@ def _apply_break(name):
         # The ndraws test dropped: the calendar's ValueError falls to the
         # shared catch and reads as an unrecognised game.
         supervise._malformed = lambda t: False
+    elif name == "relative_dump":
+        # The defect LOTTO-0086 fixed: the path resolves against the working folder.
+        supervise.DUMP = "lotto_sms_raw.txt"
     elif name == "notice_per_unknown_ticket":
         real = supervise.expiry_notices
 
