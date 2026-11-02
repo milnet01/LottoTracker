@@ -17,6 +17,8 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The page has a new look: a sticky bar with tabs over a centred column, 75% of a wide screen, with the warnings above every tab** (LOTTO-0087)
+
 - **Fit the page to the window, open its tables latest first, offer other orders, and show the app icon in the browser tab.** (LOTTO-0087)
   The page uses your whole screen, shows the newest tickets first, sorts however you choose, turns into cards on a phone, and has its icon in the browser tab.
 

@@ -2378,15 +2378,17 @@ def latest_first_and_sortable():
 
 
 def page_follows_window_width():
-    """INV-86 — the page fills a wide window and turns to cards on a narrow one."""
+    """INV-86 — a centred column, 75% of a wide window; cards on a narrow one."""
     html = render_pure(fixture_model())
-    body = re.search(r"\bbody\{([^}]*)\}", html)
-    if body is None:
-        raise Fail("there is no body rule")
-    need("max-width" not in body.group(1),
-         "the body is capped, so a wide window goes unused")
-    need(not re.search(r"\bbody\{[^}]*max-width", html),
-         "a body rule caps the width")
+    column = re.search(r"\.column\{([^}]*)\}", html)
+    if column is None:
+        raise Fail("there is no column rule")
+    need("margin:0 auto" in column.group(1), "the column is not centred")
+    need("width:max(75%,90rem)" in column.group(1),
+         "the column is not 75% of the window, floored at the widest table")
+    need("max-width:100%" in column.group(1),
+         "the column can run wider than a narrow window")
+    need('<main class="column">' in html, "the page does not sit in the column")
     media = re.search(r"@media\(max-width:[0-9.]+rem\)\{(.*?)\n\}", html, re.S)
     if media is None:
         raise Fail("nothing changes the layout on a narrow window")
@@ -2399,6 +2401,44 @@ def page_follows_window_width():
     # The columns the user saw wrapping: dates and money must stay on one line.
     need(".cards th,.cards td{white-space:nowrap}" in html,
          "ordinary cells can still wrap")
+
+
+def tabs_never_hide_a_warning():
+    """INV-89 — the sections sit in tabs, and no warning sits inside one.
+
+    Only the markup is checked. Clicking a tab runs in the browser and no case
+    runs it; LOTTO-0002 §11 says so.
+    """
+    quiet = {"newest": None, "days": None}
+    html = render_pure(fixture_model(sms_quiet=quiet))
+    first_panel = html.find('class="tabpanel')
+    need(first_panel > 0, "the page has no tab panels")
+    for warning in ("No lottery SMS", "cannot be checked"):
+        if warning == "cannot be checked":
+            u = dict(fixture_model()["uncheckable"], uncheckable=1, no_pool=1, partly=1)
+            page_html = render_pure(fixture_model(uncheckable=u, sms_quiet=quiet))
+        else:
+            page_html = html
+        at = page_html.find(warning)
+        need(at != -1, f"the page does not say {warning!r}")
+        need(at < page_html.find('class="tabpanel'),
+             f"{warning!r} is inside a tab, where it can be hidden")
+    panels = re.findall(r'id="panel-([a-z]+)"', html)
+    tabs = re.findall(r'aria-controls="panel-([a-z]+)"', html)
+    need(panels and panels == tabs, f"tabs {tabs} do not match panels {panels}")
+    need(html.count('aria-selected="true"') == 1, "not exactly one tab is selected")
+    need(html.count('class="tabpanel on"') == 1, "not exactly one panel starts open")
+    # With no script, every section must stay on the page: only `.js` hides.
+    need(".js .tabpanel:not(.on){display:none}" in html
+         and 'className="js"' in html.split("<body>", 1)[0],
+         "the hiding rule does not depend on the script running")
+    need('href="#' not in html, "a link would put a fragment in the URL")
+    need('id="top-msg"' in html and 'note("That refresh failed' in html,
+         "a failed refresh is reported inside a hidden tab")
+    for state in ({"building": True, "built": None, "requests": 0},
+                  {"no_dump": True}, {"no_build": True}):
+        need('class="tab"' not in render_pure(state),
+             "a page with no tickets offers tabs of nothing")
 
 
 def app_icon_in_page():
@@ -2459,6 +2499,7 @@ CASES = [
     ("latest_first_and_sortable", "INV-85", latest_first_and_sortable),
     ("page_follows_window_width", "INV-86", page_follows_window_width),
     ("app_icon_in_page", "INV-87", app_icon_in_page),
+    ("tabs_never_hide_a_warning", "INV-89", tabs_never_hide_a_warning),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -2468,6 +2509,7 @@ BREAKS = {
     "capped_width": "page_follows_window_width",
     "no_cards": "page_follows_window_width",
     "no_icon": "app_icon_in_page",
+    "warning_in_a_tab": "tabs_never_hide_a_warning",
     "no_drawn_numbers": "numbers_chosen_and_drawn",
     "blank_numbers_cell": "numbers_chosen_and_drawn",
     "disclaimer_with_data_only": "disclaimer_on_every_state",
@@ -2523,9 +2565,14 @@ def apply_render_breaks():
         page._sorted_table = lambda *a, **k: re.sub(
             r'<select class="sortby".*?</select>', "", real_table(*a, **k), flags=re.S)
     if broken("capped_width"):
-        page.CSS += "body{max-width:64rem}"
+        page.CSS = page.CSS.replace("width:max(75%,90rem)", "width:64rem")
     if broken("no_cards"):
-        page.CSS = page.CSS.replace("@media(max-width:80rem)", "@media print")
+        page.CSS = page.CSS.replace("@media(max-width:90rem)", "@media print")
+    if broken("warning_in_a_tab"):
+        real_wins = page._wins_section
+        real_quiet = page._sms_quiet_section
+        page._wins_section = lambda m: real_quiet(m) + real_wins(m)
+        page._sms_quiet_section = lambda m: ""
     if broken("no_icon"):
         serve.APP_ICON = None
     if broken("quiet_judged_at_build"):

@@ -23,7 +23,8 @@ findings were folded into the build. INV-68
 (`tools/verify_boards.py::odd_board_is_named`, three breaks) and INV-70
 (`tools/verify_page.py::deadline_only_when_unpaid`) pass, each observed
 failing under its own breaks.
-**Amended 2026-11-02** for LOTTO-0087: §4.1, §4.5, INV-85 to INV-87, §7 and §11.
+**Amended 2026-11-02** for LOTTO-0087: §4.1, §4.5, INV-85 to INV-87, INV-89, §7
+and §11.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0002 (user-request-2026-08-01; three further choices
 taken with the user 2026-08-02, recorded in §3).
@@ -400,10 +401,11 @@ reads, which the third defines:
 to. LOTTO-0014 §4.3 owns that rule and the reason for it.
 
 `page.py` emits the page's inline JavaScript along with its markup. It has
-exactly five jobs and no others: the two POSTs (which must carry a custom
+exactly six jobs and no others: the two POSTs (which must carry a custom
 header, LOTTO-0014 §4.3), filtering the ticket table (which must not touch the
 URL, LOTTO-0014 INV-21), sorting it under the same rule (INV-85), copying each
-heading onto its cells for a narrow window's cards (INV-86), and **polling `GET /status` every 2 s while `building`
+heading onto its cells for a narrow window's cards (INV-86), switching tabs
+(INV-89), and **polling `GET /status` every 2 s while `building`
 is true, or after a `POST /refresh`, reloading when `built` changes**. **The poll also
 terminates on failure**: a refresh that raises leaves `built` unchanged and
 `building` false, so a poll watching only `built` waits for a change that never
@@ -1280,15 +1282,28 @@ them unqualified.
   *Breaks when:* a table is rendered in model order, or a phone's cards hide the
   headings with no dropdown left to sort by.
 
-- **INV-86** — The page fills the window. Ticket-table cells stay on one line,
-  except the *Payment* and *Why not* text. A window of `80rem` or narrower shows
-  each row as a card of labelled lines. Added 2026-11-02 (LOTTO-0087).
+- **INV-86** — The page is a centred column, 75% of the window's width and never
+  narrower than `90rem` while the window has room, which is what the widest
+  table needs. Ticket-table cells stay on one line, except the *Payment* and *Why
+  not* text. A window of `90rem` or narrower shows each row as a card of labelled
+  lines. Added 2026-11-02 (LOTTO-0087).
   *Test:* `tools/verify_page.py`, case `page_follows_window_width` — the rules
   in the rendered CSS. Breaks `capped_width` and `no_cards`. **It reads the CSS;
   whether a table fits needs a browser**, and was checked by hand at three widths
   on 2026-11-02.
-  *Breaks when:* a width cap returns to the body, or the narrow rule stops
-  stacking the rows.
+  *Breaks when:* the column is capped below what the widest table needs, or the
+  narrow rule stops stacking the rows.
+
+- **INV-89** — The sections sit in tabs under a sticky bar, in §4.5's order, with
+  *Spending* holding both spend sections. Every notice sits above the tabs, so no
+  tab can hide one. A refresh reports in the bar. Tabs touch no URL and store
+  nothing, and with no script every section stays on the page. A page with no
+  tickets offers no tabs. Added 2026-11-02 (LOTTO-0087).
+  *Test:* `tools/verify_page.py`, case `tabs_never_hide_a_warning` — the markup.
+  Break `warning_in_a_tab`. **What a click does runs in the browser and no case
+  runs it**; it was checked by hand in Firefox on 2026-11-02.
+  *Breaks when:* a notice moves into a panel, or a refresh failure is written to
+  `#settings-msg` inside a hidden tab.
 
 - **INV-87** — Every page state names the tray's running icon as its tab icon, as
   a `data:` address, so `serve.py` still answers exactly LOTTO-0014's four routes.
@@ -1424,6 +1439,7 @@ share their fixtures, their temporary-directory setup and their stub builder.
 | `latest_first_and_sortable` | INV-85 |
 | `page_follows_window_width` | INV-86 |
 | `app_icon_in_page` | INV-87 |
+| `tabs_never_hide_a_warning` | INV-89 |
 
 **Added 2026-10-15.** INV-70's case joins `tools/verify_page.py`, with break
 `deadline_on_paid_win`. INV-68's case, `odd_board_is_named`, lives in the new
@@ -1583,8 +1599,9 @@ LOTTO-0014 §8.)
 | INV-70 a deadline only on an unexpired win the bank has not paid, its payment state in words | `tools/verify_page.py::deadline_only_when_unpaid` — red-tested by `--break deadline_on_paid_win`. It renders a hand-authored model, so a wrong mapping is LOTTO-0001 INV-69's to catch, not this case's |
 | INV-78 the disclaimer on every page state and in the README | `tools/verify_page.py::disclaimer_on_every_state` — red-tested by `--break disclaimer_with_data_only` |
 | INV-85 every ticket table opens latest first, with two ways to sort | `tools/verify_page.py::latest_first_and_sortable` — red-tested by `--break oldest_first` and `--break no_sort_dropdown`. **Nothing** runs a click |
-| INV-86 the page fills the window and turns to cards when narrow | `tools/verify_page.py::page_follows_window_width` — red-tested by `--break capped_width` and `--break no_cards`. **Nothing** measures a table against a real window |
+| INV-86 a centred column at 75% of the window, turning to cards when narrow | `tools/verify_page.py::page_follows_window_width` — red-tested by `--break capped_width` and `--break no_cards`. **Nothing** measures a table against a real window |
 | INV-87 the tab icon on every page state, with no fifth route | `tools/verify_page.py::app_icon_in_page` — red-tested by `--break no_icon` |
+| INV-89 tabs under a sticky bar, with every notice above them | `tools/verify_page.py::tabs_never_hide_a_warning` — red-tested by `--break warning_in_a_tab`. **Nothing** runs a click |
 | INV-48 the numbers chosen beside the numbers drawn, absence said in words | `tools/verify_page.py::numbers_chosen_and_drawn` — two disjoint fixture sets, so a renderer echoing the chosen numbers into both columns fails; red-tested by `--break no_drawn_numbers` and `--break blank_numbers_cell` |
 | §4.1 the *resolved* port being what builds LOTTO-0014 §4.2's `Host` allowlist, not either variable read again | **nothing** — and the gap is structural rather than an omission: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because the question they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes both. The breach is loud to a *user* — every request fails — and invisible to the suite |
 | §4.1 `page.py` performing no I/O | `tools/verify_page.py` — a *raising* `all_draws` double that `render_pure()` installs before `render()` is called, for every case that renders `page.py` directly (§7 scopes it). Absent the raising double the row would be false: with no `archive_results.json`, `history.all_draws()` falls straight through to `api_draws()`, which **succeeds** on a connected machine, so a renderer calling it would pass |
@@ -1716,6 +1733,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| amend-0087-b | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0087, the user's two further requests that day. INV-86 now holds a centred 75% column; INV-89 adds the tabs and sticky bar. |
 | amend-0087 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0087, the user's request of 2026-11-02. Adds INV-85 to INV-87, and §4.5 item 1 now opens latest first rather than soonest deadline first. |
 | amend-0082 | 2026-10-30 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0082, the user's request for a disclaimer. Adds INV-78 and its case `disclaimer_on_every_state`. The spec is past two review loops, so no gate re-arms. |
 | 10 | 2026-10-15 | 2, cold, via `neutral-lane` — genre pinned `spec`; every lane held every question; new run, armed by commit 9643da3 (the user's decisions) | — | — | — | — | **First loop of a new run: Q1 1 · Q2 0 · Q3 1 · Q4 1 (verified 3, fixed 0, surfaced 1, filed 2; dismissed 0). Converged: nothing this loop could act on remained in the subject, so no second read.** Surfaced to the user, inside the armed span [Q1]: §4.6's table rewritten today keeps "Winnings lifetime" as a separate labelled line, while `page.py::_spend_section()` has never rendered `won.lifetime_cents` — an implementer following §4.6 would add a row the shipped page lacks. Whether the page should show it is the user's call. Filed, outside the armed span (the blast-radius exit; both on INV-68, written by the earlier run's amendment): [Q3] the banner's `odd_board` wording is not pinned, so `tools/verify_boards.py::odd_board_is_named` and the banner may be built to different strings; [Q4] `odd_board_unnamed` breaks `entry_reason()` and the banner together, so the banner half of INV-68 is never seen red on its own. Open questions resolved clean: `serve.py` and `supervise.py` import no PySide6, so INV-68's case can run on the CI lane; the `unexpired_cents` key still in `tools/verify_page.py` and `tools/demo_page.py` fixtures is read by nothing and changes no render. Code windows were cut from HEAD copies because the working tree held unrelated in-progress edits. Second share: 1 of 3 verified inside the armed span. |

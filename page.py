@@ -753,6 +753,7 @@ def _themes_css():
 # The pattern guard is not decoration: the value is attacker-writable in
 # principle (anything running in this origin), and it lands in an attribute.
 THEME_BOOT = (
+    'document.documentElement.className="js";'
     'try{var t=localStorage.getItem("lotto-theme");'
     'if(t&&/^[a-z0-9-]{1,32}$/.test(t))'
     'document.documentElement.setAttribute("data-theme",t)}catch(e){}'
@@ -761,31 +762,49 @@ THEME_BOOT = (
 # variable rather than a hex. That is what makes a new theme a table row instead
 # of a second copy of this stylesheet.
 BASE_CSS = """
-body{font:15px/1.5 system-ui,sans-serif;margin:0;padding:1.5rem clamp(1rem,3vw,3rem);
- color:var(--fg);background:var(--bg)}
-h1{font-size:1.4rem;margin:0 0 .25rem}h2{font-size:1.1rem;margin:2rem 0 .5rem}
-h3{font-size:.95rem;margin:1.25rem 0 .4rem;color:var(--dim)}
+body{font:16px/1.55 system-ui,sans-serif;margin:0;color:var(--fg);background:var(--bg)}
+.column{box-sizing:border-box;width:max(75%,90rem);max-width:100%;margin:0 auto;padding:0 1rem}
+main.column{padding-top:1.25rem;padding-bottom:2rem}
+.topbar{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line)}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1.5rem;padding-top:.5rem}
+.brand{display:flex;align-items:center;gap:.5rem;padding-bottom:.5rem}
+.brand img{width:1.5rem;height:1.5rem}
+h1{font-size:1.2rem;font-weight:700;margin:0;letter-spacing:-.01em}
+.tabs{display:flex;flex:1 1 auto;gap:.25rem;overflow-x:auto;scrollbar-width:none;align-self:flex-end}
+.tab{padding:.45rem .8rem .55rem;background:none;border:0;border-bottom:3px solid transparent;
+ border-radius:0;color:var(--dim);cursor:pointer;white-space:nowrap}
+.tab:hover{color:var(--fg)}
+.tab[aria-selected=true]{color:var(--fg);font-weight:650;border-bottom-color:var(--accent)}
+.baractions{display:flex;align-items:center;gap:.75rem;padding-bottom:.5rem}
+#top-msg{color:var(--dim);font-size:.9rem}
+.js .tabpanel:not(.on){display:none}
+h2{font-size:1.4rem;font-weight:700;letter-spacing:-.01em;margin:1.5rem 0 .5rem}
+h3{font-size:1.05rem;font-weight:650;margin:1.5rem 0 .4rem}
 table{border-collapse:collapse;width:100%;margin:.5rem 0}
-th,td{text-align:left;padding:.3rem .5rem;border-bottom:1px solid var(--line)}
+th,td{text-align:left;padding:.45rem .6rem;border-bottom:1px solid var(--line);font-size:.95rem}
+th{font-weight:600;color:var(--dim);border-bottom-width:2px}
+tbody tr:hover td{background:var(--panel)}
 .cards th,.cards td{white-space:nowrap}
 .cards td.wrap{white-space:normal;min-width:14rem}
 .tablewrap{overflow-x:auto}
-.notice,.muted,footer,.disclaimer{max-width:80rem}
-th{font-weight:600;font-size:.85rem;color:var(--dim)}
 .money{text-align:right;font-variant-numeric:tabular-nums}
 .nums{white-space:nowrap}
-.ball{display:inline-block;min-width:1.6rem;padding:.1rem .3rem;margin:.05rem .1rem;
- border-radius:.8rem;background:#4a5568;color:#fff;text-align:center;
- font-variant-numeric:tabular-nums;font-size:1rem}
-.ball.special{background:#6a1b9a;color:#fff;font-weight:600}
+.ball{display:inline-block;position:relative;min-width:1.8rem;height:1.8rem;line-height:1.8rem;
+ margin:.08rem .06rem;border-radius:50%;background:#4a5568;color:#fff;text-align:center;
+ font-variant-numeric:tabular-nums;font-size:.95rem;font-weight:600}
+.ball:after{content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;
+ background:radial-gradient(circle at 35% 25%,rgba(255,255,255,.24),rgba(255,255,255,0) 55%);
+ box-shadow:inset 0 -2px 3px rgba(0,0,0,.28)}
+.ball.special{background:#6a1b9a;color:#fff}
 tr[data-game="lotto"] .ball{background:#c62828}
 tr[data-game="lotto"] .ball.special{background:#6a1b9a}
 tr[data-game="powerball"] .ball{background:#1565c0}
 tr[data-game="powerball"] .ball.special{background:#bf360c}
 tr[data-game="daily"] .ball{background:#2e7d32}
 .notcheckable{color:var(--warn);font-style:italic}
-.muted{color:var(--dim);font-size:.9rem}
-.notice{background:var(--warn-bg);border-left:4px solid var(--accent);padding:.6rem .8rem;margin:.8rem 0}
+.muted{color:var(--dim);font-size:.92rem}
+.notice{background:var(--warn-bg);border-left:4px solid var(--accent);border-radius:.4rem;
+ padding:.7rem 1rem;margin:.8rem 0}
 .notice.bad{background:var(--bad-bg);border-left-color:var(--bad)}
 tr.soon td{background:var(--warn-bg)}tr.today td{background:var(--bad-bg);font-weight:600}
 .row{display:flex;align-items:center;gap:.6rem;margin:.4rem 0}
@@ -798,33 +817,40 @@ tr.soon td{background:var(--warn-bg)}tr.today td{background:var(--bad-bg);font-w
 .switch input:checked+.slider{background:var(--on)}
 .switch input:checked+.slider:before{transform:translateX(1.2rem)}
 .switch input:focus-visible+.slider{outline:2px solid var(--accent);outline-offset:2px}
-footer{margin-top:2.5rem;color:var(--dim);font-size:.85rem}
-.disclaimer{margin-top:1rem;color:var(--dim);font-size:.85rem}
+footer{margin-top:2rem;color:var(--dim);font-size:.9rem}
+.disclaimer{margin-top:1rem;color:var(--dim);font-size:.9rem}
 button,select{font:inherit;padding:.3rem .7rem;background:var(--panel);color:var(--fg);
- border:1px solid var(--line);border-radius:.25rem}
+ border:1px solid var(--line);border-radius:.4rem}
+#refresh{cursor:pointer;background:var(--bg);white-space:nowrap}
+#refresh:hover{border-color:var(--accent)}
 button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sorthead{font-weight:600;padding:0;background:none;border:0;color:inherit;cursor:pointer}
 th[aria-sort=descending] .sorthead:after{content:" \\25BC"}
 th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
-/* Too narrow for the widest table: each row becomes a card, one labelled line per
-   cell. The labels are copied from the headings by JS below (INV-86). */
-@media(max-width:80rem){
+/* Narrower than the column's 90rem floor, which is what the widest table needs: each
+   row becomes a card, one labelled line per cell. The labels are copied from the
+   headings by JS below (INV-86). */
+@media(max-width:90rem){
  .cards thead{display:none}
  .cards table,.cards tbody,.cards tr,.cards td{display:block}
- .cards tr{border:1px solid var(--line);border-radius:.4rem;margin:.6rem 0;padding:.3rem}
+ .cards tr{border:1px solid var(--line);border-radius:.5rem;margin:.6rem 0;padding:.3rem}
  .cards td,.cards td.wrap{position:relative;padding:.2rem .3rem .2rem 8.5rem;border:0;white-space:normal;
   min-width:0;min-height:1.6rem;text-align:left}
  .cards td:before{content:attr(data-label);position:absolute;left:.3rem;width:7.8rem;
-  color:var(--dim);font-size:.85rem;font-weight:600;font-style:normal}
+  color:var(--dim);font-size:.88rem;font-weight:600;font-style:normal}
+ tbody tr:hover td{background:none}
+ .tabs{order:3;flex-basis:100%}
+ .baractions{margin-left:auto}
 }
+@media(prefers-reduced-motion:reduce){.slider,.slider:before{transition:none}}
 """
 
 CSS = _themes_css() + BASE_CSS
 
-# Five jobs and no others (LOTTO-0002 §4.1): the two POSTs (custom header, so a
+# Six jobs and no others (LOTTO-0002 §4.1): the two POSTs (custom header, so a
 # cross-origin form post cannot forge them), filtering and sorting (must never
-# touch the URL - INV-21), the headings copied onto a phone's card rows, and
-# polling /status while a build is in flight.
+# touch the URL - INV-21), the headings copied onto a phone's card rows, switching
+# tabs (the same rule, INV-89), and polling /status while a build is in flight.
 JS = """
 var TOKEN=%s;
 function post(path,body,done){
@@ -835,6 +861,9 @@ function post(path,body,done){
  x.send(body===null?"":JSON.stringify(body));
 }
 function msg(t){var e=document.getElementById("settings-msg");if(e)e.textContent=t}
+// The result of a refresh goes in the bar. #settings-msg sits in a tab that is
+// usually hidden, and a failure said where nobody can see it was not said (INV-89).
+function note(t){var e=document.getElementById("top-msg");if(e)e.textContent=t;else msg(t)}
 function wire(id){
  var el=document.getElementById(id);if(!el)return;
  el.addEventListener("change",function(){
@@ -877,7 +906,7 @@ if(rb)rb.addEventListener("click",function(){
  post("/refresh",null,function(code){
   if(code===202){poll()}
   else{rb.disabled=false;rb.textContent="Refresh results";
-       msg(code===409?"A refresh is already running.":"Refresh was declined.")}
+       note(code===409?"A refresh is already running.":"Refresh was declined.")}
  });
 });
 // Filtering is client-side over rows already in the document. It must not add a
@@ -948,6 +977,27 @@ function wireTable(table){
   sortTable(document.getElementById(sel.getAttribute("data-table")),+want[0],want[1]);
  });
 });
+// Tabs show one panel at a time. They add no fragment and store nothing (INV-89):
+// a stylesheet hides the other panels only once the head has marked the page as
+// running script, so with no script every section is simply on the page.
+var tabs=[].slice.call(document.querySelectorAll(".tab"));
+function showTab(tab,focus){
+ tabs.forEach(function(t){
+  var on=t===tab;
+  t.setAttribute("aria-selected",on?"true":"false");
+  t.tabIndex=on?0:-1;
+  document.getElementById(t.getAttribute("aria-controls")).classList.toggle("on",on);
+ });
+ if(focus)tab.focus();
+ window.scrollTo(0,0);
+}
+tabs.forEach(function(tab,i){
+ tab.addEventListener("click",function(){showTab(tab)});
+ tab.addEventListener("keydown",function(ev){
+  var step=ev.key==="ArrowRight"?1:ev.key==="ArrowLeft"?-1:0;
+  if(step){ev.preventDefault();showTab(tabs[(i+step+tabs.length)%%tabs.length],true)}
+ });
+});
 // Same rule for the period selector: rows are already in the document and
 // only their visibility changes (INV-21).
 var pf=document.getElementById("periodfilter");
@@ -968,7 +1018,7 @@ var BUILT=%s;
 function say(t){
  var p=document.getElementById("progress");
  if(p){p.textContent=t;return}
- msg(t);
+ note(t);
 }
 function poll(){
  var x=new XMLHttpRequest();x.open("GET","/status",true);
@@ -1004,7 +1054,7 @@ function poll(){
               // not a result (LOTTO-0019 §6).
               var p=document.getElementById("progress");
               if(p)p.textContent="";
-              msg("That refresh failed - the figures below are from an earlier fetch.");
+              note("That refresh failed - the figures below are from an earlier fetch.");
               return}
   setTimeout(poll,2000);
  };
@@ -1026,6 +1076,7 @@ def render(model, token):
     # serve.py supplies the icon: this file reads no disk. It is a data: address
     # rather than a route, so the server still answers exactly four (LOTTO-0014).
     icon = model.get("icon")
+    logo = f'<img src="{_e(icon)}" alt="">' if icon else ""
     head = (
         f"<title>{TITLE}</title>"
         + (f'<link rel="icon" type="image/svg+xml" href="{_e(icon)}">' if icon else "")
@@ -1039,8 +1090,8 @@ def render(model, token):
         # looks broken. Same singular rule as the poll, or a first paint at
         # requests == 1 reads "1 lookups so far" until the next tick.
         n = model.get("requests", 0)
+        bar = ""
         body = (
-            f"<h1>{TITLE}</h1>"
             '<div class="notice"><strong>Checking your tickets…</strong> '
             "This takes about half a minute on the first run, longer if the "
             "operator's site is dropping connections. Nothing below is a "
@@ -1064,25 +1115,43 @@ def render(model, token):
         # `and not built` on the error arm is load-bearing: a refresh that
         # fails AFTER a good build must keep showing the previous figures and
         # say they are stale, which is INV-18 and is a different state.
-        body = (
-            f"<h1>{TITLE}</h1>"
-            + _notice(model)
-            + _settings_section(model)
-        )
+        bar = ""
+        body = _notice(model) + _settings_section(model)
     else:
+        # The notices stay above the tabs: "no data is not a loss" and "this ticket
+        # is not on this page" must not be something a tab can hide (INV-89).
+        tabs = [
+            ("wins", "Not yet paid", _wins_section(model)),
+            ("outstanding", "Still outstanding", _outstanding_section(model)),
+            ("entries", "Every entry", _entries_section(model)),
+            ("spending", "Spending", _periods_section(model) + _spend_section(model)),
+            ("settings", "Settings", _settings_section(model)),
+        ]
+        bar = (
+            '<nav class="tabs" role="tablist" aria-label="Sections">'
+            + "".join(
+                f'<button type="button" class="tab" role="tab" id="tab-{key}" '
+                f'aria-controls="panel-{key}" '
+                f'aria-selected="{"true" if i == 0 else "false"}"'
+                f'{"" if i == 0 else " tabindex=" + chr(34) + "-1" + chr(34)}>'
+                f"{label}</button>"
+                for i, (key, label, _html) in enumerate(tabs)
+            )
+            + '</nav><div class="baractions">'
+            '<span id="top-msg" role="status" aria-live="polite"></span>'
+            '<button type="button" id="refresh">Refresh results</button></div>'
+        )
         body = (
-            f"<h1>{TITLE}</h1>"
-            + _notice(model)
+            _notice(model)
             + _sms_quiet_section(model)
             + _senders_section(model)
             + _uncheckable_banner(model.get("uncheckable"))
-            + _wins_section(model)
-            + _outstanding_section(model)
-            + _entries_section(model)
-            + _periods_section(model)
-            + _spend_section(model)
-            + _settings_section(model)
-            + "<footer><button id=\"refresh\">Refresh results</button> "
+            + "".join(
+                f'<div class="tabpanel{" on" if i == 0 else ""}" id="panel-{key}" '
+                f'role="tabpanel" aria-labelledby="tab-{key}">{section}</div>'
+                for i, (key, _label, section) in enumerate(tabs)
+            )
+            + "<footer>"
             + (
                 f"Last successful build: {_e(built)}."
                 if built
@@ -1099,6 +1168,8 @@ def render(model, token):
     return (
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-        f"{head}</head><body>{body}<p class=\"disclaimer\">{DISCLAIMER}</p>"
+        f'{head}</head><body><header class="topbar"><div class="column bar">'
+        f'<div class="brand">{logo}<h1>{TITLE}</h1></div>{bar}</div></header>'
+        f'<main class="column">{body}<p class="disclaimer">{DISCLAIMER}</p></main>'
         f"<script>{script}</script></body></html>"
     )

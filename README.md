@@ -239,9 +239,10 @@ python3 serve.py    # or just the page, no icon, no PySide6 needed
 The icon starts the server, opens the page, refreshes the results on demand and
 shuts the server down when you quit. The page shows the wins the bank has not yet paid, what is
 still outstanding, every entry with what it cost and what it won, and what you
-have spent against what you have won. Ticket tables open latest first, and a
-dropdown or a click on a heading sorts them another way. The page fills a wide
-window and turns each row into a card on a narrow one. A settings panel has two switches: start the icon when you log in, and open the
+have spent against what you have won. Tabs under a sticky bar take you to each part, and every warning stays above
+them. Ticket tables open latest first, and a
+dropdown or a click on a heading sorts them another way. The page is a centred
+column, 75% of a wide window, and turns each row into a card on a narrow one. A settings panel has two switches: start the icon when you log in, and open the
 page when it starts.
 
 Three things worth knowing:

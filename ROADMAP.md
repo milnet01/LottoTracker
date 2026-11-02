@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=88 -->
+<!-- ants-roadmap-id-high-water: LOTTO=89 -->
 
 # ROADMAP — LottoTracker
 
@@ -1743,6 +1743,11 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 
 - ✅ [LOTTO-0087] **Fit the page to the window, open its tables latest first, offer other orders, and show the app icon in the browser tab.**
   Asked for by the user 2026-11-02, with a screenshot of the Payment column wrapping inside a page capped at 64rem. Contract: docs/specs/LOTTO-0002-local-web-page.md INV-85 to INV-87. This reverses that spec's soonest-deadline-first order for Not yet paid, at the user's request: a deadline within 30 days stays marked, and the Expires heading sorts by it.
+  Later on 2026-11-02 the user corrected the width: a centred column at
+  75% of the screen, not edge to edge, and asked for a more modern look
+  with a sticky bar or tabs, leaving the choice open. Built as a sticky
+  bar with tabs, because one table holds over a thousand rows. Every
+  notice stays above the tabs (INV-89).
   **Layman:** The page uses your whole screen, shows the newest tickets first, sorts however you choose, turns into cards on a phone, and has its icon in the browser tab.
   Kind: ux.
   Source: user-request-2026-11-02.
@@ -1750,6 +1755,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
 - ✅ [LOTTO-0088] **The SMS catch-up read a conversation list still empty as finished, and reported nothing to collect.**
   Measured 2026-11-02: python3 watch_sms.py --once printed 0 threads and 0 written and exited 0, while the same list then grew to thousands of conversations over about ten minutes. Run again on the filled list, it wrote the SMSes missed since 2026-08-15. Contract: docs/specs/LOTTO-0003-live-sms-watch.md INV-88.
   **Layman:** When the phone is slow to answer, the app now waits for it instead of deciding there were no new tickets.
+  Kind: fix.
+  Source: in-session-2026-11-02.
+
+- 📋 [LOTTO-0089] **A terminate signal to the tray leaves its server and SMS watcher running, and the next tray collides with them.**
+  Measured 2026-11-02: kill -TERM on tray.py left serve.py and watch_sms.py alive, re-parented. The next tray could not bind the port, so the old server kept answering, and two watchers ran. The dump's flock (INV-38) and its de-duplication should keep two watchers safe, but that pair was not examined. Whether a real session logout delivers this signal was not measured, and it decides how urgent this is. The menu's Quit was not tested in this run; LOTTO-0013 INV-20 covers reaping.
+  **Layman:** If the tray is shut down from outside instead of from its menu, the page and the SMS collector keep running, so the next start shows the old page and collects twice.
   Kind: fix.
   Source: in-session-2026-11-02.
 
