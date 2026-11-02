@@ -16,8 +16,12 @@ import page  # noqa: E402
 import verify_page  # noqa: E402
 
 
+BOUGHT = {"demo-lotto": "2026-07-04", "demo-powerball": "2026-07-25",
+          "demo-daily": "2026-08-10"}
+
+
 def entry(ref, game, plus, cost, covered, remaining, won, boards, scorable=True, reason=None):
-    return {"ref": ref, "game": game, "plus_flag": plus, "pool_id": 0,
+    return {"ref": ref, "bought": BOUGHT[ref], "game": game, "plus_flag": plus, "pool_id": 0,
             "cost_cents": cost, "scorable": scorable, "reason": reason,
             "won_cents": won if scorable else None,
             "draws_covered": covered if scorable else None,

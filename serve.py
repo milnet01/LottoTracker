@@ -15,6 +15,7 @@ as a broken test rather than a broken contract.
     LOTTO_PORT=5000 python3 serve.py # unchanged; used when $PORT is not set
 """
 
+import base64
 import datetime
 import json
 import os
@@ -51,6 +52,22 @@ SECURITY_HEADERS = (
     ("Cache-Control", "no-store"),
 )
 ALLOW = {"/": "GET", "/status": "GET", "/refresh": "POST", "/settings": "POST"}
+
+
+def _icon_address():
+    """The tray's icon as a data: address, for the browser tab (INV-87).
+
+    None if the file is unreadable: a missing tab icon is no reason to refuse to
+    show anyone their tickets.
+    """
+    try:
+        with open(os.path.join(HERE, "icons", "tray-running.svg"), "rb") as fh:
+            return "data:image/svg+xml;base64," + base64.b64encode(fh.read()).decode()
+    except OSError:
+        return None
+
+
+APP_ICON = _icon_address()
 
 
 # --------------------------------------------------------------- settings I/O
@@ -337,6 +354,7 @@ def build_model():
             entries.append(
                 {
                     "ref": t.ref,
+                    "bought": t.bought.strftime("%Y-%m-%d"),
                     "game": t.game,
                     "plus_flag": plus_flag,
                     "pool_id": pool_id,
@@ -786,6 +804,7 @@ def make_server(build_model_fn, token, port):
                     # join it - nothing in page.py renders it (§4.2).
                     "requests": requests,
                     "sms_quiet": sms_quiet_view(model or {}, clock.today()),
+                    "icon": APP_ICON,
                 }
             )
             if model is None and not error and not building:

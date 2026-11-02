@@ -504,6 +504,31 @@ def daemon_restart_is_read():
     return bad
 
 
+def empty_list_is_not_finished():
+    """INV-88: a conversation list still empty has not finished filling.
+
+    Measured 2026-11-02: on a phone holding thousands of conversations the list
+    stayed empty for the first seconds after the request, then grew for ten
+    minutes. "Unchanged for QUIET seconds" read those seconds as the end, and
+    --once reported "0 threads ... 0 written" and exited 0.
+    """
+    bad = 0
+    long_still = int(watch_sms.QUIET)  # comfortably past the quiet window
+    cap = watch_sms.CATCHUP_CAP
+    for name, args, want in (
+        ("empty and quiet, just started", (0, long_still, 10.0), False),
+        ("empty past the cap: stop waiting", (0, long_still, cap + 1), True),
+        ("filled and quiet", (2371, long_still, 600.0), True),
+        ("still growing", (900, 0, 300.0), False),
+        ("growing past the cap", (900, 0, cap + 1), True),
+    ):
+        got = watch_sms.discovery_settled(*args)
+        if got != want:
+            print(f"  SETTLED {name}: {got}, expected {want}")
+            bad += 1
+    return bad
+
+
 def notice_names_a_live_action():
     """INV-37: the new-ticket notice names something the user can click.
 
@@ -569,6 +594,7 @@ CASES = (
     ("lock_never_creates_the_dump", lock_never_creates_the_dump),
     ("daemon_restart_is_read", daemon_restart_is_read),
     ("notice_names_a_live_action", notice_names_a_live_action),
+    ("empty_list_is_not_finished", empty_list_is_not_finished),
 )
 
 

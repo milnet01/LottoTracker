@@ -117,6 +117,7 @@ def fixture_model(**over):
         "entries": [
             {
                 "ref": SENTINEL,
+                "bought": "2026-07-01",
                 "game": "lotto",
                 "plus_flag": 0,
                 "pool_id": 100,
@@ -594,8 +595,8 @@ def uncheckable_not_a_loss():
     )
     for r in unscorable_rows:
         cells = [cell_text(c) for c in re.findall(r"<td[^>]*>(.*?)</td>", r, re.S)]
-        need(len(cells) == 6, f"an entry row has {len(cells)} cells, expected 6")
-        _ref, _pool, _cost, covered, won, reason = cells
+        need(len(cells) == 7, f"an entry row has {len(cells)} cells, expected 7")
+        _ref, _bought, _pool, _cost, covered, won, reason = cells
         # The empty string is IN the forbidden set: a blank cell in a money
         # column reads as nil, which is the failure this project exists to stop.
         need(
@@ -2317,6 +2318,119 @@ def sms_quiet_on_page():
          "a state with its own notice also drew this one")
 
 
+def latest_first_and_sortable():
+    """INV-85 — every ticket table opens latest first and offers other orders.
+
+    Only the opening order and the controls are in the HTML. What a click does
+    is browser-side and nothing here runs it; LOTTO-0002 §11 says so.
+    """
+    base: dict[str, Any] = fixture_model()["entries"][0]
+    # A name that is not reference-shaped, as CLAUDE.md § Privacy requires.
+    ents = [dict(base, ref=f"ticket-{d}", bought=d)
+            for d in ("2025-03-01", "2026-05-01", "2024-01-01")]
+    ents.append(dict(base, ref="ticket-undated", bought=None))
+    coming = [dict(e, draws_remaining=3) for e in ents]
+    unchecked = [dict(e, scorable=False, reason="why", won_cents=None,
+                      draws_covered=None, draws_remaining=None) for e in ents]
+    wins = [dict(fixture_model()["wins"][0], date=d, payment="unpaid")
+            for d in ("2026-02-01", "2026-06-01", "2026-04-01")]
+    want = ["2026-05-01", "2025-03-01", "2024-01-01", "undated"]
+
+    def order(table_id, html):
+        t = re.search(rf'<table id="{table_id}">.*?</table>', html, re.S)
+        if t is None:
+            raise Fail(f"the {table_id} table is missing")
+        return t.group(0)
+
+    html = render_pure(fixture_model(entries=ents + unchecked[:0], wins=wins))
+    got = re.findall(r"<td>ticket-([0-9a-z-]+)</td>", order("entries", html))
+    need(got == want, f"Every entry opens in the order {got}, want {want}")
+    draws = re.findall(r"<td>(2026-[0-9-]+)</td>", order("wins", html))
+    need(draws == ["2026-06-01", "2026-04-01", "2026-02-01"],
+         f"Not yet paid opens in the order {draws}, want latest draw first")
+
+    html = render_pure(fixture_model(entries=coming))
+    got = re.findall(r"<td>ticket-([0-9a-z-]+)</td>", order("coming", html))
+    need(got == want, f"Draws still to come opens in the order {got}")
+    html = render_pure(fixture_model(entries=unchecked))
+    got = re.findall(r"<td>ticket-([0-9a-z-]+)</td>", order("unchecked", html))
+    need(got == want, f"Not checkable opens in the order {got}")
+    need("not recorded" in order("unchecked", html),
+         "a ticket with no purchase date does not say so")
+
+    # Both ways to sort, for all four tables. A phone hides the headings, so a
+    # dropdown missing here leaves a phone with no way to sort at all.
+    html = render_pure(fixture_model(entries=coming + unchecked, wins=wins))
+    for table_id in ("wins", "coming", "unchecked", "entries"):
+        pick = re.search(rf'<select class="sortby" data-table="{table_id}">(.*?)</select>',
+                         html, re.S)
+        if pick is None:
+            raise Fail(f"the {table_id} table has no sort dropdown")
+        need(len(re.findall(r" selected>", pick.group(1))) == 1,
+             f"the {table_id} dropdown does not name the opening order")
+        need("sorthead" in order(table_id, html),
+             f"the {table_id} table has no clickable heading")
+        need('aria-sort="descending"' in order(table_id, html),
+             f"the {table_id} table does not mark its opening order")
+    # The dropdowns hold column names only, never a value from the data.
+    for value in re.findall(r'<select class="sortby".*?</select>', html, re.S):
+        need("ticket-" not in value, "a sort option carries ticket data")
+
+
+def page_follows_window_width():
+    """INV-86 — the page fills a wide window and turns to cards on a narrow one."""
+    html = render_pure(fixture_model())
+    body = re.search(r"\bbody\{([^}]*)\}", html)
+    if body is None:
+        raise Fail("there is no body rule")
+    need("max-width" not in body.group(1),
+         "the body is capped, so a wide window goes unused")
+    need(not re.search(r"\bbody\{[^}]*max-width", html),
+         "a body rule caps the width")
+    media = re.search(r"@media\(max-width:[0-9.]+rem\)\{(.*?)\n\}", html, re.S)
+    if media is None:
+        raise Fail("nothing changes the layout on a narrow window")
+    need(".cards td{" in media.group(1) and "display:block" in media.group(1),
+         "a narrow window does not stack the rows into cards")
+    need("attr(data-label)" in media.group(1),
+         "a card's lines carry no labels")
+    need('class="tablewrap cards"' in html,
+         "the ticket tables are not marked as cards")
+    # The columns the user saw wrapping: dates and money must stay on one line.
+    need(".cards th,.cards td{white-space:nowrap}" in html,
+         "ordinary cells can still wrap")
+
+
+def app_icon_in_page():
+    """INV-87 — the browser tab shows the app's own icon, with no fifth route."""
+    import base64
+
+    temp_home()
+    build = lambda: fixture_model()  # noqa: E731
+    srv, state, port, _t = serve_on(build)
+    host = f"127.0.0.1:{port}"
+    try:
+        # Before any build: the states with no tickets carry the icon too.
+        for when in ("before the build", "after the build"):
+            page_bytes = req(port, "GET", "/", host=host)[2].decode()
+            link = re.search(r'<link rel="icon" type="image/svg\+xml" '
+                             r'href="data:image/svg\+xml;base64,([^"]+)">', page_bytes)
+            if link is None:
+                raise Fail(f"the page has no icon {when}")
+            with open(os.path.join(ROOT, "icons", "tray-running.svg"), "rb") as fh:
+                need(base64.b64decode(link.group(1)) == fh.read(),
+                     "the tab icon is not the tray's icon")
+            if when == "before the build":
+                need(serve.refresh(state, build), "the opening refresh was declined")
+                need(state.wait_idle(5), "the opening build did not finish")
+        need(req(port, "GET", "/favicon.ico", host=host)[0] == 404,
+             "a fifth route answers: LOTTO-0014 allows four")
+    finally:
+        srv.shutdown()
+    need('rel="icon"' not in render_pure(fixture_model()),
+         "page.py found an icon nobody gave it, so it read the disk")
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -2342,10 +2456,18 @@ CASES = [
     ("unscored_month_not_zero", "INV-71", unscored_month_not_zero),
     ("disclaimer_on_every_state", "INV-78", disclaimer_on_every_state),
     ("sms_quiet_on_page", "INV-84", sms_quiet_on_page),
+    ("latest_first_and_sortable", "INV-85", latest_first_and_sortable),
+    ("page_follows_window_width", "INV-86", page_follows_window_width),
+    ("app_icon_in_page", "INV-87", app_icon_in_page),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
 BREAKS = {
+    "oldest_first": "latest_first_and_sortable",
+    "no_sort_dropdown": "latest_first_and_sortable",
+    "capped_width": "page_follows_window_width",
+    "no_cards": "page_follows_window_width",
+    "no_icon": "app_icon_in_page",
     "no_drawn_numbers": "numbers_chosen_and_drawn",
     "blank_numbers_cell": "numbers_chosen_and_drawn",
     "disclaimer_with_data_only": "disclaimer_on_every_state",
@@ -2393,6 +2515,19 @@ BREAKS = {
 
 def apply_render_breaks():
     """Breaks that live in the renderer rather than the server."""
+    if broken("oldest_first"):
+        page._newest_first = lambda items, key: sorted(
+            items, key=lambda i: i.get(key) or "")
+    if broken("no_sort_dropdown"):
+        real_table = page._sorted_table
+        page._sorted_table = lambda *a, **k: re.sub(
+            r'<select class="sortby".*?</select>', "", real_table(*a, **k), flags=re.S)
+    if broken("capped_width"):
+        page.CSS += "body{max-width:64rem}"
+    if broken("no_cards"):
+        page.CSS = page.CSS.replace("@media(max-width:80rem)", "@media print")
+    if broken("no_icon"):
+        serve.APP_ICON = None
     if broken("quiet_judged_at_build"):
         # The verdict frozen at the date the server started, not the date shown.
         import clock

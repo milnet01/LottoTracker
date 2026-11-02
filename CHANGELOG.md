@@ -15,7 +15,14 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Every remaining difference from the bank now has a named reason in `check.py`'s report** (LOTTO-0037)
   No figure changes. A difference that fits no reason is printed as `NO REASON FOUND`.
 
+### Changed
+
+- **Fit the page to the window, open its tables latest first, offer other orders, and show the app icon in the browser tab.** (LOTTO-0087)
+  The page uses your whole screen, shows the newest tickets first, sorts however you choose, turns into cards on a phone, and has its icon in the browser tab.
+
 ### Fixed
+
+- **The SMS catch-up read a conversation list still empty as finished, and reported nothing to collect.** (LOTTO-0088)
 
 - **Re-buy warnings now work when the tray icon starts by itself at login** (LOTTO-0086)
   A tray started at login looked for the SMS file in the wrong folder, found no

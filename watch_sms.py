@@ -204,6 +204,16 @@ RETRY_EVERY = 60.0     # how often to reach for KDE Connect once it has gone
 RETRY_GRACE = 5.0      # and how long to leave it alone straight after it went
 
 
+def discovery_settled(count, still, elapsed):
+    """True once the conversation list has finished filling (INV-88).
+
+    An empty list has not started, so it is never "finished" before the cap:
+    measured 2026-11-02, a cold daemon's list stays empty for the first seconds
+    after the request and then grows for about ten minutes.
+    """
+    return (count > 0 and still * 2 >= QUIET) or elapsed > CATCHUP_CAP
+
+
 def decode(msg):
     """One ConversationMessage -> (address, date_ms, body, thread_id).
 
@@ -475,7 +485,7 @@ def run(once=False, path=DUMP, threads_path=THREADS):
               "waiting for it.", flush=True)
 
     state = {"phase": "discovering" if conv else "waiting", "count": -1,
-             "still": 0, "retry_at": 0.0, "conv": conv,
+             "still": 0, "retry_at": 0.0, "conv": conv, "seen": None,
              # None means "not currently waiting"; tick() starts the clock.
              "waiting_since": None}
 
@@ -582,9 +592,10 @@ def run(once=False, path=DUMP, threads_path=THREADS):
                 state["still"] = (state["still"] + 1
                                   if count == state["count"] else 0)
                 state["count"] = count
-                if (state["still"] * 2 >= QUIET
-                        or time.monotonic() - state["started"] > CATCHUP_CAP):
+                if discovery_settled(count, state["still"],
+                                     time.monotonic() - state["started"]):
                     seen, rows = watch.snapshot(state["conv"])
+                    state["seen"] = seen
                     asked = watch.pull_history(
                         state["conv"],
                         pull_targets(rows, state["known"], state["water"]))
@@ -624,9 +635,10 @@ def run(once=False, path=DUMP, threads_path=THREADS):
         loop.run()
     except KeyboardInterrupt:
         pass
-    if once and state["phase"] == "waiting":
-        # --once is a catch-up, so ending it still waiting means the catch-up
-        # did not happen. Exiting 0 here would be the project's cardinal
+    if once and (state["phase"] == "waiting" or state["seen"] == 0):
+        # --once is a catch-up, so ending it still waiting, or with a phone that
+        # listed nothing all the way to the cap, means the catch-up did not
+        # happen. Exiting 0 here would be the project's cardinal
         # failure by the shortest road: nothing collected, reported as fine.
         raise RuntimeError("KDE Connect never answered, so nothing was "
                            "caught up. Import over the cable meanwhile.")

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=86 -->
+<!-- ants-roadmap-id-high-water: LOTTO=88 -->
 
 # ROADMAP — LottoTracker
 
@@ -1740,6 +1740,18 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** Re-buy warnings now work when the tray icon starts by itself at login, not only when it is started from the project folder.
   Kind: fix.
   Source: in-session-2026-11-02 (found while building LOTTO-0083).
+
+- ✅ [LOTTO-0087] **Fit the page to the window, open its tables latest first, offer other orders, and show the app icon in the browser tab.**
+  Asked for by the user 2026-11-02, with a screenshot of the Payment column wrapping inside a page capped at 64rem. Contract: docs/specs/LOTTO-0002-local-web-page.md INV-85 to INV-87. This reverses that spec's soonest-deadline-first order for Not yet paid, at the user's request: a deadline within 30 days stays marked, and the Expires heading sorts by it.
+  **Layman:** The page uses your whole screen, shows the newest tickets first, sorts however you choose, turns into cards on a phone, and has its icon in the browser tab.
+  Kind: ux.
+  Source: user-request-2026-11-02.
+
+- ✅ [LOTTO-0088] **The SMS catch-up read a conversation list still empty as finished, and reported nothing to collect.**
+  Measured 2026-11-02: python3 watch_sms.py --once printed 0 threads and 0 written and exited 0, while the same list then grew to thousands of conversations over about ten minutes. Run again on the filled list, it wrote the SMSes missed since 2026-08-15. Contract: docs/specs/LOTTO-0003-live-sms-watch.md INV-88.
+  **Layman:** When the phone is slow to answer, the app now waits for it instead of deciding there were no new tickets.
+  Kind: fix.
+  Source: in-session-2026-11-02.
 
 ## Hardening
 

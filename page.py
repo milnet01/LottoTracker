@@ -109,6 +109,65 @@ def _boards_cell(boards):
     return f'<td class="nums">{"".join(parts)}</td>'
 
 
+def _bought_cell(entry):
+    """When the ticket was bought. Absent is said in words, like any other gap."""
+    bought = entry.get("bought")
+    if not bought:
+        return '<td class="notcheckable">not recorded</td>'
+    return f"<td>{_e(bought)}</td>"
+
+
+def _newest_first(items, date_key):
+    """Latest first, anything undated last. Stable, so one ticket's pools stay
+    together in their own order (LOTTO-0002 INV-85)."""
+    return sorted(items, key=lambda i: i.get(date_key) or "", reverse=True)
+
+
+# What each kind of column offers. The first word is the column's natural first
+# click: newest and highest read downwards, names read A to Z.
+SORT_WORDS = {
+    "date": (("desc", "newest first"), ("asc", "oldest first")),
+    "num": (("desc", "highest first"), ("asc", "lowest first")),
+    "text": (("asc", "A to Z"), ("desc", "Z to A")),
+}
+
+
+def _sorted_table(table_id, columns, rows, default_col, default_dir="desc"):
+    """A table with sortable headings and the same choices in a dropdown.
+
+    The dropdown is not a duplicate: a phone shows each row as a card, with no
+    heading row to click (LOTTO-0002 INV-85, INV-86). `columns` is a list of
+    (heading, kind), where a kind of None means the column does not sort. `rows`
+    must already be in the default order: this names that order, it does not
+    apply it, so the page reads correctly with no script running.
+    """
+    heads, options = [], []
+    for i, (heading, kind) in enumerate(columns):
+        if kind is None:
+            heads.append(f"<th>{_e(heading)}</th>")
+            continue
+        current = ""
+        if i == default_col:
+            word = "descending" if default_dir == "desc" else "ascending"
+            current = f' aria-sort="{word}"'
+        heads.append(
+            f'<th data-kind="{kind}"{current}><button type="button" '
+            f'class="sorthead">{_e(heading)}</button></th>'
+        )
+        for direction, words in SORT_WORDS[kind]:
+            chosen = i == default_col and direction == default_dir
+            options.append(
+                f'<option value="{i}:{direction}"{" selected" if chosen else ""}>'
+                f"{_e(heading)}: {words}</option>"
+            )
+    return (
+        f'<div class="row"><label>Sort by <select class="sortby" '
+        f'data-table="{table_id}">{"".join(options)}</select></label></div>'
+        f'<div class="tablewrap cards"><table id="{table_id}"><thead><tr>'
+        f'{"".join(heads)}</tr></thead><tbody>{rows}</tbody></table></div>'
+    )
+
+
 def _notice(model):
     """The three states in which the page shows no ticket data (LOTTO-0002 §6).
 
@@ -242,7 +301,7 @@ def _payment_cell(w):
     if state == "partly paid":
         p, c = w.get("ref_paid_cents"), w.get("ref_computed_cents")
         if p is not None and c is not None:
-            return (f"<td>partly paid — the bank paid {_e(_rands(p))} of "
+            return (f'<td class="wrap">partly paid — the bank paid {_e(_rands(p))} of '
                     f"{_e(_rands(c))} on this ticket</td>")
         return "<td>partly paid</td>"
     if state == "unpaid":
@@ -263,9 +322,9 @@ def _waiting(wins):
 
 def _wins_section(model):
     live = _waiting(model.get("wins", []))
-    # A win with no expiry date sorts LAST, not first: "" compares below every
-    # real date, so an absent value was reading as the most urgent line here.
-    live.sort(key=lambda w: (not w.get("expires"), w.get("expires") or ""))
+    # Latest draw first, the user's call of 2026-11-02 (INV-85). A deadline
+    # within 30 days stays marked, and the Expires heading sorts by it.
+    live = _newest_first(live, "date")
     if not live:
         body = (
             '<p class="muted">No unexpired win is waiting on the bank. This '
@@ -303,13 +362,13 @@ def _wins_section(model):
                 + _payment_cell(w)
                 + f"<td>{when}</td></tr>"
             )
-        body = (
-            "<table><thead><tr><th>Pool</th><th>Your numbers</th><th>Drawn</th>"
-            "<th>Division</th><th>Matched</th>"
-            "<th>Draw</th><th>Amount</th><th>Payment</th><th>Expires</th>"
-            "</tr></thead><tbody>"
-            + "".join(rows)
-            + "</tbody></table>"
+        body = _sorted_table(
+            "wins",
+            [("Pool", "text"), ("Your numbers", None), ("Drawn", None),
+             ("Division", "text"), ("Matched", "text"), ("Draw", "date"),
+             ("Amount", "num"), ("Payment", "text"), ("Expires", "date")],
+            "".join(rows),
+            5,
         )
     return f"<section><h2>Not yet paid</h2>{body}</section>"
 
@@ -330,15 +389,16 @@ def _outstanding_section(model):
 
     def rows(entries, remaining_col):
         out = []
-        for e in entries:
+        for e in _newest_first(entries, "bought"):
             out.append(
                 f'<tr data-game="{_e(e["game"])}"><td>{_e(e["ref"])}</td>'
-                f'<td>{_e(e["game"])}/{_e(e["plus_flag"])}</td>'
+                + _bought_cell(e)
+                + f'<td>{_e(e["game"])}/{_e(e["plus_flag"])}</td>'
                 + _boards_cell(e.get("boards"))
                 + (
                     f"<td>{e['draws_remaining']}</td>"
                     if remaining_col
-                    else f'<td class="notcheckable">{_e(e.get("reason") or "not checkable")}</td>'
+                    else f'<td class="notcheckable wrap">{_e(e.get("reason") or "not checkable")}</td>'
                 )
                 + "</tr>"
             )
@@ -347,20 +407,27 @@ def _outstanding_section(model):
     parts = []
     if coming:
         parts.append(
-            "<h3>Draws still to come</h3><table><thead><tr><th>Ticket</th>"
-            "<th>Pool</th><th>Your numbers</th><th>Draws remaining</th>"
-            "</tr></thead><tbody>"
-            + rows(coming, True)
-            + "</tbody></table>"
+            "<h3>Draws still to come</h3>"
+            + _sorted_table(
+                "coming",
+                [("Ticket", "text"), ("Bought", "date"), ("Pool", "text"),
+                 ("Your numbers", None), ("Draws remaining", "num")],
+                rows(coming, True),
+                1,
+            )
         )
     if unchecked:
         parts.append(
             f"<h3>Not checkable ({_count(len(unchecked), 'entry', 'entries')})</h3>"
             '<p class="muted">Draws remaining is unknown for these: there is '
             "nothing to measure a window against. They are not losses.</p>"
-            "<table><thead><tr><th>Ticket</th><th>Pool</th>"
-            "<th>Your numbers</th><th>Why not</th>"
-            "</tr></thead><tbody>" + rows(unchecked, False) + "</tbody></table>"
+            + _sorted_table(
+                "unchecked",
+                [("Ticket", "text"), ("Bought", "date"), ("Pool", "text"),
+                 ("Your numbers", None), ("Why not", "text")],
+                rows(unchecked, False),
+                1,
+            )
         )
     if not parts:
         parts.append('<p class="muted">Nothing outstanding.</p>')
@@ -370,15 +437,17 @@ def _outstanding_section(model):
 def _entries_section(model):
     """Every entry, filterable client-side only (INV-21: the URL never changes)."""
     rows = []
-    for e in model.get("entries", []):
+    for e in _newest_first(model.get("entries", []), "bought"):
         pool = f"{e['game']}/{e['plus_flag']}"
         rows.append(
             f'<tr data-game="{_e(e["game"])}" data-pool="{_e(pool)}">'
-            f'<td>{_e(e["ref"])}</td><td>{_e(pool)}</td>'
+            f'<td>{_e(e["ref"])}</td>'
+            + _bought_cell(e)
+            + f'<td>{_e(pool)}</td>'
             f'<td class="money">{_e(_rands(e["cost_cents"]))}</td>'
             + _draws_cell(e.get("draws_covered"))
             + _money_cell(e.get("won_cents"))
-            + f'<td class="notcheckable">{_e(e.get("reason") or "")}</td></tr>'
+            + f'<td class="notcheckable wrap">{_e(e.get("reason") or "")}</td></tr>'
         )
     games = sorted({e["game"] for e in model.get("entries", [])})
     opts = "".join(f'<option value="{_e(g)}">{_e(g)}</option>' for g in games)
@@ -396,9 +465,15 @@ def _entries_section(model):
         f'<option value="">all</option>{opts}</select></label> '
         '<label>Filter by pool <select id="poolfilter">'
         f'<option value="">all</option>{popts}</select></label>'
-        "<table id=\"entries\"><thead><tr><th>Ticket</th><th>Pool</th>"
-        "<th>Cost</th><th>Draws checked</th><th>Won</th><th>Why not</th>"
-        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></section>"
+        + _sorted_table(
+            "entries",
+            [("Ticket", "text"), ("Bought", "date"), ("Pool", "text"),
+             ("Cost", "num"), ("Draws checked", "num"), ("Won", "num"),
+             ("Why not", "text")],
+            "".join(rows),
+            1,
+        )
+        + "</section>"
     )
 
 
@@ -686,12 +761,16 @@ THEME_BOOT = (
 # variable rather than a hex. That is what makes a new theme a table row instead
 # of a second copy of this stylesheet.
 BASE_CSS = """
-body{font:15px/1.5 system-ui,sans-serif;margin:0 auto;padding:1.5rem;max-width:64rem;
+body{font:15px/1.5 system-ui,sans-serif;margin:0;padding:1.5rem clamp(1rem,3vw,3rem);
  color:var(--fg);background:var(--bg)}
 h1{font-size:1.4rem;margin:0 0 .25rem}h2{font-size:1.1rem;margin:2rem 0 .5rem}
 h3{font-size:.95rem;margin:1.25rem 0 .4rem;color:var(--dim)}
 table{border-collapse:collapse;width:100%;margin:.5rem 0}
 th,td{text-align:left;padding:.3rem .5rem;border-bottom:1px solid var(--line)}
+.cards th,.cards td{white-space:nowrap}
+.cards td.wrap{white-space:normal;min-width:14rem}
+.tablewrap{overflow-x:auto}
+.notice,.muted,footer,.disclaimer{max-width:80rem}
 th{font-weight:600;font-size:.85rem;color:var(--dim)}
 .money{text-align:right;font-variant-numeric:tabular-nums}
 .nums{white-space:nowrap}
@@ -724,13 +803,28 @@ footer{margin-top:2.5rem;color:var(--dim);font-size:.85rem}
 button,select{font:inherit;padding:.3rem .7rem;background:var(--panel);color:var(--fg);
  border:1px solid var(--line);border-radius:.25rem}
 button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sorthead{font-weight:600;padding:0;background:none;border:0;color:inherit;cursor:pointer}
+th[aria-sort=descending] .sorthead:after{content:" \\25BC"}
+th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
+/* Too narrow for the widest table: each row becomes a card, one labelled line per
+   cell. The labels are copied from the headings by JS below (INV-86). */
+@media(max-width:80rem){
+ .cards thead{display:none}
+ .cards table,.cards tbody,.cards tr,.cards td{display:block}
+ .cards tr{border:1px solid var(--line);border-radius:.4rem;margin:.6rem 0;padding:.3rem}
+ .cards td,.cards td.wrap{position:relative;padding:.2rem .3rem .2rem 8.5rem;border:0;white-space:normal;
+  min-width:0;min-height:1.6rem;text-align:left}
+ .cards td:before{content:attr(data-label);position:absolute;left:.3rem;width:7.8rem;
+  color:var(--dim);font-size:.85rem;font-weight:600;font-style:normal}
+}
 """
 
 CSS = _themes_css() + BASE_CSS
 
-# Four jobs and no others (LOTTO-0002 §4.1): the two POSTs (custom header, so a
-# cross-origin form post cannot forge them), filtering (must never touch the
-# URL - INV-21), and polling /status while a build is in flight.
+# Five jobs and no others (LOTTO-0002 §4.1): the two POSTs (custom header, so a
+# cross-origin form post cannot forge them), filtering and sorting (must never
+# touch the URL - INV-21), the headings copied onto a phone's card rows, and
+# polling /status while a build is in flight.
 JS = """
 var TOKEN=%s;
 function post(path,body,done){
@@ -802,6 +896,58 @@ function applyEntryFilter(){
 }
 if(gf)gf.addEventListener("change",applyEntryFilter);
 if(plf)plf.addEventListener("change",applyEntryFilter);
+// Sorting moves rows already in the document, under the same rule (INV-21). It
+// stores nothing: browser storage holds the theme name alone (INV-63), so a
+// reload returns to latest first. A cell with no value goes last in BOTH
+// directions: "not checkable" must never sort among the zeroes as if it had lost.
+function sortKey(row,col,kind){
+ var t=row.cells[col]?row.cells[col].textContent.trim():"";
+ if(kind==="num"){var n=parseFloat(t.replace(/[R, ]/g,""));return isNaN(n)?null:n}
+ if(kind==="date")return /^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(t)?t:null;
+ return t||null;
+}
+function sortTable(table,col,dir){
+ var heads=table.tHead.rows[0].cells,kind=heads[col].getAttribute("data-kind");
+ var body=table.tBodies[0],keyed=[];
+ for(var i=0;i<body.rows.length;i++){
+  keyed.push({row:body.rows[i],key:sortKey(body.rows[i],col,kind)});
+ }
+ keyed.sort(function(a,b){
+  if(a.key===null||b.key===null){return a.key===b.key?0:(a.key===null?1:-1)}
+  var c=kind==="num"?a.key-b.key:
+   a.key.localeCompare(b.key,undefined,{numeric:true,sensitivity:"base"});
+  return dir==="desc"?-c:c;
+ });
+ for(var j=0;j<keyed.length;j++)body.appendChild(keyed[j].row);
+ for(var h=0;h<heads.length;h++)heads[h].removeAttribute("aria-sort");
+ heads[col].setAttribute("aria-sort",dir==="desc"?"descending":"ascending");
+ var sel=document.querySelector('.sortby[data-table="'+table.id+'"]');
+ if(sel)sel.value=col+":"+dir;
+}
+function wireTable(table){
+ var heads=table.tHead.rows[0].cells;
+ for(var r=0;r<table.tBodies[0].rows.length;r++){
+  var cells=table.tBodies[0].rows[r].cells;
+  for(var c=0;c<cells.length;c++){
+   cells[c].setAttribute("data-label",heads[c].textContent);
+  }
+ }
+ [].forEach.call(heads,function(head,col){
+  var b=head.querySelector(".sorthead");if(!b)return;
+  b.addEventListener("click",function(){
+   var now=head.getAttribute("aria-sort");
+   var first=head.getAttribute("data-kind")==="text"?"asc":"desc";
+   sortTable(table,col,now?(now==="descending"?"asc":"desc"):first);
+  });
+ });
+}
+[].forEach.call(document.querySelectorAll(".cards table"),wireTable);
+[].forEach.call(document.querySelectorAll(".sortby"),function(sel){
+ sel.addEventListener("change",function(){
+  var want=sel.value.split(":");
+  sortTable(document.getElementById(sel.getAttribute("data-table")),+want[0],want[1]);
+ });
+});
 // Same rule for the period selector: rows are already in the document and
 // only their visibility changes (INV-21).
 var pf=document.getElementById("periodfilter");
@@ -877,8 +1023,13 @@ def render(model, token):
     """
     built = model.get("built")
     building = bool(model.get("building"))
+    # serve.py supplies the icon: this file reads no disk. It is a data: address
+    # rather than a route, so the server still answers exactly four (LOTTO-0014).
+    icon = model.get("icon")
     head = (
-        f"<title>{TITLE}</title><style>{CSS}</style>"
+        f"<title>{TITLE}</title>"
+        + (f'<link rel="icon" type="image/svg+xml" href="{_e(icon)}">' if icon else "")
+        + f"<style>{CSS}</style>"
         f"<script>{THEME_BOOT}</script>"
     )
     if building and not built:

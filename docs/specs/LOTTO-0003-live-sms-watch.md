@@ -398,6 +398,16 @@ they live in the state dict for that reason.
   that moment, not the one the process started with. A daemon that is merely
   not ready yet never kills the watcher — only an absent `dbus-python` does
   (INV-36), and the two must not share a path.
+- **INV-88** — A conversation list still empty has not finished filling. The
+  catch-up waits for it until `CATCHUP_CAP`, and `--once` that reaches the cap
+  with an empty list exits non-zero rather than reporting nothing to collect.
+  Added 2026-11-02 (LOTTO-0088).
+  *Test:* `tools/verify_watch.py::empty_list_is_not_finished` covers
+  `discovery_settled()`. **The non-zero exit needs a live daemon and no case
+  runs it.**
+  *Breaks when:* "unchanged for `QUIET` seconds" is read as finished at a count
+  of zero, which is what `--once` did on 2026-11-02: "0 threads ... 0 written",
+  exit 0, on a phone with thousands of conversations.
 
 ## 6. Failure modes
 
@@ -566,6 +576,7 @@ which is idempotent — that is the safe direction of the two.
 | INV-37 | `tools/verify_watch.py::notice_names_a_live_action` — **wording half only**, see below |
 | INV-38 | `tools/verify_watch.py::concurrent_appends_serialise`, `::lock_never_creates_the_dump` |
 | INV-39 | `tools/verify_watch.py::daemon_restart_is_read` — **the reading only**, see below |
+| INV-88 | `tools/verify_watch.py::empty_list_is_not_finished` — **the rule only**; the non-zero exit is unchecked |
 
 **Three gaps, and none is a decision.**
 
@@ -635,3 +646,4 @@ Recorded here so none is mistaken for covered.
 |------|------|----------|----------|---------|
 | 1 | 2026-08-13 | 2 cold lanes + `check-doc-facts` (by hand) | **Q1 5 · Q2 2 · Q3 0 · Q4 0** (verified 7 / dismissed 0), plus 1 mechanical | All fixed. Both lanes read the code and neither accepted the document's account of it. Q1: the state-file fallback claimed its only cost was slowness, where losing it makes a ticket under a newer non-matching message unreachable and the set does not self-heal; the two-watchers row claimed the second writer is harmless *because* de-duplication is against the file rather than a lock, which is the reason it is **not** harmless; §4.7 promised a notification the code cannot emit, its `busy` branch being unreachable through `sync()`; §10 omitted the dominant startup cost (one full dump read per matching snapshot entry, ~543 on this phone); §11 presented INV-36 as covered when only its watcher half is. Q2: INV-37 made re-scoring unconditional where the code guards on the server running, and INV-34's "always is" contradicted §4.3's drop-at-the-door. Mechanical: one path cited without its `tools/` prefix. Collateral: the same false state-file claim in `watch_sms.py`'s comment, and a ROADMAP line counting one gap where there are two. Two code changes were surfaced rather than applied — a single-instance guard, and batching the snapshot into one `append_new()`. |
 | 2 | 2026-08-13 | 2 cold lanes | **Q1 2 · Q2 0 · Q3 2 · Q4 0** (verified 4 / dismissed 1) | All fixed; **this is the cap for a spec, so the run ends here.** None of loop 1's seven findings resurfaced, which is what says those fixes held. Both lanes independently found INV-35 false of an empty dump: `high_water()` returns 0, so a first run asks every matching thread, which `catch_up_targets` *asserts* — the invariant and its own checker required opposite behaviour, and an implementer enforcing the invariant would have made a fresh clone unable to rebuild anything over Wi-Fi. Q3: the ordering that makes the bound work (high-water mark and remembered set read *before* the snapshot is consumed) was unstated, and reading the fresher number loses the two-messages-in-one-thread case; and `--once`'s exit condition was specified nowhere, so it would have been built as "ask and exit", writing none of the history it requested. Q1: loop 1's own fix to §4.7 introduced a wrong timing claim — `_end()` calls `sync()` directly, so an arrival is announced when the action finishes, not a tick later. Dismissed as immaterial but corrected in passing: §10 said the conversation list is read "once" where §4.1 polls it. Collateral: the same two claims in `CLAUDE.md`, `watch_sms.py`'s usage line and `pull_targets()`'s docstring. |
+| amend-0088 | 2026-11-02 | none: no reviewer was dispatched | — | Amendment row, not a review loop. LOTTO-0088 adds INV-88, after `--once` read an empty conversation list as finished. |

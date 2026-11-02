@@ -140,7 +140,8 @@ tray.py       PySide6. The menu and the icon — or, under LWSM_MANAGED=1, the
               QApplication by NAME; INV-25's probe patches both, and a
               `from supervise import Supervisor` would leave its double inert.
               Never imports serve or page.
-icons/        tray-running.svg, tray-stopped.svg — read by tray.py only.
+icons/        tray-running.svg, tray-stopped.svg — read by tray.py. serve.py also
+              reads tray-running.svg, for the browser tab (LOTTO-0002 INV-87).
 ```
 
 The arrow runs one way — `tray.py → supervise.py → (a child process)` — and

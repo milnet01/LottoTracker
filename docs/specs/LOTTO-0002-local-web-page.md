@@ -23,6 +23,7 @@ findings were folded into the build. INV-68
 (`tools/verify_boards.py::odd_board_is_named`, three breaks) and INV-70
 (`tools/verify_page.py::deadline_only_when_unpaid`) pass, each observed
 failing under its own breaks.
+**Amended 2026-11-02** for LOTTO-0087: §4.1, §4.5, INV-85 to INV-87, §7 and §11.
 **Kind:** implement.
 **Source:** ROADMAP LOTTO-0002 (user-request-2026-08-01; three further choices
 taken with the user 2026-08-02, recorded in §3).
@@ -173,7 +174,7 @@ happen in `serve.py`'s builder, not in the renderer.
                "payment": str,              # check.payment_status(), LOTTO-0001 §4.4
                "ref_paid_cents": int|None,  # what the bank paid on this REFERENCE
                "ref_computed_cents": int|None} ],  # what the app computed for it
-  "entries":[ {"ref", "game", "plus_flag", "pool_id", "cost_cents",
+  "entries":[ {"ref", "bought", "game", "plus_flag", "pool_id", "cost_cents",
                "scorable": bool, "reason": str|None,   # serve.entry_reason(), §4.5
                "won_cents": int|None,                  # None iff not scorable
                "draws_covered": int|None,              # None iff not scorable
@@ -204,6 +205,7 @@ happen in `serve.py`'s builder, not in the renderer.
   "sms_quiet": None | {"newest": str | None, "days": int | None},
                                             # judged per GET; LOTTO-0034 INV-84.
                                             # Tells no empty state apart.
+  "icon":     str | None,                    # the tab icon as a data: address (INV-87)
   "built":    "2026-08-02T14:31:07" | None, # last SUCCESSFUL build (§4.2)
   "stale":    False,                        # last refresh attempt raised
   "error":    None | {"what": str, "pools": [str]}, # §6's results-unavailable
@@ -398,15 +400,16 @@ reads, which the third defines:
 to. LOTTO-0014 §4.3 owns that rule and the reason for it.
 
 `page.py` emits the page's inline JavaScript along with its markup. It has
-exactly four jobs and no others: the two POSTs (which must carry a custom
+exactly five jobs and no others: the two POSTs (which must carry a custom
 header, LOTTO-0014 §4.3), filtering the ticket table (which must not touch the
-URL, LOTTO-0014 INV-21), and **polling `GET /status` every 2 s while `building`
+URL, LOTTO-0014 INV-21), sorting it under the same rule (INV-85), copying each
+heading onto its cells for a narrow window's cards (INV-86), and **polling `GET /status` every 2 s while `building`
 is true, or after a `POST /refresh`, reloading when `built` changes**. **The poll also
 terminates on failure**: a refresh that raises leaves `built` unchanged and
 `building` false, so a poll watching only `built` waits for a change that never
 comes and the user is never told the fetch failed. When the poll sees
 `building: false` with `built` unchanged and `stale: true`, it stops and shows
-the stale notice INV-18 requires the page to carry. Without the fourth job the
+the stale notice INV-18 requires the page to carry. Without the poll the
 opening *building* page never leaves that state. (The route has a second
 consumer since LOTTO-0018: the tray waits on `building`, then reads `stale`,
 for the same reason the poll above does not watch `built` alone —
@@ -603,7 +606,7 @@ Four sections, in this order — unpaid wins first, because they are the only
 thing on the page with a deadline:
 
 1. **Not yet paid** — every win that is unexpired **and** whose `payment` is
-   not paid (§4.1, LOTTO-0001 §4.4), soonest claim deadline first, each naming
+   not paid (§4.1, LOTTO-0001 §4.4), latest draw first (INV-85), each naming
    its pool (`lotto/1`, not "Lotto"), its division, its amount, its deadline,
    and its payment state in words: *unpaid*; *partly paid — the bank paid R p
    of R c on this ticket*, from `ref_paid_cents` and `ref_computed_cents`; or
@@ -1264,6 +1267,38 @@ them unqualified.
   *Breaks when:* the sentence moves into the full page's `<footer>`, which the
   no-data states do not render, so a first-time user never sees it.
 
+- **INV-85** — Each of the four ticket tables opens latest first: *Not yet paid*
+  by draw date, the other three by purchase date. Each offers every other order
+  twice, by clicking a heading and from a dropdown. A cell with no value sorts
+  last in both directions, so "not checkable" never sorts among the zeroes.
+  Sorting touches no URL and stores nothing (INV-21, INV-63). Added 2026-11-02
+  (LOTTO-0087).
+  *Test:* `tools/verify_page.py`, case `latest_first_and_sortable` — the opening
+  order and both controls, from the rendered HTML. Breaks `oldest_first` and
+  `no_sort_dropdown`. **What a click does runs in the browser and no case runs
+  it**; it was checked by hand in Firefox on 2026-11-02.
+  *Breaks when:* a table is rendered in model order, or a phone's cards hide the
+  headings with no dropdown left to sort by.
+
+- **INV-86** — The page fills the window. Ticket-table cells stay on one line,
+  except the *Payment* and *Why not* text. A window of `80rem` or narrower shows
+  each row as a card of labelled lines. Added 2026-11-02 (LOTTO-0087).
+  *Test:* `tools/verify_page.py`, case `page_follows_window_width` — the rules
+  in the rendered CSS. Breaks `capped_width` and `no_cards`. **It reads the CSS;
+  whether a table fits needs a browser**, and was checked by hand at three widths
+  on 2026-11-02.
+  *Breaks when:* a width cap returns to the body, or the narrow rule stops
+  stacking the rows.
+
+- **INV-87** — Every page state names the tray's running icon as its tab icon, as
+  a `data:` address, so `serve.py` still answers exactly LOTTO-0014's four routes.
+  `serve.py` reads the file; `page.py` still reads no disk. Added 2026-11-02
+  (LOTTO-0087).
+  *Test:* `tools/verify_page.py`, case `app_icon_in_page` — fetches the page before
+  and after a build and compares the address with the file. Break `no_icon`.
+  *Breaks when:* the icon moves to a route of its own, or is passed only once a
+  model exists.
+
 ## 6. Failure modes
 
 - **The operator's API is unreachable.** Four of seven build attempts on
@@ -1386,6 +1421,9 @@ share their fixtures, their temporary-directory setup and their stub builder.
 | `port_from_environment` | INV-24 |
 | `deadline_only_when_unpaid` | INV-70 |
 | `disclaimer_on_every_state` | INV-78 |
+| `latest_first_and_sortable` | INV-85 |
+| `page_follows_window_width` | INV-86 |
+| `app_icon_in_page` | INV-87 |
 
 **Added 2026-10-15.** INV-70's case joins `tools/verify_page.py`, with break
 `deadline_on_paid_win`. INV-68's case, `odd_board_is_named`, lives in the new
@@ -1544,6 +1582,9 @@ LOTTO-0014 §8.)
 | INV-68 an oversized board named as the reason, on the entry and in the banner | `tools/verify_boards.py::odd_board_is_named` — red-tested by `--break odd_board_unnamed`, `--break odd_board_not_in_banner` and `--break pool_before_board` |
 | INV-70 a deadline only on an unexpired win the bank has not paid, its payment state in words | `tools/verify_page.py::deadline_only_when_unpaid` — red-tested by `--break deadline_on_paid_win`. It renders a hand-authored model, so a wrong mapping is LOTTO-0001 INV-69's to catch, not this case's |
 | INV-78 the disclaimer on every page state and in the README | `tools/verify_page.py::disclaimer_on_every_state` — red-tested by `--break disclaimer_with_data_only` |
+| INV-85 every ticket table opens latest first, with two ways to sort | `tools/verify_page.py::latest_first_and_sortable` — red-tested by `--break oldest_first` and `--break no_sort_dropdown`. **Nothing** runs a click |
+| INV-86 the page fills the window and turns to cards when narrow | `tools/verify_page.py::page_follows_window_width` — red-tested by `--break capped_width` and `--break no_cards`. **Nothing** measures a table against a real window |
+| INV-87 the tab icon on every page state, with no fifth route | `tools/verify_page.py::app_icon_in_page` — red-tested by `--break no_icon` |
 | INV-48 the numbers chosen beside the numbers drawn, absence said in words | `tools/verify_page.py::numbers_chosen_and_drawn` — two disjoint fixture sets, so a renderer echoing the chosen numbers into both columns fails; red-tested by `--break no_drawn_numbers` and `--break blank_numbers_cell` |
 | §4.1 the *resolved* port being what builds LOTTO-0014 §4.2's `Host` allowlist, not either variable read again | **nothing** — and the gap is structural rather than an omission: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because the question they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes both. The breach is loud to a *user* — every request fails — and invisible to the suite |
 | §4.1 `page.py` performing no I/O | `tools/verify_page.py` — a *raising* `all_draws` double that `render_pure()` installs before `render()` is called, for every case that renders `page.py` directly (§7 scopes it). Absent the raising double the row would be false: with no `archive_results.json`, `history.all_draws()` falls straight through to `api_draws()`, which **succeeds** on a connected machine, so a renderer calling it would pass |
@@ -1675,6 +1716,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| amend-0087 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0087, the user's request of 2026-11-02. Adds INV-85 to INV-87, and §4.5 item 1 now opens latest first rather than soonest deadline first. |
 | amend-0082 | 2026-10-30 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0082, the user's request for a disclaimer. Adds INV-78 and its case `disclaimer_on_every_state`. The spec is past two review loops, so no gate re-arms. |
 | 10 | 2026-10-15 | 2, cold, via `neutral-lane` — genre pinned `spec`; every lane held every question; new run, armed by commit 9643da3 (the user's decisions) | — | — | — | — | **First loop of a new run: Q1 1 · Q2 0 · Q3 1 · Q4 1 (verified 3, fixed 0, surfaced 1, filed 2; dismissed 0). Converged: nothing this loop could act on remained in the subject, so no second read.** Surfaced to the user, inside the armed span [Q1]: §4.6's table rewritten today keeps "Winnings lifetime" as a separate labelled line, while `page.py::_spend_section()` has never rendered `won.lifetime_cents` — an implementer following §4.6 would add a row the shipped page lacks. Whether the page should show it is the user's call. Filed, outside the armed span (the blast-radius exit; both on INV-68, written by the earlier run's amendment): [Q3] the banner's `odd_board` wording is not pinned, so `tools/verify_boards.py::odd_board_is_named` and the banner may be built to different strings; [Q4] `odd_board_unnamed` breaks `entry_reason()` and the banner together, so the banner half of INV-68 is never seen red on its own. Open questions resolved clean: `serve.py` and `supervise.py` import no PySide6, so INV-68's case can run on the CI lane; the `unexpired_cents` key still in `tools/verify_page.py` and `tools/demo_page.py` fixtures is read by nothing and changes no render. Code windows were cut from HEAD copies because the working tree held unrelated in-progress edits. Second share: 1 of 3 verified inside the armed span. |
 | 9 | 2026-10-15 | 2, cold, via `neutral-lane` — identical brief, packet rebuilt from disk; every lane held every question | — | — | — | — | **Second loop of the run: Q1 0 · Q2 1 · Q3 0 · Q4 0 (verified 1, fixed 0, surfaced 1; dismissed 0). Cap reached (2 for a spec); the run ships.** One lane returned no finding. The other found, and the first raised as an open question, that §4.6's table still shows "Winnings lifetime and still unexpired" as a labelled line, while §3 and §4.5 item 1 now forbid a summed claimable total; `won.unexpired_cents` includes paid wins, and `page.py::_spend_section()` does not render it today, so an implementer following §4.6 would add the line LOTTO-0011 retires. **Surfaced to the user, not fixed**: whether that figure stays in the model is their call. **A calm cap**: the one verified finding sits in text this run did not write (0 of 1). Second share: 5 of the run's 7 verified findings fall inside the amendment's span. Corrected by deletion, outside the tally: loop 8's fix pointed §11's INV-70 row at "the row below" for builder defects, which is INV-48's row — the clause is gone. Open questions resolved clean: `serve.py` and `supervise.py` import only the standard library and project modules, so `tools/verify_boards.py` can import `serve` on the CI lane; no case besides `numbers_chosen_and_drawn` reads section 1's heading. The final loop's one deletion is read by no lane. |
