@@ -2723,6 +2723,48 @@ def games_by_their_names():
     need("lotto/9" in re.sub(r"<[^>]+>", " ", odd), "an unknown pool is given a guessed name")
 
 
+def filters_say_what_they_hide():
+    """INV-101 — a filter never hides "not checkable" without saying so.
+
+    The page cannot be clicked from here, so this reads what the script works
+    from: each row's data-check must agree with its Won cell, the note must be
+    present and start hidden, and the script must count hidden uncheckable rows
+    into it. The script's arithmetic is checked by hand in a browser.
+    """
+    temp_home()
+    entry = fixture_model()["entries"][0]
+    entries = [
+        dict(entry, bought="2026-07-01", won_cents=0),
+        dict(entry, bought="2025-03-04", won_cents=None, scorable=False,
+             reason="no draw record", draws_covered=None),
+        dict(entry, bought=None, won_cents=None, scorable=False,
+             reason="no purchase date", draws_covered=None),
+    ]
+    html = render_pure(fixture_model(entries=entries))
+    table = html.split('id="entries"', 1)[1].split("</table>", 1)[0]
+    rows = re.findall(r"<tr [^>]*data-check=\"(\w+)\"[^>]*>(.*?)</tr>", table, re.S)
+    need(len(rows) == 3, f"expected 3 entry rows carrying data-check, found {len(rows)}")
+    for check, cells in rows:
+        uncheckable = "not checkable</td>" in cells
+        need(check == ("no" if uncheckable else "yes"),
+             f"a row's data-check={check!r} disagrees with its Won cell")
+    years = re.search(r'<select id="yearfilter">(.*?)</select>', html, re.S)
+    need(years is not None, "there is no year filter")
+    need(re.findall(r'value="(\d*)"', years.group(1) if years else "")
+         == ["", "2026", "2025"],
+         "the year filter is not 'all' then newest first, or offers an empty year")
+    cf = re.search(r'<select id="checkfilter">(.*?)</select>', html, re.S)
+    need(cf is not None, "there is no checked filter")
+    need((cf.group(1) if cf else "").startswith('<option value="">'),
+         "the checked filter does not open unfiltered")
+    need(re.search(r'<p id="filternote"[^>]*\bhidden\b', html),
+         "the filter note is missing, or is shown before any filter is on")
+    js = page.JS
+    need('getElementById("filternote")' in js, "the script never writes the note")
+    need('if(r.getAttribute("data-check")==="no")hiddenNo++' in js,
+         "the script does not count the hidden uncheckable entries")
+
+
 def app_icon_in_page():
     """INV-87 — the browser tab shows the app's own icon, with no fifth route."""
     import base64
@@ -2905,6 +2947,7 @@ CASES = [
     ("games_by_their_names", "INV-95", games_by_their_names),
     ("matched_balls_marked", "INV-97", matched_balls_marked),
     ("period_bars_say_the_figures", "INV-98", period_bars_say_the_figures),
+    ("filters_say_what_they_hide", "INV-101", filters_say_what_they_hide),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -2974,6 +3017,9 @@ BREAKS = {
     "unscored_month_shows_zero": "unscored_month_not_zero",
     "quiet_judged_at_build": "sms_quiet_on_page",
     "quiet_notice_hidden": "sms_quiet_on_page",
+    "uncheckable_marked_checked": "filters_say_what_they_hide",
+    "no_filter_note": "filters_say_what_they_hide",
+    "filter_hides_silently": "filters_say_what_they_hide",
 }
 
 
@@ -2990,6 +3036,17 @@ def apply_render_breaks():
         real_table = page._sorted_table
         page._sorted_table = lambda *a, **k: re.sub(
             r'<select class="sortby".*?</select>', "", real_table(*a, **k), flags=re.S)
+    if broken("uncheckable_marked_checked"):
+        real_entries = page._entries_section
+        page._entries_section = lambda m: real_entries(m).replace(
+            'data-check="no"', 'data-check="yes"')
+    if broken("no_filter_note"):
+        real_entries_n = page._entries_section
+        page._entries_section = lambda m: re.sub(
+            r'<p id="filternote".*?</p>', "", real_entries_n(m), flags=re.S)
+    if broken("filter_hides_silently"):
+        page.JS = page.JS.replace(
+            'if(r.getAttribute("data-check")==="no")hiddenNo++', "")
     if broken("capped_width"):
         page.CSS = page.CSS.replace("width:max(75%,90rem)", "width:64rem")
     if broken("no_cards"):

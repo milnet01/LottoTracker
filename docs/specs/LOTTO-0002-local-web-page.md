@@ -23,6 +23,7 @@ findings were folded into the build. INV-68
 (`tools/verify_boards.py::odd_board_is_named`, three breaks) and INV-70
 (`tools/verify_page.py::deadline_only_when_unpaid`) pass, each observed
 failing under its own breaks.
+**Amended 2026-11-05** for LOTTO-0021: §4.5, INV-101, §7, §11.
 **Amended 2026-11-02** for LOTTO-0093: INV-100, §7, §11.
 **Amended 2026-11-02** for LOTTO-0092: §4.1, §4.9, INV-63, INV-97, INV-98, §7, §13.
 **Amended 2026-11-02** for LOTTO-0091: §4.1, INV-96, §7, §11.
@@ -676,7 +677,8 @@ thing on the page with a deadline:
    calendar at all to measure a window against. Omitting these would be the
    cardinal error a third time — a reader takes an absence for "nothing
    outstanding".
-3. **Every ticket** — filterable by game and pool, showing cost, boards, the
+3. **Every ticket** — filterable by game, pool, year bought and checked state
+   (LOTTO-0021), showing cost, boards, the
    pools its price paid for, and per pool one row with **two** cells that
    matter: what it won (`won_cents`, §4.1) and, when nothing could score it,
    the reason. The won cell is the one INV-15 asserts against, and it is why
@@ -686,6 +688,9 @@ thing on the page with a deadline:
    leave the URL byte-identical — LOTTO-0014 §4.4 states that rule and INV-21
    asserts it, including the markup forms (a `href="?…"` link, a GET form) that
    are easier to reach for than a `pushState`.
+   **A filter must never make "not checkable" disappear unnoticed** (INV-101).
+   Every filter opens on "all". While any filter is on, a note above the table
+   says how many entries are hidden and how many of those could not be checked.
 4. **Spend against winnings** — §4.6.
 
 **The uncheckable rule is structural here, not prose.** `check.py::uncheckable_report()`
@@ -1410,6 +1415,18 @@ them unqualified.
   Dark at three window widths, Light at one, with no table overflowing at the widest.
   *Breaks when:* the sort goes back to reading the cell's words, which do not order.
 
+- **INV-101** — While any filter on *Every entry* is on, a note says how many
+  entries it hides and how many of those are not checkable. Each row's
+  `data-check` follows its Won cell's own test (`won_cents is None`), so the
+  filter and the cell cannot disagree. Every filter opens on "all". Added
+  2026-11-05 (LOTTO-0021).
+  *Test:* `tools/verify_page.py`, case `filters_say_what_they_hide`. Breaks
+  `uncheckable_marked_checked`, `no_filter_note` and `filter_hides_silently`.
+  **The case reads the markup and the script's text; it does not run the
+  script.** What a filter does when chosen was checked by hand in Firefox.
+  *Breaks when:* a row's `data-check` is taken from anything but `won_cents`, or
+  the note stops counting the hidden uncheckable entries.
+
 ## 6. Failure modes
 
 - **The operator's API is unreachable.** Four of seven build attempts on
@@ -1539,6 +1556,7 @@ share their fixtures, their temporary-directory setup and their stub builder.
 | `matched_balls_marked` | INV-97 |
 | `period_bars_say_the_figures` | INV-98 |
 | `dates_read_as_words` | INV-100 |
+| `filters_say_what_they_hide` | INV-101 |
 | `tabs_never_hide_a_warning` | INV-89 |
 | `buy_again_on_overview` | INV-93 |
 | `paid_wins_shown` | INV-94 |
@@ -1722,6 +1740,7 @@ LOTTO-0014 §8.)
 | §4.1 the page's `GET /status` poll — its cadence, its two exit conditions, and that it stops rather than spinning | **nothing** — it is browser-side JavaScript; `failed_refresh_keeps_model` asserts the rendered HTML and the `/status` JSON, neither of which exercises the poll that reads them |
 | §4.2 the 27-request figure staying true | **nothing** — a dated measurement; a larger dump or an API paging change moves it without failing anything |
 | §4.5 the page being *readable* — ordering, filters, marking near-expiry | **nothing** — no check can tell a clear layout from a cluttered one |
+| INV-101 the filter note's counts once a filter is chosen | **nothing** — it is browser-side JavaScript; `filters_say_what_they_hide` reads the script's text and the markup it works from, not what it prints |
 | §4.7 the written `.desktop` file actually autostarting on this desktop | **nothing mechanical** — it depends on the session's XDG implementation; verified by logging out once |
 | §4.1 the builder taking `payment_status()`'s wins as the model's wins | **nothing** — no case runs `build_model()` (INV-15's *Test* clause); the mapping itself is LOTTO-0001 INV-69's |
 

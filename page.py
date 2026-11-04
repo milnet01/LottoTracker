@@ -581,8 +581,13 @@ def _entries_section(model):
     rows = []
     for e in _newest_first(model.get("entries", []), "bought"):
         pool = f"{e['game']}/{e['plus_flag']}"
+        # data-check follows the Won cell's own test, so the filter and the
+        # cell cannot disagree about which entries are "not checkable" (INV-101).
+        check = "no" if e.get("won_cents") is None else "yes"
+        year = (e.get("bought") or "")[:4]
         rows.append(
-            f'<tr data-game="{_e(e["game"])}" data-pool="{_e(pool)}">'
+            f'<tr data-game="{_e(e["game"])}" data-pool="{_e(pool)}" '
+            f'data-year="{_e(year)}" data-check="{check}">'
             f'<td class="ref">{_e(e["ref"])}</td>'
             + _bought_cell(e)
             + _game_cell(e["game"], e["plus_flag"])
@@ -605,12 +610,27 @@ def _entries_section(model):
         f'<option value="{_e(g)}/{_e(f)}">{_e(_pool_name(g, f))}</option>'
         for g, f in pools
     )
+    years = sorted(
+        {(e.get("bought") or "")[:4] for e in model.get("entries", [])} - {""},
+        reverse=True,
+    )
+    yopts = "".join(f'<option value="{_e(y)}">{_e(y)}</option>' for y in years)
     return (
         '<section><h2>Every entry</h2><div class="row">'
         '<label>Filter by game <select id="gamefilter">'
         f'<option value="">all</option>{opts}</select></label> '
         '<label>Exact game <select id="poolfilter">'
-        f'<option value="">all</option>{popts}</select></label></div>'
+        f'<option value="">all</option>{popts}</select></label> '
+        '<label>Year bought <select id="yearfilter">'
+        f'<option value="">all</option>{yopts}</select></label> '
+        '<label>Checked <select id="checkfilter">'
+        '<option value="">every entry</option>'
+        '<option value="yes">checked only</option>'
+        '<option value="no">not checkable only</option></select></label></div>'
+        # Hiding entries must never make "not checkable" vanish unnoticed: while
+        # any filter is on, this says how many it hides and how many of those
+        # could not be checked (INV-101). The script fills it in.
+        '<p id="filternote" class="notice" aria-live="polite" hidden></p>'
         + _sorted_table(
             "entries",
             [("Ticket", "text"), ("Bought", "date"), ("Game", "text"),
@@ -1376,17 +1396,46 @@ if(rb)rb.addEventListener("click",function(){
 // where the browser syncs it (INV-21).
 var gf=document.getElementById("gamefilter");
 var plf=document.getElementById("poolfilter");
+var yf=document.getElementById("yearfilter");
+var cf=document.getElementById("checkfilter");
+var fnote=document.getElementById("filternote");
+// "1,233 entries", as page.py's _count() says it.
+function num(n){
+ var s=String(n),out="";
+ while(s.length>3){out=","+s.slice(-3)+out;s=s.slice(0,-3)}
+ return s+out;
+}
+// A filter that hides "not checkable" entries without saying so makes the
+// table read as the whole truth (INV-101). While any filter is on, the note
+// says how many entries it hides and how many of those could not be checked.
 function applyEntryFilter(){
- var wg=gf?gf.value:"",wp=plf?plf.value:"";
+ var wg=gf?gf.value:"",wp=plf?plf.value:"",wy=yf?yf.value:"",wc=cf?cf.value:"";
  var rows=document.querySelectorAll("#entries tbody tr");
+ var hidden=0,hiddenNo=0;
  for(var i=0;i<rows.length;i++){
-  var okg=!wg||rows[i].getAttribute("data-game")===wg;
-  var okp=!wp||rows[i].getAttribute("data-pool")===wp;
-  rows[i].style.display=(okg&&okp)?"":"none";
+  var r=rows[i];
+  var ok=(!wg||r.getAttribute("data-game")===wg)&&
+         (!wp||r.getAttribute("data-pool")===wp)&&
+         (!wy||r.getAttribute("data-year")===wy)&&
+         (!wc||r.getAttribute("data-check")===wc);
+  r.style.display=ok?"":"none";
+  if(!ok){hidden++;if(r.getAttribute("data-check")==="no")hiddenNo++}
  }
+ if(!fnote)return;
+ if(!(wg||wp||wy||wc)){fnote.hidden=true;fnote.textContent="";return}
+ var t="Showing "+num(rows.length-hidden)+" of "+num(rows.length)+
+       (rows.length===1?" entry":" entries")+". The filter is hiding "+num(hidden);
+ if(hidden===0)t+=".";
+ else if(hiddenNo===0)t+=", all of them checked.";
+ else t+=". "+num(hiddenNo)+" of the hidden "+(hiddenNo===1?"is":"are")+
+         " not checkable \\u2014 not a loss.";
+ fnote.textContent=t;
+ fnote.hidden=false;
 }
 if(gf)gf.addEventListener("change",applyEntryFilter);
 if(plf)plf.addEventListener("change",applyEntryFilter);
+if(yf)yf.addEventListener("change",applyEntryFilter);
+if(cf)cf.addEventListener("change",applyEntryFilter);
 // Sorting moves rows already in the document, under the same rule (INV-21). It
 // stores nothing: browser storage holds the theme name alone (INV-63), so a
 // reload returns to latest first. A cell with no value goes last in BOTH

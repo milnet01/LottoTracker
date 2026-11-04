@@ -8,6 +8,11 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The *Every entry* table can be filtered by the year bought, and by whether an entry was checked** (LOTTO-0021)
+  Every filter opens on "all". While one is on, a note above the table says how
+  many entries it hides and how many of those could not be checked, so a hidden
+  "not checkable" entry is never mistaken for one that does not exist.
+
 - **Daily Lotto Plus entries are now checked, from the results site's own pages** (LOTTO-0085)
   Its draws and prizes come from the scraped archive, as the official feed never
   carried the game. Every ticket with a Plus win now agrees with the bank to the

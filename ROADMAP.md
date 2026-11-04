@@ -581,7 +581,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Resolved 2026-08-05: `GET /status` reports `requests` and the opening page interpolates it. No denominator — the bullet's own warning about 27 being a dated measurement is what ruled it out, and `check.py` fetches lazily so this build's total is unknowable until it ends. Counts ATTEMPTS, so it keeps moving through LOTTO-0012's retries. Holds INV-28; three breaks observed red, including `reset_on_worker_thread` for the window where a late reset would report the previous build's total.
   Source: in-session-2026-08-02.
 
-- 📋 [LOTTO-0021] **Extend the page's filter beyond game, reusing the pattern already there.**
+- ✅ [LOTTO-0021] **Extend the page's filter beyond game, reusing the pattern already there.**
   Kind: enhancement. Source: in-session-2026-08-02.
   Layman: Narrow 1,233 rows down to the year, or to just the ones that could be checked — not only by which game.
   **Not a new feature — an extension, and the existing one sets the pattern.**
@@ -604,6 +604,14 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Free-text search over ticket references is deliberately **excluded**: a
   reference identifies a real ticket, and putting one in a search box invites it
   into the places INV-21 exists to keep it out of.
+  Shipped 2026-11-05. Year-bought and checked-state filters beside the
+  game filters, both opening on "all". While any filter is on, a note
+  above the table says how many entries it hides and how many of those
+  are not checkable (LOTTO-0002 INV-101, case filters_say_what_they_hide,
+  three breaks). Checked live in Firefox on real data: the note matched
+  the hidden rows for every filter and the URL never changed.
+  The figures in this item's body are dated: on 2026-11-05 only 2 of
+  1,246 entries were not checkable, after LOTTO-0085.
   Source: in-session-2026-08-02.
 
 - ✅ [LOTTO-0024] **The server takes its port from $PORT, and the tray runs without an icon under a process manager.**
