@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=96 -->
+<!-- ants-roadmap-id-high-water: LOTTO=97 -->
 
 # ROADMAP — LottoTracker
 
@@ -685,6 +685,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   LOTTO-0019's comparison baseline is the other constraint: it lives in
   the server process and is reset by a restart, so a scheduled refresh is
   also what would make that baseline long-lived enough to be worth having.
+  User decisions, 2026-11-06. How often: once each evening, about an hour
+  after the draws, plus once when the tray starts. On a failed check:
+  retry quietly at the next scheduled time; the page shows when results
+  were last checked; a tray notice only after a full day of failures.
   **Layman:** The tray checks for new draws on its own, instead of only when you ask it to.
   Kind: feature.
   Source: in-session-2026-08-05 (split out while speccing LOTTO-0019).
@@ -4378,4 +4382,16 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   cases would share the CPU.
   **Layman:** The checks that run before each upload finish sooner and ask the lottery website for the same data once instead of six times.
   Kind: perf.
+  Source: user-request-2026-11-06.
+
+- 📋 [LOTTO-0097] **The SMS watcher must wait for KDE Connect at boot instead of giving up.**
+  Seen 2026-11-06 in the tray unit's journal: at the 07:27 boot the watcher
+  exited with org.freedesktop.DBus.Error.UnknownInterface (no
+  org.kde.kdeconnect.device.conversations on the device object), so no SMS
+  was collected for that run. Started again at 10:13 the same morning, it
+  listened normally. Likely the device object exists before its
+  conversations plugin loads; LOTTO-0003 §4.8's retry covers a daemon
+  restart, not this. The user chose this as the next task.
+  **Layman:** New tickets keep arriving after a reboot, even when the phone connects a little after the tray starts.
+  Kind: fix.
   Source: user-request-2026-11-06.
