@@ -7,8 +7,10 @@ which Sizekhaya rebuilt as a single-page app after taking over the licence on
 They need no login and no API key. Money values are in cents.
 """
 
+import hashlib
 import http.client
 import json
+import os
 import socket
 import ssl
 import time
@@ -36,8 +38,43 @@ BACKOFF = 1.0   # seconds; doubled per retry, so 1 s then 2 s
 # by _post itself: a counter that reset itself would have no build to belong to.
 requests_made = 0
 
+# The push gate's shared fetch cache (LOTTO-0096). ./local-CI.sh sets this to
+# a fresh directory for the data verifiers alone and deletes it when the gate
+# ends, so six verifiers ask the API once between them instead of once each:
+# fewer requests is both faster and fewer chances for the network to fail the
+# gate. Nothing else sets it. It is read on each call rather than at import so
+# verify_page.py's urlopen stub, which runs without it, is never answered
+# from disk. Not a cache for the page: a served answer must be a live one.
+GATE_CACHE_ENV = "LOTTO_GATE_FETCH_CACHE"
+
+
+def _gate_cache_file(path, body):
+    root = os.environ.get(GATE_CACHE_ENV)
+    if not root:
+        return None
+    key = hashlib.sha256(
+        (path + "\0" + json.dumps(body, sort_keys=True)).encode()
+    ).hexdigest()
+    return os.path.join(root, key + ".json")
+
 
 def _post(path, body):
+    cached = _gate_cache_file(path, body)
+    if cached and os.path.exists(cached):
+        with open(cached, encoding="utf-8") as fh:
+            return json.load(fh)
+    data = _post_live(path, body)
+    if cached:
+        # Written whole, then renamed, so a reader never sees a half-written
+        # file, even if two processes ever share the directory.
+        tmp = f"{cached}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+        os.replace(tmp, cached)
+    return data
+
+
+def _post_live(path, body):
     """POST to the API, retrying a transport failure (LOTTO-0019 INV-27).
 
     Four of seven build attempts failed with SSL: UNEXPECTED_EOF_WHILE_READING

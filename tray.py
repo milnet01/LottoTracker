@@ -16,7 +16,6 @@ rather than stylistic - see the comments at their sites.
 import os
 import signal
 import time
-import webbrowser
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QIcon
@@ -313,7 +312,7 @@ class LottoTray(QSystemTrayIcon):
             self._end(self.act_open, "Open page")
             if not ok:
                 self.note(f"The server is not answering: {msg}", bad=True)
-            elif not webbrowser.open(self.sup.url):
+            elif msg == "no browser":
                 self.note(
                     f"Could not open a browser. The page is at {self.sup.url}",
                     bad=True,
@@ -322,6 +321,8 @@ class LottoTray(QSystemTrayIcon):
         def go():
             if not self.sup.is_ready():
                 raise RuntimeError("timed out waiting for the server")
+            # Off the GUI thread: open_browser() may wait on its opener.
+            return "" if supervise.open_browser(self.sup.url) else "no browser"
 
         run_async(go, finished)
 

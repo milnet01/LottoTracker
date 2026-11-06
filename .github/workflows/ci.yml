@@ -44,7 +44,9 @@ concurrency:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    # A versioned image, not ubuntu-latest, which moves when GitHub says so
+    # (ci_report runner_latest, LOTTO-0096). Moving it is a deliberate edit.
+    runs-on: ubuntu-24.04
     # The job's own ceiling. Without one a hang takes the 360-minute default,
     # and verify_page.py is exactly the shape that hangs: it spawns
     # subprocesses and talks HTTP to localhost. The whole lane is about forty

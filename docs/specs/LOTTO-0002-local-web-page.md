@@ -938,7 +938,9 @@ rule to the child it spawns, for the same reason.) Both are substituted at write
 time, so the bytes on disk are constant for a given install — which is what lets
 LOTTO-0014's INV-14 assert them.
 
-`open_on_start` defaults to **true**, and it has **three** readers: `tray.py`
+`open_on_start` defaults to **false** (LOTTO-0095: the tray autostarts at
+login, and the user did not want a tab opened at every boot; it defaulted to
+true until 2026-11-06), and it has **three** readers: `tray.py`
 at startup (LOTTO-0013 §4.3 owns what the tray *does* with it), the model
 builder on every build (§4.1's `settings` key), and `POST /settings` when it
 re-reads after writing.
@@ -1862,6 +1864,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 0095-fix | 2026-11-06 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0095: §4.7's `open_on_start` default moved from true to false at the user's request, because the autostarted tray opened a browser tab at every boot. `supervise.read_settings()` changed with it. No invariant moved. |
 | amend-0092 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0092, the user's request to keep improving the look. Adds matched balls, period bars and theme previews; INV-97, INV-98. |
 | amend-0091 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0091, the user's request to make the page look pretty. Adds the typeface; INV-96. |
 | amend-0090 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0090, the user's request to improve the page's look and flow. Adds the Overview, the paid wins and game names; INV-93 to INV-95. |

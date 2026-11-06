@@ -229,23 +229,36 @@ if [ "$CI_ONLY" -eq 0 ]; then
     run "typos"              typos
     run "pyright"            pyright
     run "mypy"               mypy .
-    run "verify_sources.py"  python3 tools/verify_sources.py
-    run "verify_coverage.py" python3 tools/verify_coverage.py
-    run "verify_pools.py"    python3 tools/verify_pools.py
+
+    # LOTTO-0096: the six verifiers below fetch the same draws from the
+    # lottery API. One cache, live for this run only, lets them ask once
+    # between them: measured 2026-11-06, about 135 s down to about 25 s, with
+    # every verifier's output byte-identical to an uncached run. Fewer
+    # requests is also fewer chances for the network to fail the gate.
+    # Passed to these six alone and never exported: verify_page.py stubs the
+    # network and counts requests, and must never be answered from disk.
+    # Run in sequence on purpose: in parallel they would all miss the cold
+    # cache together, and the timing-sensitive cases would share the CPU.
+    FETCH_CACHE=$(mktemp -d "${TMPDIR:-/tmp}/lotto-gate-fetch.XXXXXX") || exit 2
+    trap 'rm -rf "$FETCH_CACHE"' EXIT
+    cached() { LOTTO_GATE_FETCH_CACHE="$FETCH_CACHE" "$@"; }
+    run "verify_sources.py"  cached python3 tools/verify_sources.py
+    run "verify_coverage.py" cached python3 tools/verify_coverage.py
+    run "verify_pools.py"    cached python3 tools/verify_pools.py
     # Needs the dump AND the archive: periods_reconcile recomputes every
     # bucket from TIER_PRICES and history.covered() over the real tickets
     # (LOTTO-0036 INV-57). Its other three cases are synthetic, but the file
     # fails as a whole without its inputs rather than reporting a weaker pass.
-    run "verify_periods.py"  python3 tools/verify_periods.py
+    run "verify_periods.py"  cached python3 tools/verify_periods.py
     # Needs the dump AND the archive: it reconciles the bank's own payout
     # SMSes against every computed win (LOTTO-0029). A public runner has
     # neither, and the payouts are the one thing that must never reach one.
-    run "verify_payouts.py"  python3 tools/verify_payouts.py
+    run "verify_payouts.py"  cached python3 tools/verify_payouts.py
     # Three of its eight cases need real data and not the same data: the merged
     # draw record for the calendar, and the dump of 561 mostly-finished tickets
     # for the case that proves an expired ticket is never warned about. It has
     # no weak mode on purpose (LOTTO-0034 §7).
-    run "verify_expiry.py"   python3 tools/verify_expiry.py
+    run "verify_expiry.py"   cached python3 tools/verify_expiry.py
 else
     echo "local-CI: --ci, so the six data-dependent verifiers and the"
     echo "          full-strength privacy assertion are NOT run. A green"

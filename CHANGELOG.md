@@ -28,6 +28,11 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The pre-push checks finish in about a third of the time** (LOTTO-0096)
+  The checks that read live lottery results now ask the results site once
+  between them, instead of once each. Their verdicts are unchanged. The GitHub
+  runner is pinned to `ubuntu-24.04`.
+
 - **Dates read like 9 May 2026, and the page has larger slips, stronger figures and quieter chrome** (LOTTO-0093)
   The wins table no longer cuts off its Expires column. Won amounts stand out in the theme's accent colour, and the note about unchecked entries gives up its box. No figure changes.
 
@@ -49,6 +54,14 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The page uses your whole screen, shows the newest tickets first, sorts however you choose, turns into cards on a phone, and has its icon in the browser tab.
 
 ### Fixed
+
+- **Stopping Lotto Tracker no longer closes your browser** (LOTTO-0094)
+  The tray now opens the page in a browser that runs on its own, so stopping
+  the tray stops only the tray. You close the tab yourself.
+
+- **Lotto Tracker no longer opens the page when it starts** (LOTTO-0095)
+  It starts quietly at login. To have the page open at start again, turn on
+  "Open this page when the tray starts" in the page's settings.
 
 - **Shutting the tray down from outside its menu now stops the page and the SMS collector too** (LOTTO-0089)
   Before, they kept running, so the next start showed the old page and collected twice.

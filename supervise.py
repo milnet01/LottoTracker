@@ -17,12 +17,15 @@ import datetime
 import json
 import os
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
+import webbrowser
 
 import expiry
 from tickets import load as load_tickets
@@ -518,8 +521,12 @@ def read_settings():
     differently otherwise - the tray never appears, the build dies, or a toggle
     500s - and all three would be caused by one corrupt file that should simply
     have been ignored.
+
+    open_on_start defaults to False (LOTTO-0095): the tray autostarts at login,
+    and a browser tab opening at every boot was the user's complaint. The
+    switch on the page still turns it on.
     """
-    open_on_start = True
+    open_on_start = False
     try:
         with open(settings_path(), encoding="utf-8") as fh:
             data = json.load(fh)
@@ -531,6 +538,44 @@ def read_settings():
         "autostart": os.path.exists(autostart_path()),
         "open_on_start": open_on_start,
     }
+
+
+BROWSER_WAIT = 10  # seconds open_browser() waits for the opener to report
+
+
+def open_browser(url):
+    """Open url in the user's browser, OUTSIDE this process's systemd unit.
+
+    LOTTO-0094. The desktop runs the autostarted tray as a systemd user
+    service whose KillMode is control-group, and webbrowser.open() started
+    Firefox inside it: stopping the service then closed the user's browser.
+    systemd-run --scope gives the opener, and the browser it starts, a unit of
+    its own, which no stop of ours can reach. xdg-open honours the desktop's
+    default browser, as webbrowser.open() did.
+
+    Without systemd-run there is no unit to escape, so webbrowser.open() is
+    safe there. A non-zero exit is reported as False, never retried through
+    webbrowser.open(), which would put the browser back inside our unit.
+    Blocks up to BROWSER_WAIT seconds: call it off the GUI thread.
+    """
+    if shutil.which("systemd-run") is None or shutil.which("xdg-open") is None:
+        return webbrowser.open(url)
+    try:
+        child = subprocess.Popen(
+            ["systemd-run", "--user", "--scope", "--quiet", "--collect",
+             "--", "xdg-open", url],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return False
+    try:
+        return child.wait(timeout=BROWSER_WAIT) == 0
+    except subprocess.TimeoutExpired:
+        # Some openers stay in the foreground with the browser. It is in its
+        # own scope already; reap it whenever it ends.
+        threading.Thread(target=child.wait, daemon=True).start()
+        return True
 
 
 def _port_or_default(port):

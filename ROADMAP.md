@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=93 -->
+<!-- ants-roadmap-id-high-water: LOTTO=96 -->
 
 # ROADMAP — LottoTracker
 
@@ -4345,3 +4345,37 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** The instructions loaded into every session get shorter, so each session starts cheaper.
   Kind: perf.
   Source: token-ideas-2026-10-15 (ants-terminal-95 round).
+
+- ✅ [LOTTO-0094] **Stopping the tray must not close the user's browser.**
+  Measured 2026-11-06: the desktop runs the autostarted tray as a systemd
+  user service with KillMode=control-group, and webbrowser.open() started
+  Firefox inside that service's cgroup. Stopping the service killed
+  everything in it, Firefox included. The fix launches the browser in its
+  own transient scope through systemd-run, so the service's stop cannot
+  reach it.
+  **Layman:** Stopping Lotto Tracker no longer closes Firefox; it stops only itself.
+  Kind: fix.
+  Source: user-request-2026-11-06.
+
+- ✅ [LOTTO-0095] **Do not open the page when the tray starts, unless the user turns it on.**
+  open_on_start defaulted to true, so an autostarted tray opened a browser
+  tab at every boot. The user asked for the service to start without
+  opening the page (2026-11-06). The default is now false; the switch on
+  the page still turns it on.
+  **Layman:** Lotto Tracker starts quietly at boot and no longer opens a web page by itself.
+  Kind: fix.
+  Source: user-request-2026-11-06.
+
+- ✅ [LOTTO-0096] **Make the push gate faster without making it flaky.**
+  Measured 2026-11-06: about 160 s, of which the three slowest verifiers
+  spent most waiting on the lottery API, each fetching the same draws
+  separately. A per-run fetch cache shared by the data verifiers, and a
+  capped parallel run of the independent checks. Also pins the runner to
+  ubuntu-24.04 (ci_report runner_latest).
+  Measured 2026-11-06: the full gate went from about 160 s to 54 s.
+  Running checks in parallel was considered and not done: after the
+  cache it would save about 8 s, and verify_page.py's timing-sensitive
+  cases would share the CPU.
+  **Layman:** The checks that run before each upload finish sooner and ask the lottery website for the same data once instead of six times.
+  Kind: perf.
+  Source: user-request-2026-11-06.
