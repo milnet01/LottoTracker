@@ -8,6 +8,11 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A *Bank's record* tab shows where the bank's payments differ from what the app worked out** (LOTTO-0032)
+  Each such ticket shows both amounts, what the difference means, and why where
+  a reason is known. Tickets where the two agree are counted, not listed. If no
+  payment from the bank can be read, the tab says nothing was compared.
+
 - **The tray checks for new results by itself each evening** (LOTTO-0028)
   At 22:00 South African time, or on waking if the computer slept through it.
   It tells you only when it finds a new win. If the check fails two evenings in

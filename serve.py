@@ -394,9 +394,10 @@ def build_model():
     # reference's payment state. The records come from the TRUSTED payouts
     # alone, so a forged "winnings paid" text cannot clear a real deadline
     # (LOTTO-0001 INV-77). No reference join of our own here (LOTTO-0002 s4.1).
-    status = check.payment_status(
-        wins, check.reconcile(all_tickets, wins, check.trusted_payouts(bank_paid))
-    )
+    # The same records feed the Bank's record tab, so it and the wins' payment
+    # states cannot disagree about which payouts count (LOTTO-0032).
+    records = check.reconcile(all_tickets, wins, check.trusted_payouts(bank_paid))
+    status = check.payment_status(wins, records)
     out_wins = []
     for w in status:
         d = dict(w)
@@ -407,6 +408,7 @@ def build_model():
 
     return {
         "wins": out_wins,
+        "bank": bank_view(records),
         "entries": entries,
         "tickets": [
             {
@@ -476,6 +478,35 @@ RAN_OUT_DAYS = 30
 
 def _iso(day):
     return day.isoformat() if day else None
+
+
+def bank_view(records):
+    """The Bank's record tab's data (LOTTO-0032), or None when there is none.
+
+    `records` is check.reconcile()'s output. An empty list means no payout from
+    a known sender parsed (INV-47), and that must reach the page as None - "nothing was
+    compared" - never as an agreement on zero tickets.
+
+    Agreements are counted, not listed (the user's call, 2026-11-11). Every
+    other record is listed with both figures untouched: the bank's never
+    replaces the app's (INV-43). The words come from check.py, so the terminal
+    and the page describe a category the same way.
+    """
+    if not records:
+        return None
+    import check  # lazily, as build_model() does
+
+    differ = [
+        dict(
+            r,
+            first_win=str(r["first_win"])[:10] if r["first_win"] else None,
+            meaning=check.CATEGORY_NOTE.get(r["category"], r["category"]),
+            why=check.REASON_NOTE.get(r["reason"], r["reason"]) if r["reason"] else None,
+        )
+        for r in records
+        if r["category"] != "agree"
+    ]
+    return {"agree": len(records) - len(differ), "differ": differ}
 
 
 def sms_quiet_view(model, today):

@@ -1045,7 +1045,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: fix.
   Source: in-session-2026-08-13 (surfaced by LOTTO-0030's first re-pull).
 
-- 📋 [LOTTO-0032] **Show the bank's own payout record on the page, beside what the app computed.**
+- ✅ [LOTTO-0032] **Show the bank's own payout record on the page, beside what the app computed.**
   Kind: feature. Source: in-session-2026-08-19 (split out while speccing LOTTO-0029).
   Layman: the page shows what the bank actually paid you next to what this app
   worked out, so a difference is visible instead of hidden.
@@ -1068,6 +1068,17 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   (b) INV-21 forbids a filter or control that puts ticket data in a query
   parameter, a fragment or a history entry, and a payout amount is ticket data.
   **Blocked by:** LOTTO-0029.
+  Shipped 2026-11-11. A "Bank's record" tab, after Wins, lists every
+  reference reconcile() does not call `agree`, with the bank's figure and
+  the app's side by side, the category's words and the reason where one
+  is known. Agreements are counted, not listed; no payout data says
+  nothing was compared (the user's choices, 2026-11-11: own tab, count
+  agreements). The tab and the wins' payment states read one set of
+  records. serve.bank_view(); LOTTO-0002 INV-104; case
+  verify_page.py::bank_record_shown with four breaks. Over the real dump
+  on 2026-11-11: 224 agree, 4 differ.
+  Not done: a `low` win still reads "paid" on the Wins tab; the new tab
+  is where that difference now shows.
   Source: in-session-2026-08-19 (split out while speccing LOTTO-0029).
 
 - ✅ [LOTTO-0033] **The app under-counts real money on 15 references, and 4 paid tickets reach no paying division.**

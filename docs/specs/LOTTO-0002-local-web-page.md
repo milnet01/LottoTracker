@@ -23,6 +23,7 @@ findings were folded into the build. INV-68
 (`tools/verify_boards.py::odd_board_is_named`, three breaks) and INV-70
 (`tools/verify_page.py::deadline_only_when_unpaid`) pass, each observed
 failing under its own breaks.
+**Amended 2026-11-11** for LOTTO-0032: §4.5, INV-104, §7, §11.
 **Amended 2026-11-05** for LOTTO-0021: §4.5, INV-101, §7, §11.
 **Amended 2026-11-02** for LOTTO-0093: INV-100, §7, §11.
 **Amended 2026-11-02** for LOTTO-0092: §4.1, §4.9, INV-63, INV-97, INV-98, §7, §13.
@@ -693,6 +694,14 @@ thing on the page with a deadline:
    says how many entries are hidden and how many of those could not be checked.
 4. **Spend against winnings** — §4.6.
 
+**The Bank's record tab** (LOTTO-0032) follows *Wins*. It lists every
+reference where `check.reconcile()` does not say `agree`, from the same
+records the wins' payment states use. Each row shows the bank's figure and
+the app's, and says what the difference means and why, in `check.py`'s
+words. Agreements are counted, not listed (the user, 2026-11-11). With no
+payout data the tab says nothing was compared — never a count of zero, and
+never a table. INV-104 holds it.
+
 **The uncheckable rule is structural here, not prose.** `check.py::uncheckable_report()`
 returns `(lines, counts)`, and `counts["wholly"]` / `counts["partly"]` are the
 ticket lists themselves — which is what the banner needs. **It is not the source
@@ -1354,6 +1363,19 @@ them unqualified.
   *Test:* `tools/verify_page.py`, case `games_by_their_names`. Break `pool_keys_shown`.
   *Breaks when:* a section renders the key, or a new pool has no name.
 
+- **INV-104** — *Bank's record* lists every reconciled reference that is not
+  `agree`, with both figures as reconciled; neither replaces the other
+  (LOTTO-0029 INV-43). A missing payment, an app figure of `None` and an app
+  figure of `0` each render differently. Agreements are a count. No payout data
+  renders as "nothing compared", with no table and no count. Added 2026-11-11
+  (LOTTO-0032).
+  *Test:* `tools/verify_page.py`, case `bank_record_shown`. Breaks
+  `bank_figure_adopted`, `agreements_listed`, `no_data_as_agreement` and
+  `bank_none_as_zero`. The case calls `serve.bank_view()` on synthetic
+  records; it does not run `build_model()`.
+  *Breaks when:* the bank's figure is written over the app's, an agreement is
+  listed, or no data reads as agreement.
+
 - **INV-89** — The sections sit in tabs under a sticky bar, in §4.5's order, with
   *Spending* holding both spend sections. Every notice sits above the tabs, so no
   tab can hide one. A refresh reports in the bar. Tabs touch no URL and store
@@ -1562,6 +1584,7 @@ share their fixtures, their temporary-directory setup and their stub builder.
 | `tabs_never_hide_a_warning` | INV-89 |
 | `buy_again_on_overview` | INV-93 |
 | `paid_wins_shown` | INV-94 |
+| `bank_record_shown` | INV-104 |
 | `games_by_their_names` | INV-95 |
 
 **Added 2026-10-15.** INV-70's case joins `tools/verify_page.py`, with break
@@ -1730,6 +1753,8 @@ LOTTO-0014 §8.)
 | INV-100 a table's dates read as words and sort on their ISO form | `tools/verify_page.py::dates_read_as_words` — red-tested by `--break iso_dates_shown` and `--break sort_reads_the_words` |
 | INV-93 the Overview says when to buy, from the tray's calendar, judged when shown | `tools/verify_page.py::buy_again_on_overview` — red-tested by five breaks. **Layout and the buttons run in the browser and no case runs them**; checked by hand in Firefox on 2026-11-02 |
 | INV-94 a paid win shows its numbers and no deadline | `tools/verify_page.py::paid_wins_shown` — red-tested by `--break no_paid_section` |
+| INV-104 the bank's record beside the app's figure | `tools/verify_page.py::bank_record_shown` — red-tested by four breaks |
+| §4.1 the builder passing `reconcile()`'s records to `bank_view()` | **nothing** — no case runs `build_model()`; checked by hand over the real dump on 2026-11-11 |
 | INV-95 game names, never pool keys | `tools/verify_page.py::games_by_their_names` — red-tested by `--break pool_keys_shown` |
 | INV-89 tabs under a sticky bar, with every notice above them | `tools/verify_page.py::tabs_never_hide_a_warning` — red-tested by `--break warning_in_a_tab`. **Nothing** runs a click |
 | INV-48 the numbers chosen beside the numbers drawn, absence said in words | `tools/verify_page.py::numbers_chosen_and_drawn` — two disjoint fixture sets, so a renderer echoing the chosen numbers into both columns fails; red-tested by `--break no_drawn_numbers` and `--break blank_numbers_cell` |

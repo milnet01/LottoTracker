@@ -210,7 +210,7 @@ SORT_WORDS = {
 }
 
 
-MONEY_HEADINGS = {"Amount", "Cost", "Won"}
+MONEY_HEADINGS = {"Amount", "Cost", "Won", "Bank paid", "App worked out"}
 
 
 def _game_cell(game, plus_flag):
@@ -513,6 +513,71 @@ def _paid_section(model):
             5,
         )
     return f"<section><h2>Paid by the bank</h2>{body}</section>"
+
+
+BANK_COLUMNS = [("Ticket", "text"), ("First win", "date"), ("Bank paid", "num"),
+                ("App worked out", "num"), ("What this means", "text")]
+
+
+def _bank_row(r):
+    """One reference where the bank and the app differ, both figures shown.
+
+    Neither figure stands in for the other (LOTTO-0029 INV-43), and each of the
+    three gaps is said in its own words: no payment, not checkable, no win.
+    """
+    if r.get("first_win"):
+        first = _date_cell(r["first_win"])
+    elif r.get("computed_cents") is None:
+        first = '<td class="notcheckable">not checkable</td>'
+    else:
+        first = '<td class="muted">no winning line</td>'
+    paid = r.get("paid_cents")
+    paid_cell = (f'<td class="money">{_e(_rands(paid))}</td>' if paid is not None
+                 else '<td class="money muted">no payment in your messages</td>')
+    why = r.get("why")
+    return (
+        f'<tr><td class="ref">{_e(r.get("ref"))}</td>{first}{paid_cell}'
+        + _money_cell(r.get("computed_cents"))
+        + f'<td class="wrap">{_e(r.get("meaning"))}'
+        + (f'<br><span class="muted">Why: {_e(why)}</span>' if why else "")
+        + "</td></tr>"
+    )
+
+
+def _bank_section(model):
+    """The bank's own payout record beside the app's figure (LOTTO-0032).
+
+    No payout data is not agreement: a change to the bank's wording looks
+    exactly like never winning (LOTTO-0029 INV-47), so it is said, never shown
+    as an empty list or a count of zero.
+    """
+    bank = model.get("bank")
+    if not bank:
+        body = (
+            '<p class="notcheckable">No payment from the bank could be read in '
+            "your messages, so nothing here has been compared. That is not the "
+            "same as the bank agreeing.</p>"
+        )
+    else:
+        agree, differ = bank.get("agree", 0), bank.get("differ", [])
+        if not differ:
+            body = (f"<p>The bank and this app agree on every ticket: "
+                    f"{_e(_count(agree, 'ticket', 'tickets'))}.</p>")
+        else:
+            body = (
+                f"<p>The bank and this app agree on "
+                f"{_e(_count(agree, 'ticket', 'tickets'))}. "
+                f"{_e(_count(len(differ), 'ticket differs', 'tickets differ'))}, "
+                "listed below. Both figures are shown; neither replaces the "
+                "other.</p>"
+                + _sorted_table(
+                    "bank",
+                    BANK_COLUMNS,
+                    "".join(_bank_row(r) for r in _newest_first(differ, "first_win")),
+                    1,
+                )
+            )
+    return f"<section><h2>The bank's record</h2>{body}</section>"
 
 
 def _outstanding_section(model):
@@ -1648,6 +1713,7 @@ def render(model, token):
         tabs = [
             ("overview", "Overview", _overview_section(model)),
             ("wins", "Wins", _ball_key(model) + _wins_section(model) + _paid_section(model)),
+            ("bank", "Bank's record", _bank_section(model)),
             ("outstanding", "Still outstanding", _outstanding_section(model)),
             ("entries", "Every entry", _entries_section(model)),
             ("spending", "Spending", _periods_section(model) + _spend_section(model)),

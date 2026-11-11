@@ -2706,6 +2706,71 @@ def paid_wins_shown():
     need("No win here has a matching payment" in none, "no paid win leaves the section blank")
 
 
+def bank_record_shown():
+    """INV-104 — every difference with the bank is listed with both figures;
+    agreements are counted; no payout data never reads as agreement."""
+    temp_home()
+
+    def rec(category, paid, computed, first_win=None, reason=None):
+        return {"ref": SENTINEL, "paid_cents": paid, "computed_cents": computed,
+                "category": category, "first_win": first_win, "reason": reason}
+
+    # The builder half, on synthetic records: agreements drop out, nothing is
+    # adopted from the bank, and an empty list stays "no data".
+    records = [rec("agree", 500, 500, "2026-06-06"),
+               rec("low", 900, 400, "2026-07-07", "feed_price"),
+               rec("unexplained", 300, 0)]
+    def viewed(recs):
+        v = serve.bank_view(recs)
+        if v is None:
+            raise Fail("records reached the page as no data")
+        return v
+
+    view = viewed(records)
+    need(serve.bank_view([]) is None, "no payout data reached the page as agreement")
+    need(view["agree"] == 1, f"agreements miscounted: {view}")
+    lows = [r for r in view["differ"] if r["category"] == "low"]
+    need(lows and lows[0]["paid_cents"] == 900 and lows[0]["computed_cents"] == 400,
+         "the bank's figure replaced the app's")
+    need(all(r["category"] != "agree" for r in view["differ"]), "an agreement is listed")
+    need(lows[0]["why"] and lows[0]["why"] != "feed_price", "the reason is not in words")
+
+    view["differ"] += [viewed([rec("unpaid", None, 700, "2026-05-05")])["differ"][0],
+                       viewed([rec("no_ticket", 200, None)])["differ"][0]]
+    html = render_pure(fixture_model(bank=view))
+    table = re.search(r'<table id="bank">.*?</table>', html, re.S)
+    if table is None:
+        raise Fail("the differences have no table")
+    rows = re.findall(r"<tr>.*?</tr>", table.group(0).split("<tbody>", 1)[1], re.S)
+    need(len(rows) == 4, f"{len(rows)} rows for 4 differences")
+    by_cat = {}
+    for r in rows:
+        for c in ("LESS", "no record of paying", "no win found", "no purchase SMS"):
+            if c in r:
+                by_cat[c] = r
+    need(len(by_cat) == 4, f"a difference is not said in its own words: {sorted(by_cat)}")
+    low = by_cat["LESS"]
+    need("R9.00" in low and "R4.00" in low, "a disagreement does not show both figures")
+    need("Why:" in low, "a disagreement does not say why")
+    need("no payment in your messages" in by_cat["no record of paying"],
+         "an unpaid win's missing payment is not said")
+    need("R0.00" in by_cat["no win found"] and "not checkable" not in by_cat["no win found"],
+         "a checked zero reads as not checkable")
+    need("not checkable" in by_cat["no purchase SMS"]
+         and "R0.00" not in by_cat["no purchase SMS"],
+         "a reference nothing could score reads as a checked zero")
+    need("agree on 1 ticket." in html, "the agreements are not counted")
+
+    for empty in (None, {}):
+        bare = render_pure(fixture_model(bank=empty))
+        panel = bare.split('id="panel-bank"', 1)[1].split("</section>", 1)[0]
+        need("nothing here has been compared" in panel,
+             "no payout data does not say nothing was compared")
+        need("agree" not in panel.replace("the bank agreeing", "")
+             and "<table" not in panel,
+             "no payout data reads as agreement")
+
+
 def games_by_their_names():
     """INV-95 — the reader sees a game's name, never the internal pool key."""
     temp_home()
@@ -3021,6 +3086,7 @@ CASES = [
     ("estimate_is_said", "INV-90", estimate_is_said),
     ("buy_again_on_overview", "INV-93", buy_again_on_overview),
     ("paid_wins_shown", "INV-94", paid_wins_shown),
+    ("bank_record_shown", "INV-104", bank_record_shown),
     ("games_by_their_names", "INV-95", games_by_their_names),
     ("matched_balls_marked", "INV-97", matched_balls_marked),
     ("period_bars_say_the_figures", "INV-98", period_bars_say_the_figures),
@@ -3047,6 +3113,10 @@ BREAKS = {
     "no_overview_answer": "buy_again_on_overview",
     "overview_money_zero": "buy_again_on_overview",
     "no_paid_section": "paid_wins_shown",
+    "bank_figure_adopted": "bank_record_shown",
+    "agreements_listed": "bank_record_shown",
+    "no_data_as_agreement": "bank_record_shown",
+    "bank_none_as_zero": "bank_record_shown",
     "powerball_read_as_bonus": "matched_balls_marked",
     "unknown_set_marked_miss": "matched_balls_marked",
     "no_ball_key": "matched_balls_marked",
@@ -3108,6 +3178,26 @@ BREAKS = {
 
 def apply_render_breaks():
     """Breaks that live in the renderer rather than the server."""
+    real_bank_view, real_bank_row, real_bank = serve.bank_view, page._bank_row, page._bank_section
+    if broken("bank_figure_adopted"):
+        # The SMS's figure resolving the disagreement, which INV-43 forbids.
+        def adopted(records):
+            v = real_bank_view(records)
+            return v and dict(v, differ=[dict(r, computed_cents=r["paid_cents"])
+                                         for r in v["differ"]])
+        serve.bank_view = adopted
+    if broken("agreements_listed"):
+        def listed(records):
+            v = real_bank_view(records)
+            return v and dict(v, differ=v["differ"] + [
+                r for r in records if r["category"] == "agree"])
+        serve.bank_view = listed
+    if broken("no_data_as_agreement"):
+        page._bank_section = lambda m: real_bank(
+            dict(m, bank=m.get("bank") or {"agree": 0, "differ": []}))
+    if broken("bank_none_as_zero"):
+        page._bank_row = lambda r: real_bank_row(
+            dict(r, computed_cents=r.get("computed_cents") or 0))
     if broken("oldest_first"):
         page._newest_first = lambda items, key: sorted(
             items, key=lambda i: i.get(key) or "")
