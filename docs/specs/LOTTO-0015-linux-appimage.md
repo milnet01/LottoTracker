@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # LOTTO-0015 — Ship the tracker as one Linux AppImage file
 
-**Status:** spec draft (2026-11-11).
+**Status:** accepted (2026-11-11) — two cold-eyes loops, the cap for a spec; the build is its next reader.
 **Kind:** package.
 **Source:** ROADMAP LOTTO-0015 (user-request-2026-08-02). The scope decisions
 in §3 were taken with the user on 2026-11-11.
@@ -94,8 +94,9 @@ ARCHIVE: str              # DATA + "/archive_results.json"
 CACHE: str                # DATA + "/archive_cache"
 
 def resource(*parts) -> str   # RESOURCES joined with parts
-def ensure_data() -> None     # makedirs(DATA, exist_ok=True); called by tray.main()
-                              # and by each child's main(), never at import
+def ensure_data() -> None     # makedirs(DATA, exist_ok=True); called first in tray.main(),
+                              # before its managed-run return, and by each
+                              # child's main(); never at import
 ```
 
 The existing names stay as aliases so no caller changes shape:
@@ -133,12 +134,15 @@ build:
 ```python
 # argv[1] == "serve"  -> serve.main()
 # argv[1] == "watch"  -> watch_sms.main()   (argv[2:] passed through: --once)
-# anything else       -> tray.main()
+# no argument         -> tray.main()
+# anything else       -> exit non-zero, naming the argument
 ```
 
 It is the PyInstaller entry script and nothing else imports it. Each branch
 imports its own module inside the branch, so the `serve` and `watch` children
-never load Qt (LOTTO-0013 INV-19's reason). `serve.main()`
+never load Qt (LOTTO-0013 INV-19's reason). An unknown argument exits rather
+than starting a tray: a spawn that still passed a script path would otherwise
+start a tray, which spawns two more. `serve.main()`
 and `watch_sms.main()` already exist. `watch_sms.main()` reads
 `sys.argv[1:]` for `--once`, so the dispatcher removes `"watch"` from
 `sys.argv` before calling it.
@@ -163,9 +167,9 @@ fallback, taken only where `systemd-run` or `xdg-open` is missing, takes no
 `env` and keeps the bundle's path; this machine has both (§3). The project's own
 children (§4.2) keep the bundle's environment: they are the bundle.
 
-Unverified until the build runs: that this PyInstaller version sets the two
-variables this way for a one-folder build. The build's first run measures it
-(§7, INV-113), and §4.3 is corrected if it differs.
+A bare PyInstaller 6.20.0 one-folder build sets both variables this way (probe
+build, 2026-11-11). Inside the AppImage it rests on `AppRun` (§4.7), and is checked by
+hand at the first build (§15).
 
 ### 4.4 The autostart entry
 
@@ -199,7 +203,8 @@ wins list beneath the notice.
 
 **No older results (`no_archive`).** New. `serve.build_model()` sets
 `no_archive: True` when the dump exists and `paths.ARCHIVE` does not. The page
-then shows a notice above the tickets: results for older draws have not been
+then shows a notice above the tabs, with the page's other notices (LOTTO-0002
+INV-89): results for older draws have not been
 fetched, so older tickets show as not checkable, and **Fetch older results** in
 the tray menu fetches them. The notice adds to the page; it removes nothing beneath
 it, because the tickets it describes are still correct.
@@ -399,8 +404,9 @@ project's modules, because every path is fixed at import.
 
 Every named `--break` must be observed turning its case red before the item is
 called done. INV-113 and INV-114 have no `--break`; their red run is a
-build of today's code, with `tray.py` as the recipe's entry, before §4.1 to
-§4.4 land.
+build with §4.2's dispatcher and `child_command()` still returning the script
+path, before §4.1, §4.3 and §4.4 land: each child exits at its unknown
+argument, so no server answers.
 
 The new verifiers are added to `.claude/rules/verifiers.md`, and
 `verify_paths.py` to `./local-CI.sh`.
@@ -452,7 +458,7 @@ The new verifiers are added to `.claude/rules/verifiers.md`, and
 | INV-109 | Partial: `tools/verify_paths.py::host_env` checks the environment handed over; **nothing** checks that a browser started with the bundle's path would fail |
 | INV-110 | `tools/verify_page.py::no_dump_names_folder` |
 | `lottotracker.py` imports each module inside its branch | **nothing** — INV-19's check imports `serve` and `supervise`, never the dispatcher |
-| INV-111 | `tools/verify_page.py::no_archive_points_at_menu` |
+| INV-111 | Partial: `tools/verify_page.py::no_archive_points_at_menu` renders two fixture models; **nothing** checks that `serve.build_model()` sets `no_archive` |
 | INV-112 | `tools/verify_page.py::fetch_older_reports_outcome` |
 | INV-113 | Partial: `tools/verify_appimage.py`, hand-run and before a release; **nothing** runs it on push |
 | INV-114 | Partial: `tools/verify_appimage.py`, as INV-113 |
@@ -502,5 +508,7 @@ Rows live in `../reviews/LOTTO-0015-linux-appimage-loop-log.md`.
 
 - The `appimagetool` release to pin, and its hashes — recorded when
   `tools/build_appimage.sh` is written (§4.7).
-- Whether PyInstaller 6.20.0 sets `LD_LIBRARY_PATH_ORIG` for a one-folder
-  build as §4.3 assumes — measured at the first build.
+- Whether the AppImage's `LD_LIBRARY_PATH_ORIG` holds the host's value, as
+  §4.3 assumes, and whether the bundle's runtime hooks set other variables a
+  host program inherits (`QT_PLUGIN_PATH`, `GI_TYPELIB_PATH`) — compared at
+  the first build against the launching shell's `env`.

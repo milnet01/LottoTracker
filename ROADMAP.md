@@ -449,6 +449,13 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   starts serve.py and watch_sms.py as `sys.executable <script>`, which a
   frozen PyInstaller build breaks. A spec comes first: the change crosses
   several subsystems.
+  Spec gated (review-contract, 2026-11-11): docs/specs/LOTTO-0015-linux-appimage.md
+  is accepted after two cold-eyes loops, the cap for a spec. 14 verified
+  findings, all fixed; nothing deferred. The build is its next reader.
+  Left to the first build, by hand: whether the AppImage keeps the host's
+  LD_LIBRARY_PATH in LD_LIBRARY_PATH_ORIG, which other variables the
+  bundle's hooks set, and whether a SIGTERM to the AppImage reaches the
+  tray. Record: docs/reviews/LOTTO-0015-linux-appimage-loop-log.md.
   Source: user-request-2026-08-02.
 
 - ✅ [LOTTO-0016] **Run the CI locally before pushing, from the same script CI runs.**
