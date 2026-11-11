@@ -440,6 +440,15 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   where its `lotto_sms_raw.txt` comes from, waits until someone needs it.
   Offered alongside: a USB-cable import on Windows, a hand-copied file,
   and a page-only build that names the missing import.
+  Decision (user, 2026-11-11): the AppImage keeps its data in
+  `~/.local/share/LottoTracker`, not beside the .AppImage file. A source
+  checkout keeps using the repository folder, unchanged. The first run of
+  the AppImage names that folder and says it is empty. Found while scoping:
+  the AppImage's code folder is read-only, yet backfill.py, serve.py,
+  supervise.py and watch_sms.py write beside `__file__`, and supervise.py
+  starts serve.py and watch_sms.py as `sys.executable <script>`, which a
+  frozen PyInstaller build breaks. A spec comes first: the change crosses
+  several subsystems.
   Source: user-request-2026-08-02.
 
 - ✅ [LOTTO-0016] **Run the CI locally before pushing, from the same script CI runs.**
