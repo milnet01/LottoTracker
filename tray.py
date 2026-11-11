@@ -173,6 +173,7 @@ class LottoTray(QSystemTrayIcon):
         # period from this moment (LOTTO-0034 INV-83).
         self.quiet_checked_on = None
         self.started = time.monotonic()
+        self.evening = supervise.EveningCheck(clock.now())  # LOTTO-0028
 
         menu = QMenu()
         self.act_open = menu.addAction("Open page", self.open_page)
@@ -213,6 +214,27 @@ class LottoTray(QSystemTrayIcon):
         self.check_new_tickets()
         self.check_expiring_tickets()
         self.check_quiet_sms()
+        self.check_results_this_evening()
+
+    def check_results_this_evening(self):
+        """Refresh once a night without being asked (LOTTO-0028, INV-102/103).
+
+        Off this tick for check_expiring_tickets()' reason: a date comparison
+        handles suspend and a slept-through evening where a 24-hour timer would
+        not. A stopped server is left stopped - the check waits for it rather
+        than starting it - and a busy tray waits for the next tick.
+        """
+        now = clock.now()
+        if self.busy or not self.sup.is_running() or not self.evening.due(now):
+            return
+        self.evening.started(now)
+
+        def report(ok, msg):
+            outcome = msg if ok else supervise.REFRESH_FAILED
+            for body in self.evening.finished(outcome, self.sup.found):
+                self.note(body, bad=body in supervise.FAULT_NOTICES)
+
+        self._refresh(report)
 
     def check_new_tickets(self):
         """Notice what the watcher appended, say so, and score it (LOTTO-0003).
@@ -327,13 +349,7 @@ class LottoTray(QSystemTrayIcon):
         run_async(go, finished)
 
     def refresh(self):
-        if self.busy:
-            return
-        self._begin(self.act_refresh, "refreshing")
-        self.act_refresh.setText("Refreshing…")
-
-        def finished(ok, msg):
-            self._end(self.act_refresh, "Refresh results now")
+        def report(ok, msg):
             # `msg` is one of supervise's four outcomes when ok, and an
             # exception's text when not. The tray composes only the failure
             # line - the one path that has no outcome because nothing was
@@ -346,6 +362,19 @@ class LottoTray(QSystemTrayIcon):
                 self.note(supervise.refresh_message(msg, self.sup.found))
             else:
                 self.note(f"Refresh failed: {msg}", bad=True)
+
+        self._refresh(report)
+
+    def _refresh(self, report):
+        """One refresh, from the menu or the evening check; `report` says the result."""
+        if self.busy:
+            return
+        self._begin(self.act_refresh, "refreshing")
+        self.act_refresh.setText("Refreshing…")
+
+        def finished(ok, msg):
+            self._end(self.act_refresh, "Refresh results now")
+            report(ok, msg)
 
         run_async(self.sup.refresh, finished)
 

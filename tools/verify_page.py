@@ -26,6 +26,7 @@ against, so the only way to know a case CAN fail is to break the rule it
 guards and watch it. Each break is named in the invariant's *Test:* clause.
 """
 
+import datetime
 import http.client
 import json
 import os
@@ -45,6 +46,7 @@ from typing import Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+import clock  # noqa: E402
 import page  # noqa: E402
 import serve  # noqa: E402
 import supervise  # noqa: E402
@@ -2909,6 +2911,81 @@ def period_bars_say_the_figures():
     need('colspan="3"' in row.group(0), "the unscored month's sentence does not span the row")
 
 
+def _sast(day, hour, minute=0):
+    """A South African time on 2031-01-`day`. The rule reads no clock of its own."""
+    return datetime.datetime(2031, 1, day, hour, minute, tzinfo=clock.SAST)
+
+
+def evening_check_when_due():
+    """INV-102 — the evening check runs once a 22:00 has passed since the last one.
+
+    Keyed on the newest 22:00 rather than on today's, so an evening the machine
+    slept through is caught up on waking rather than waiting a further day.
+    """
+    real_at, real_due = supervise.CHECK_AT, supervise.check_due
+    if broken("check_an_hour_late"):
+        supervise.CHECK_AT = datetime.time(23, 0)
+    if broken("missed_evening_waits"):
+        # RED-TEST: only TODAY's 22:00 counts, so a night slept through is lost.
+        supervise.check_due = lambda last, now: last < now.replace(
+            hour=supervise.CHECK_AT.hour, minute=0) <= now
+    try:
+        due = supervise.check_due
+        need(not due(_sast(5, 21), _sast(5, 21, 59)), "due before 22:00")
+        need(due(_sast(5, 21), _sast(5, 22)), "not due at 22:00")
+        need(not due(_sast(5, 22, 1), _sast(5, 23, 30)), "due twice in one evening")
+        need(not due(_sast(5, 22, 1), _sast(6, 21, 59)), "due before the next evening")
+        need(due(_sast(5, 22, 1), _sast(6, 22)), "not due the next evening")
+        need(due(_sast(5, 20), _sast(6, 1)), "an evening slept through is not caught up")
+        # Starting the tray IS a check: the server's opening build fetches results.
+        started = supervise.EveningCheck(_sast(5, 23))
+        need(not started.due(_sast(5, 23, 5)), "due straight after a late start")
+        need(started.due(_sast(6, 22)), "a late start never checks again")
+    finally:
+        supervise.CHECK_AT, supervise.check_due = real_at, real_due
+
+
+def evening_check_reports_only_wins():
+    """INV-103 — the evening check is quiet unless it finds a win or keeps failing.
+
+    The user's decisions of 2026-11-06 and 2026-11-11: notify on a win only; on
+    a failure, retry at the next evening and say so after a full day of failing,
+    which is the second failed evening in a row. Said once, until one succeeds.
+    """
+    done, failed = supervise.REFRESH_DONE, supervise.REFRESH_FAILED
+    won = {"new_wins": 1, "new_cents": 5000}
+    real_finished = supervise.EveningCheck.finished
+    real_after = supervise.CHECK_FAILURES_BEFORE_NOTICE
+    if broken("evening_says_no_wins"):
+        def chatty(self, outcome, found):
+            said = real_finished(self, outcome, found)
+            return said or ([supervise.refresh_message(outcome, found)]
+                            if outcome == done else [])
+        supervise.EveningCheck.finished = chatty
+    if broken("evening_failure_said_at_once"):
+        supervise.CHECK_FAILURES_BEFORE_NOTICE = 1
+    try:
+        check = supervise.EveningCheck(_sast(5, 9))
+        need(check.finished(done, None) == [], "spoke with nothing to compare")
+        need(check.finished(done, {"new_wins": 0, "new_cents": 0}) == [], "spoke with no new win")
+        need(check.finished(done, won) == [supervise.refresh_message(done, won)],
+             "a new win went unsaid")
+        need(check.finished(failed, None) == [], "one failed evening was announced")
+        notice = check.finished(failed, None)
+        need(notice == [supervise.CHECK_FAILING_NOTICE], "two failed evenings went unsaid")
+        need(notice[0] in supervise.FAULT_NOTICES, "the failure is not shown as a fault")
+        need(not re.search(r"\d", notice[0]), "the failure notice carries a figure")
+        need(check.finished(failed, None) == [], "the failure was said twice")
+        need(check.finished(supervise.REFRESH_BUSY, None) == [], "a busy refresh spoke")
+        need(check.finished(failed, None) == [], "a success did not restart the count")
+        need(check.finished(supervise.REFRESH_RUNNING, None) == [], "a long build spoke")
+        need(check.finished(failed, None) == [supervise.CHECK_FAILING_NOTICE],
+             "a long build counted as a success")
+    finally:
+        supervise.EveningCheck.finished = real_finished
+        supervise.CHECK_FAILURES_BEFORE_NOTICE = real_after
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -2948,6 +3025,8 @@ CASES = [
     ("matched_balls_marked", "INV-97", matched_balls_marked),
     ("period_bars_say_the_figures", "INV-98", period_bars_say_the_figures),
     ("filters_say_what_they_hide", "INV-101", filters_say_what_they_hide),
+    ("evening_check_when_due", "INV-102", evening_check_when_due),
+    ("evening_check_reports_only_wins", "INV-103", evening_check_reports_only_wins),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -3020,6 +3099,10 @@ BREAKS = {
     "uncheckable_marked_checked": "filters_say_what_they_hide",
     "no_filter_note": "filters_say_what_they_hide",
     "filter_hides_silently": "filters_say_what_they_hide",
+    "check_an_hour_late": "evening_check_when_due",
+    "missed_evening_waits": "evening_check_when_due",
+    "evening_says_no_wins": "evening_check_reports_only_wins",
+    "evening_failure_said_at_once": "evening_check_reports_only_wins",
 }
 
 

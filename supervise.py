@@ -189,10 +189,25 @@ SMS_QUIET_NOTICE = (
     "about a ticket bought since then. Check that your phone is connected "
     "through KDE Connect."
 )
+# LOTTO-0028, the evening check. South African time: the draws are at about
+# 21:00, and the user chose about an hour after them (2026-11-06, 2026-11-11).
+CHECK_AT = datetime.time(22, 0)
+# One check a night, so the second failure in a row is the user's "a full day of
+# failures". Counted rather than timed: two checks a tick apart on consecutive
+# nights are a few seconds either side of 24 hours.
+CHECK_FAILURES_BEFORE_NOTICE = 2
+# Names no menu item: a failure can be the server stopping, and that state
+# disables Refresh results now (LOTTO-0003 §4.7's rule).
+CHECK_FAILING_NOTICE = (
+    "Lotto Tracker has not been able to check for new results for a day. It "
+    "will keep trying each evening, and the page says when results were last "
+    "checked."
+)
 # The notices that report a fault. tray.py shows these with note()'s failure
 # icon, and asks this set rather than deciding which strings are faults itself.
 FAULT_NOTICES = frozenset({UNKNOWN_GAME_NOTICE, MALFORMED_TICKET_NOTICE,
-                           WARN_STATE_NOTICE, SMS_QUIET_NOTICE})
+                           WARN_STATE_NOTICE, SMS_QUIET_NOTICE,
+                           CHECK_FAILING_NOTICE})
 
 # Set by the first failed state-file write; cleared only by a restart (s4.5).
 _warn_state_unsaved = False
@@ -226,6 +241,57 @@ def sms_quiet_notices(today, path=None):
     except OSError:
         newest = None
     return [SMS_QUIET_NOTICE] if sms_is_quiet(newest, today) else []
+
+
+def check_due(last, now):
+    """Has a CHECK_AT passed since `last`? LOTTO-0013 INV-102.
+
+    Both are aware datetimes in South African time. The newest CHECK_AT at or
+    before `now` is yesterday's until tonight's arrives, so an evening the
+    machine slept through is caught up on waking, not a day later.
+    """
+    newest = datetime.datetime.combine(now.date(), CHECK_AT, tzinfo=now.tzinfo)
+    if newest > now:
+        newest -= datetime.timedelta(days=1)
+    return last < newest
+
+
+class EveningCheck:
+    """When the tray checks results by itself, and what it says. INV-102, INV-103.
+
+    Here and Qt-free for refresh_message()'s reason: the tray supplies the time
+    and displays strings, and every decision is checkable from a headless script.
+    """
+
+    def __init__(self, now):
+        # Starting the tray counts as a check: the server's opening build
+        # fetches results, so the first evening check is the next CHECK_AT.
+        self.last = now
+        self.failures = 0
+
+    def due(self, now):
+        return check_due(self.last, now)
+
+    def started(self, now):
+        self.last = now
+
+    def finished(self, outcome, found):
+        """The notices one check owes: a new win, or a day of failing, or none.
+
+        BUSY means a refresh the user started is fetching anyway, so it counts
+        as a check. RUNNING is a build still going past the wait; it is neither
+        a success nor a failure, and moves nothing.
+        """
+        if outcome == REFRESH_RUNNING:
+            return []
+        if outcome != REFRESH_FAILED:
+            self.failures = 0
+            won = outcome == REFRESH_DONE and found and found["new_wins"]
+            return [refresh_message(outcome, found)] if won else []
+        self.failures += 1
+        # == rather than >=: said once, until a check succeeds.
+        return ([CHECK_FAILING_NOTICE]
+                if self.failures == CHECK_FAILURES_BEFORE_NOTICE else [])
 
 
 def day_label(day):

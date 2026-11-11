@@ -239,7 +239,8 @@ python3 serve.py    # or just the page, no icon, no PySide6 needed
 ```
 
 The icon starts the server, opens the page, refreshes the results on demand and
-shuts the server down when you quit. The page opens on an overview: when to buy
+shuts the server down when you quit. It also checks for new results by itself
+each evening at 22:00, and tells you only if it finds a win. The page opens on an overview: when to buy
 next, each running ticket with a ball for every draw it paid for, the wins waiting
 on the bank, and this year's money. Further tabs show every win, paid or not, what is
 still outstanding, every entry with what it cost and what it won, and what you

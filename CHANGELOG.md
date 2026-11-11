@@ -8,6 +8,11 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The tray checks for new results by itself each evening** (LOTTO-0028)
+  At 22:00 South African time, or on waking if the computer slept through it.
+  It tells you only when it finds a new win. If the check fails two evenings in
+  a row, it says so once; the page always shows when results were last checked.
+
 - **The *Every entry* table can be filtered by the year bought, and by whether an entry was checked** (LOTTO-0021)
   Every filter opens on "all". While one is on, a note above the table says how
   many entries it hides and how many of those could not be checked, so a hidden

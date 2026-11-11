@@ -10,6 +10,7 @@ ran eleven cases and sixteen breaks then, and thirteen and twenty-two on
 2026-08-03 after the LOTTO-0024 amendment below. Both are dated records; the
 current set is that file's `CASES` table and its `--list` breaks, not a number here.)
 
+**Amended 2026-11-11** for LOTTO-0028: §4.8, INV-102, INV-103, §6, §7, §11.
 **Amended 2026-11-02** for LOTTO-0089: INV-99, §6, §7, §11.
 **Amended again 2026-08-03 for ROADMAP LOTTO-0024** (running under an external
 process manager): §4.2 pins both port variables in the child, §4.5 states the
@@ -921,9 +922,35 @@ same reason §4.6's wording lives in a Qt-free module), and the spawn, the token
 and `cwd=HERE` are §4.2's unchanged. The difference is the presentation layer
 and nothing under it.
 
+### 4.8 The evening check
+
+The tray refreshes once a night without being asked (LOTTO-0028). The user's
+decisions, 2026-11-06 and 2026-11-11:
+
+- **When.** At `supervise.CHECK_AT`, 22:00 South African time, about an hour
+  after the draws. Starting the tray is the other check: the server's opening
+  build fetches results, so `EveningCheck` treats its start as one.
+- **A missed evening.** A check is due once a `CHECK_AT` has passed since the
+  last one (`supervise.check_due()`). A machine asleep or off at 22:00 checks on
+  waking, not a day later.
+- **What it says.** Nothing, unless the refresh finds a new win. Then it says
+  what a menu refresh says, through `refresh_message()` (§4.6).
+- **On failure.** It tries again the next evening. The page's *Results last
+  checked* footer keeps the time of the last success. On the
+  `CHECK_FAILURES_BEFORE_NOTICE`th failure in a row — one a night, so a full
+  day of failing — the tray says `CHECK_FAILING_NOTICE` once, as a fault. A
+  successful or busy check restarts the count.
+
+`tray.py::check_results_this_evening()` runs on §4.3's state poll, keyed on the
+time, for the reason `check_expiring_tickets()` gives. It does not start a
+stopped server, and it waits while another action is running. The menu refresh
+and the evening check share `tray.py::_refresh()` and differ only in what they
+report. Every decision lives in `supervise.EveningCheck`, Qt-free, for §4.6's
+reason.
+
 ## 5. Invariants
 
-This document holds INV-19, INV-20, INV-23, INV-25 and INV-99. LOTTO-0001 holds INV-1 to
+This document holds INV-19, INV-20, INV-23, INV-25, INV-99, INV-102 and INV-103. LOTTO-0001 holds INV-1 to
 INV-6, INV-22 and INV-26, LOTTO-0009 INV-7 to INV-11, LOTTO-0014 INV-12 to INV-14 and
 INV-21, and LOTTO-0002 INV-15 to INV-18 and INV-24. CHANGELOG.md cites them
 unqualified, so the numbers do not move on a split.
@@ -1119,6 +1146,21 @@ unqualified, so the numbers do not move on a split.
   *Breaks when:* `tray.py::quit_on_signals()` is not called
   (`--break signal_orphans_children`).
 
+- **INV-102** — The evening check is due once a `CHECK_AT` has passed since the
+  last check, and not again until the next one. Starting the tray counts as a
+  check.
+  *Test:* `tools/verify_page.py`, case `evening_check_when_due`.
+  *Breaks when:* the hour moves (`--break check_an_hour_late`), or only today's
+  22:00 counts, so a night slept through is lost (`--break missed_evening_waits`).
+
+- **INV-103** — The evening check notifies only on a new win, or on the
+  `CHECK_FAILURES_BEFORE_NOTICE`th failure in a row. The failure notice is said
+  once, as a fault, and carries no figure. A successful or busy check restarts
+  the count; a still-running build moves nothing.
+  *Test:* `tools/verify_page.py`, case `evening_check_reports_only_wins`.
+  *Breaks when:* a check with no new win speaks (`--break evening_says_no_wins`),
+  or the first failure is announced (`--break evening_failure_said_at_once`).
+
 ## 6. Failure modes
 
 - **No system tray on the desktop**, *on the tray path*. `QSystemTrayIcon.isSystemTrayAvailable()`
@@ -1160,6 +1202,11 @@ unqualified, so the numbers do not move on a split.
   turns `SIGTERM`, `SIGHUP` and `SIGINT` into an ordinary quit, so the same reap
   runs (INV-99). `SIGKILL` cannot be caught, so it still leaves the children
   running.
+- **The evening check fails.** No notification that night: it tries again the
+  next evening, and the page's footer still names the last successful check.
+  The second failure in a row says so once (INV-103).
+- **The results site has not published by 22:00.** That night's draws are
+  fetched the next evening. Nothing detects this.
 - **`terminate()` does not stop the child.** `kill()` after the timeout, then
   `wait()`. The user sees the quit take up to two timeouts (ten seconds, §4.1)
   rather than the tray vanishing and the server surviving it.
@@ -1221,7 +1268,7 @@ unqualified, so the numbers do not move on a split.
 
 ## 7. Tests
 
-All four of this spec's cases live in `tools/verify_page.py`, the script
+All of this spec's cases live in `tools/verify_page.py`, the script
 LOTTO-0002 §7 introduces — **one script for all three parts of the split**, joining
 `tools/verify_privacy.py`, `tools/verify_sources.py`, `tools/verify_coverage.py`
 and `tools/verify_pools.py`. Exit code is the signal, as with the other four.
@@ -1239,6 +1286,8 @@ verification block — five commands — is what a contributor actually runs.
 | `refresh_reports_the_build` | INV-23 |
 | `tray_headless_when_managed` | INV-25 |
 | `tray_signal_reaps_children` | INV-99 |
+| `evening_check_when_due` | INV-102 |
+| `evening_check_reports_only_wins` | INV-103 |
 
 LOTTO-0002 §7 states the three constraints binding all thirteen cases — no network,
 no real data, and recomputing rather than importing the judgement under test —
@@ -1449,17 +1498,20 @@ without shipping a second `serve.py`.
 | §4.7 `LWSM_MANAGED` granting nothing — no token, no allowlist, no authorisation decision hanging off it | **nothing** — it is a rule about code that does not exist, and no case can prove an absence. Code review only; the mitigation is that the variable is read in exactly one place, `tray.py::managed()`, which a grep confirms |
 | §4.7 the managed run's stdout actually being read by a manager | **nothing** — it needs a manager. Verified once by hand: `LWSM_MANAGED=1 python3 tray.py` prints the URL and no icon appears |
 | §6 the tray exiting non-zero with no system tray | **nothing mechanical** — depends on the session's tray implementation; verified by running it under a session with no tray |
+| INV-102 when the evening check is due | `tools/verify_page.py::evening_check_when_due` |
+| INV-103 what the evening check says | `tools/verify_page.py::evening_check_reports_only_wins` |
+| §4.8 the tray running the check on its poll, and showing what it is handed | **nothing** — `tray.py` needs a display. Code review only |
 
-Twenty-three rows, sixteen `nothing`. (§4.2's environment channel for the token is not
+Most rows are `nothing`. (§4.2's environment channel for the token is not
 tabulated here — LOTTO-0014 §11 owns that row, since the rule it states is the
 token's, and a rule tabulated twice becomes two rules that disagree.)
 
 That ratio is high, and it is honest rather than alarming: this part of the
 split is the one needing a display and a desktop session, and its mechanically
 checkable contracts — the headless imports, the reaped child and now the
-refresh's outcome — are exactly the ones that fail silently. **Ten of the
-sixteen `nothing` rows are wholly loud at run time**, and the six *items* that
-are not are the ones worth knowing about, all code-review only — items rather
+refresh's outcome — are exactly the ones that fail silently. **Most of the
+`nothing` rows are wholly loud at run time**, and the *items* that are not
+are the ones worth knowing about, all code-review only — items rather
 than rows because the bundled Qt-details row holds three loud details and one
 silent one:
 
@@ -1479,9 +1531,12 @@ silent one:
   and be readable by anyone who can set an environment variable;
 - the **managed run's stdout being read**, silent in the most literal way there
   is — a buffered log and a quiet service look identical from outside, and it is
-  that run's only channel.
+  that run's only channel;
+- the **tray running the evening check** (§4.8), since a tray that never
+  calls it fails nothing and says nothing — the only sign is an old date in
+  the page's footer.
 
-The two process-group rows added with §4.7 are in the loud ten, not here: both
+The two process-group rows added with §4.7 are in the loud rows, not here: both
 breaches surface as an orphan holding the port, which the next start reports.
 
 ## 12. Cross-doc impact

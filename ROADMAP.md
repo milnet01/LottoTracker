@@ -664,7 +664,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: feature.
   Source: user-request-2026-08-03.
 
-- 📋 [LOTTO-0028] **Refresh on a schedule, so a win is found without the user clicking anything.**
+- ✅ [LOTTO-0028] **Refresh on a schedule, so a win is found without the user clicking anything.**
   Split out of LOTTO-0019 rather than folded into it. LOTTO-0019 makes a
   refresh REPORT what it found; nothing in the project makes a refresh
   HAPPEN on its own. `tray.py::refresh()` is wired to a menu action only —
@@ -689,6 +689,13 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   after the draws, plus once when the tray starts. On a failed check:
   retry quietly at the next scheduled time; the page shows when results
   were last checked; a tray notice only after a full day of failures.
+  Shipped 2026-11-11. User decisions, 2026-11-11: the check runs at
+  22:00 SAST, and a scheduled check notifies only on a new win.
+  The tray's opening build already fetched results, so the start-up
+  check needed no new code. LOTTO-0013 §4.8, INV-102 and INV-103;
+  tests verify_page.py::evening_check_when_due and
+  evening_check_reports_only_wins. The "no QTimer" claim above was
+  stale by build time: tray.py's state poll (POLL_MS) now runs it.
   **Layman:** The tray checks for new draws on its own, instead of only when you ask it to.
   Kind: feature.
   Source: in-session-2026-08-05 (split out while speccing LOTTO-0019).
