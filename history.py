@@ -22,6 +22,7 @@ import os
 
 from backfill import ARCHIVE
 from results import draws as api_draws
+from tickets import HANDOVER
 
 # winPoolName as the API reports it, per (game, plusFlag)
 POOL_NAMES = {
@@ -31,13 +32,26 @@ POOL_NAMES = {
     ("powerball", 0): "PowerBall",
     ("powerball", 1): "PowerBall XTRA",
     ("daily", 0): "DAILY LOTTO",
-    ("daily", 1): "DAILY LOTTO PLUS",  # the feed never carried it: ARCHIVE_ONLY
+    ("daily", 1): "DAILY LOTTO PLUS",  # none from the handover on: ARCHIVE_ONLY
 }
 
-# Pools the official feed never carried, whose draws and prizes come from the
-# scraped archive alone. Declared rather than inferred, because a pool with no
-# feed rows is otherwise a renamed pool, which must stay loud (ADR-0014).
+# Pools the official feed never carried from the handover on, whose draws and
+# prizes come from the scraped archive alone. Declared rather than inferred,
+# because a pool with no feed rows is otherwise a renamed pool, which must stay
+# loud (ADR-0014).
 ARCHIVE_ONLY = {("daily", 1)}
+
+# The feed is read only from the licence handover on; the archive owns every
+# earlier draw. Seen 2026-11-11 (LOTTO-0098): the feed began listing Daily Lotto
+# and Daily Lotto Plus for 2026-02 to 2026-05, every one dated a day before its
+# own draw number says, and "official wins on overlap" let them replace the
+# archive's correct draws. The user chose this cut over judging each record.
+FEED_FROM = HANDOVER.date().isoformat()
+
+
+def in_feed_era(row):
+    """True for a feed record dated on or after the handover."""
+    return str(row.get("drawTime"))[:10] >= FEED_FROM
 
 _cache: dict = {}
 
@@ -64,7 +78,7 @@ def all_draws(game, plus_flag):
 
     want = POOL_NAMES[key]
     for r in api_draws(game, 400):
-        if r["winPoolName"].upper() != want.upper():
+        if r["winPoolName"].upper() != want.upper() or not in_feed_era(r):
             continue
         # A draw the feed lists before it happens carries no numbers, and a
         # malformed one carries numbers that will not parse. Neither is a draw,

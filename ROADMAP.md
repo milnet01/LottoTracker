@@ -4402,7 +4402,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: fix.
   Source: user-request-2026-11-06.
 
-- 📋 [LOTTO-0098] **The results feed now disagrees with the archive on Daily Lotto Plus, and the pre-push gate is red.**
+- ✅ [LOTTO-0098] **The results feed now disagrees with the archive on Daily Lotto Plus, and the pre-push gate is red.**
   Seen 2026-11-11 in ./local-CI.sh --force; the gate was green
   2026-11-06 with the same archive_results.json (dated 2026-11-02).
   Two checks fail, neither touching code changed since:
@@ -4414,6 +4414,16 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
     project a later date than the real draw.
   Unconfirmed: that the two share one cause, and which source's dates are
   right. Blocks every push, since the pre-push hook runs the gate.
+  Shipped 2026-11-11. Confirmed: the new feed rows are titled "Daily
+  Lotto" and "Daily Lotto Plus" (mixed case), and all but one in each is
+  dated a day before its own draw number says; the established "DAILY
+  LOTTO" series and the archive agree. history.all_draws() matched them
+  case-insensitively and let them win on overlap, so those months were
+  scored against the next night's draw. The user chose to read the feed
+  only from the handover (history.FEED_FROM, in_feed_era()). Both
+  failing checks, INV-3 and INV-51, are green. Checked by
+  tools/verify_sources.py::feed_before_handover_is_ignored (seen red
+  first).
   **Layman:** The two places the app reads lottery results from now disagree about Daily Lotto Plus, so pushing is blocked until that is sorted out.
   Kind: investigate.
   Source: gate-run-2026-11-11.

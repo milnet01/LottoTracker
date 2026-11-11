@@ -15,12 +15,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import backfill  # noqa: E402
 from backfill import parse_page  # noqa: E402
-from history import ARCHIVE, POOL_NAMES  # noqa: E402
+from history import ARCHIVE, POOL_NAMES, in_feed_era  # noqa: E402
 from results import draws  # noqa: E402
 
-# Pools the feed never carried, so zero OVERLAP is the expected state and not
-# the rot signal the floor below is looking for. The archive alone holds their
-# draws (ADR-0014), and main() fails if it holds none.
+# Pools the feed never carried from the handover on, so zero OVERLAP is the
+# expected state and not the rot signal the floor below is looking for. The
+# archive alone holds their draws (ADR-0014), and main() fails if it holds none.
 EXPECTED_EMPTY = {("daily", 1)}
 
 
@@ -65,10 +65,63 @@ def build_asks_only_for_years_a_game_ran():
     return True
 
 
+def feed_before_handover_is_ignored():
+    """LOTTO-0098: a feed record dated before the handover never replaces the archive.
+
+    Seen 2026-11-11: the feed began listing Daily Lotto and Daily Lotto Plus
+    draws for 2026-02 to 2026-05, each dated a day early against its own draw
+    number, and all_draws() let them overwrite the archive's correct draws.
+    Pure: the feed and the archive are both stand-ins, so nothing is fetched.
+    """
+    import tempfile
+
+    import history
+
+    early, late = "2026-02-17", "2026-06-02"
+    archive = {"daily:0": {early: {"main": [3, 17, 24, 26, 31], "special": None},
+                           late: {"main": [5, 6, 7, 8, 9], "special": None}}}
+    feed = [  # `early` is a misdated pre-handover row; `late` is after it
+        {"winPoolName": "Daily Lotto", "drawTime": f"{early}T20:00:00Z",
+         "winNumList": ["1", "9", "15", "16", "21"], "wagerIssue": "2531"},
+        {"winPoolName": "DAILY LOTTO", "drawTime": f"{late}T19:00:00Z",
+         "winNumList": ["5", "6", "7", "8", "9"], "wagerIssue": "2637"},
+    ]
+
+    def fake_feed(_game, _count=10):
+        return feed
+
+    saved = (history.ARCHIVE, history.api_draws, dict(history._cache))
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "archive.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(archive, fh)
+        history.ARCHIVE = path
+        history.api_draws = fake_feed
+        history._cache.clear()
+        try:
+            got = {d["date"]: d for d in history.all_draws("daily", 0)}
+        finally:
+            history.ARCHIVE, history.api_draws = saved[0], saved[1]
+            history._cache.clear()
+            history._cache.update(saved[2])
+    ok = True
+    if got.get(early, {}).get("source") != "archive":
+        print(f"  HANDOVER: {early} came from {got.get(early, {}).get('source')!r}"
+              " - a pre-handover feed record replaced the archive")
+        ok = False
+    if got.get(late, {}).get("source") != "api":
+        print(f"  HANDOVER: {late} came from {got.get(late, {}).get('source')!r}"
+              " - the feed is no longer used after the handover")
+        ok = False
+    return ok
+
+
 def main():
     if not parse_page_reads_months():
         return 1
     if not build_asks_only_for_years_a_game_ran():
+        return 1
+    if not feed_before_handover_is_ignored():
         return 1
     if not os.path.exists(ARCHIVE):
         sys.exit(f"{ARCHIVE} missing - run `python3 backfill.py` first")
@@ -86,7 +139,10 @@ def main():
         before = overlap
         rows = archive.get(f"{game}:{plus}", {})
         if game not in by_game:
-            by_game[game] = draws(game, 400)
+            # Only what history.all_draws() reads: before the handover the
+            # archive owns the draw, and the feed's early rows are misdated
+            # (LOTTO-0098), so comparing them reports the feed's error.
+            by_game[game] = [r for r in draws(game, 400) if in_feed_era(r)]
         for r in by_game[game]:
             if r["winPoolName"].upper() != pool.upper():
                 continue

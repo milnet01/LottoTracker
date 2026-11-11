@@ -311,7 +311,7 @@ strings are not derivable from `(game, plus_flag)` — two of them are the June
 | powerball, 0 | `PowerBall` |
 | powerball, 1 | `PowerBall XTRA` — **not** "PowerBall Plus" |
 | daily, 0 | `DAILY LOTTO` |
-| daily, 1 | `DAILY LOTTO PLUS` — the feed never carried it (§4.2) |
+| daily, 1 | `DAILY LOTTO PLUS` — the feed carries none from 2026-06-01 on (§4.2) |
 
 An implementer who guesses these gets **zero API draws for `lotto/2` and
 `powerball/1`** with no error — the pool simply never matches, which is the
@@ -323,6 +323,13 @@ the site's own JavaScript bundle; they are what its results page calls.
 
 Where both cover a draw the API wins, though in practice they agree — see
 INV-3.
+
+**The API is read only from 2026-06-01, the date in the table above.**
+`history.py::in_feed_era()` drops every earlier feed row, and the archive owns
+those draws. Seen 2026-11-11 (LOTTO-0098): the feed began listing Daily Lotto
+and Daily Lotto Plus draws for 2026-02 to 2026-05, each dated a day before its
+own draw number says, and "the API wins" let them replace the archive's correct
+draws.
 
 ### 4.4 Scoring
 
@@ -570,8 +577,9 @@ in the project, not the next free number in this file.
   draw, and the run exits non-zero if any does not. Without that floor a
   renamed pool contributes nothing and the run still passes on the strength of
   the other five, which is the regression the floor exists to catch. `daily:1`
-  (Daily Lotto Plus) is exempt via `EXPECTED_EMPTY` — the feed never carried it,
-  so zero overlap is its correct state, not rot, and the run fails if the
+  (Daily Lotto Plus) is exempt via `EXPECTED_EMPTY` — the feed carries none of
+  it from 2026-06-01 on, and only those rows are compared (§4.3), so zero
+  overlap is its correct state, not rot, and the run fails if the
   archive holds none of its draws. The comparison is
   order-insensitive by design — the archive sorts ascending, the API preserves
   drawn order.
@@ -1222,6 +1230,7 @@ README.md (usage), ROADMAP.md (LOTTO-0002 onward), CHANGELOG.md, and:
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| amend-0098 | 2026-11-11 | none | — | — | — | — | **Not a review loop: no reviewer was dispatched.** Origin: LOTTO-0098. §4.3 now states the API is read only from 2026-06-01, after the feed began listing misdated pre-handover Daily Lotto rows; INV-3's `EXPECTED_EMPTY` wording and the pool table follow. No invariant added. |
 | amend-0084 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0084. Adds INV-90: Daily Lotto is priced from its results page. |
 | amend-d-0033 | 2026-10-30 | none | — | — | — | — | **Not a review loop: no reviewer was dispatched.** Added INV-79 and corrected §5's reading of a plain `2` row, because the bank's record proved it false. Past two loops, so no gate re-arms. |
 | 13 | 2026-10-15 | 2, cold — identical brief, packet rebuilt from disk at HEAD 61929db | Q1 0 | Q2 1 | Q3 0 | Q4 3 | **Columns this row: Q1–Q4, not severity.** Four verified, three fixed, one filed out of radius; none dismissed. **Cap reached (2 for a spec); the run ships, and the cap is calm**: 1 of the 4 landed on text loop 12 wrote. Q4: INV-77 covers `sender_known` `None` but its case tried only `False` and `True`, so a `trusted_payouts()` keeping everything not `False` passed; a `None` leg and break `trust_unset_sender` added. Q4: INV-77's *Breaks when* named a caller breach its own case cannot see; narrowed to what the case catches, with the caller half pointed at §11's Partial row. Q4, from a lane's open question, verified against `reconcile()`: the fixture's "scorable in its pool" was loop 12's own wording and is unneeded — `reconcile()` reads no scorability for a reference with a win — and it invited a CI-lane case to reach real draw data; deleted. **Filed, not fixed** (outside 9643da3's radius; its root is INV-67): §6's unresolved-price bullet says `check.py` prints the unresolved count with "only the pool their name states is scored", which is false of an oversized ticket, and that count now differs from `verify_pools.py`'s, which leaves oversized tickets out. One open question resolved clean: LOTTO-0062's `sender`/`sender_known` are attributes, not constructor parameters, so they do not clash with `Ticket.oversized`'s trailing parameter. **These fixes were read by no lane.** Whole run: 5 of 7 verified findings inside the armed span's text. |

@@ -55,6 +55,11 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Daily Lotto and Daily Lotto Plus tickets from February to May 2026 are checked against the right night's draw again** (LOTTO-0098)
+  The official results feed began listing those months with every draw dated a
+  day early, and the app took them over the correct archive. It now reads the
+  feed only from 1 June 2026, when the current operator took over.
+
 - **New tickets are collected after a reboot, even when KDE Connect is slow to get ready** (LOTTO-0097)
   At boot the SMS watcher could stop for the whole session if the phone's
   messages were not available yet. It now waits and tries again every minute.

@@ -9,7 +9,9 @@
 ADR-0011 mapped `daily/1` to an empty pool because no source carried it.
 `za.national-lottery.com` now lists it, under `/daily-lotto-plus`. Its first
 listed draw is 2025-09-26 and its last is 2026-05-31, when the game ended. The
-official feed has never carried it.
+official feed carried none of it when this was decided. From 2026-11-11 it
+lists 2026-02 to 2026-05, each dated a day early, and `history.py` ignores
+every feed row before 2026-06-01 (LOTTO-0098), so the decision stands.
 
 Measured 2026-11-02 against the bank's payout SMSes: every reference with a
 Plus win agrees with the bank to the cent, and no Plus win falls on a reference
