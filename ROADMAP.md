@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=97 -->
+<!-- ants-roadmap-id-high-water: LOTTO=98 -->
 
 # ROADMAP — LottoTracker
 
@@ -4401,3 +4401,19 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** New tickets keep arriving after a reboot, even when the phone connects a little after the tray starts.
   Kind: fix.
   Source: user-request-2026-11-06.
+
+- 📋 [LOTTO-0098] **The results feed now disagrees with the archive on Daily Lotto Plus, and the pre-push gate is red.**
+  Seen 2026-11-11 in ./local-CI.sh --force; the gate was green
+  2026-11-06 with the same archive_results.json (dated 2026-11-02).
+  Two checks fail, neither touching code changed since:
+  - verify_sources.py: DISAGREE rows for daily:1 - the feed's draw for one
+    date holds the archive's numbers for the NEXT date (2026-02 rows read).
+    verify_sources.EXPECTED_EMPTY and history.ARCHIVE_ONLY both say the feed
+    never carried daily:1 (ADR-0014), so the feed appears to carry it now.
+  - verify_expiry.py INV-51 calendar_matches_real_draws: 65 of 1240 entries
+    project a later date than the real draw.
+  Unconfirmed: that the two share one cause, and which source's dates are
+  right. Blocks every push, since the pre-push hook runs the gate.
+  **Layman:** The two places the app reads lottery results from now disagree about Daily Lotto Plus, so pushing is blocked until that is sorted out.
+  Kind: investigate.
+  Source: gate-run-2026-11-11.
