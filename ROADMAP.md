@@ -435,6 +435,11 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   message the antsprojectshub.co.za website session (Ants_Projects_Hub_Website)
   so its LottoTracker page can switch "Download source" to the release asset.
   Asked for by that session on 2026-09-28; until then the page stays source-only.
+  Decision (user, 2026-11-11): Linux first, Windows later. This item
+  builds the Linux AppImage only. The Windows build, and the question of
+  where its `lotto_sms_raw.txt` comes from, waits until someone needs it.
+  Offered alongside: a USB-cable import on Windows, a hand-copied file,
+  and a page-only build that names the missing import.
   Source: user-request-2026-08-02.
 
 - ✅ [LOTTO-0016] **Run the CI locally before pushing, from the same script CI runs.**
