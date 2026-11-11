@@ -136,7 +136,9 @@ build:
 # anything else       -> tray.main()
 ```
 
-It is the PyInstaller entry script and nothing else imports it. `serve.main()`
+It is the PyInstaller entry script and nothing else imports it. Each branch
+imports its own module inside the branch, so the `serve` and `watch` children
+never load Qt (LOTTO-0013 INV-19's reason). `serve.main()`
 and `watch_sms.main()` already exist. `watch_sms.main()` reads
 `sys.argv[1:]` for `--once`, so the dispatcher removes `"watch"` from
 `sys.argv` before calling it.
@@ -156,7 +158,9 @@ def host_env() -> dict[str, str]:
     # Not frozen: os.environ unchanged.
 ```
 
-`open_browser()` passes `env=host_env()` to its `Popen`. The project's own
+`open_browser()` passes `env=host_env()` to its `Popen`. Its `webbrowser.open()`
+fallback, taken only where `systemd-run` or `xdg-open` is missing, takes no
+`env` and keeps the bundle's path; this machine has both (§3). The project's own
 children (§4.2) keep the bundle's environment: they are the bundle.
 
 Unverified until the build runs: that this PyInstaller version sets the two
@@ -197,8 +201,7 @@ wins list beneath the notice.
 `no_archive: True` when the dump exists and `paths.ARCHIVE` does not. The page
 then shows a notice above the tickets: results for older draws have not been
 fetched, so older tickets show as not checkable, and **Fetch older results** in
-the tray menu fetches them. In a source checkout it also names
-`python3 backfill.py`. The notice adds to the page; it removes nothing beneath
+the tray menu fetches them. The notice adds to the page; it removes nothing beneath
 it, because the tickets it describes are still correct.
 
 ### 4.6 "Fetch older results"
@@ -236,7 +239,10 @@ New files:
   `dbus` (with `_dbus_bindings` and `dbus.mainloop.glib`) and `gi` with the
   GLib typelibs.
 - `packaging/AppRun`, `packaging/lottotracker.desktop` — the AppImage's launcher
-  and menu entry; the icon is `icons/tray-running.svg`.
+  and menu entry; the icon is `icons/tray-running.svg`. `AppRun` `exec`s the
+  bundled program and sets no `LD_LIBRARY_PATH`, so §4.3's
+  `LD_LIBRARY_PATH_ORIG` holds the host's value and INV-113's `SIGTERM` reaches
+  the tray, not a shell.
 - `tools/build_appimage.sh` — runs PyInstaller, assembles the AppDir, and runs
   `appimagetool`. Output: `dist/LottoTracker-<VERSION>-x86_64.AppImage`, the
   version read from `VERSION`.
@@ -296,7 +302,8 @@ project's modules, because every path is fixed at import.
   absent; in a source run it returns the environment unchanged.
   `open_browser()` passes it.
   *Test:* `tools/verify_paths.py`, case `host_env`, for the function and for
-  the `env` `open_browser()` hands its `Popen`.
+  the `env` `open_browser()` hands its `Popen`, with `shutil.which` stubbed to
+  find both programs.
   *Breaks when:* `open_browser()` omits `env=` (`--break browser_bundle_env`).
   Whether a browser started with the bundle's path actually fails is not
   tested; the case checks that it is not given that path.
@@ -331,20 +338,23 @@ project's modules, because every path is fixed at import.
 
 - **INV-113** — The built AppImage, copied to a folder outside the repository
   and started from there with a data folder holding copies of the real dump,
-  archive and cache, serves a page whose ticket rows number exactly what
-  `tickets.load()` returns for that dump; its watcher is still alive after
+  archive and cache, serves a page with as many entry rows (`tr[data-pool]`) as a source
+  checkout's page over the same files; its watcher is still alive after
   `SmsWatch.died_early()`'s wait; and `SIGTERM` to it leaves neither
   child running.
   *Test:* `tools/verify_appimage.py`, local lane only, run by hand and before a
-  release. It starts the AppImage with `QT_QPA_PLATFORM=offscreen`, a free
+  release. It starts the AppImage in the desktop session: with
+  `QT_QPA_PLATFORM=offscreen` Qt reports no system tray, and `tray.main()`
+  then exits before spawning anything (measured 2026-11-11). It sets a free
   `LOTTO_PORT`, a scratch `XDG_DATA_HOME` and `XDG_CONFIG_HOME` with
-  `open_on_start` false, and reads `GET /`.
+  `open_on_start` false, and reads `GET /`. Both runs are made with the phone unreachable, so the
+  watcher finds no device, stays alive and writes nothing (§6).
   *Breaks when:* the bundle lacks `dbus` or `gi` (the watcher dies at start), a
   resource or path still resolves to the code folder (the page shows the
   no-messages notice), or a spawn still names a script (no server answers).
 
-- **INV-114** — The same AppImage started with an empty data folder creates
-  that folder and serves the no-messages notice naming it, with no ticket
+- **INV-114** — The same AppImage started with a data folder that does not
+  exist yet creates that folder and serves the no-messages notice naming it, with no ticket
   table.
   *Test:* `tools/verify_appimage.py`, its second run.
   *Breaks when:* `ensure_data()` is not called before the watcher writes, or the
@@ -371,9 +381,6 @@ project's modules, because every path is fixed at import.
   already fetched are cached, so a retry is cheaper.
 - **The page is being built while the archive is replaced.** `_write_atomic()`
   renames a whole file, so a reader sees the old archive or the new one.
-- **PyInstaller misses a module imported inside a function.** `watch_sms.py`
-  imports `dbus` inside `connect()`. INV-113's live watcher is what catches a
-  missed one; `packaging/LottoTracker.spec` names them explicitly.
 
 ## 7. Tests
 
@@ -391,8 +398,9 @@ project's modules, because every path is fixed at import.
   `./local-CI.sh`.
 
 Every named `--break` must be observed turning its case red before the item is
-called done. INV-113 and INV-114 have no `--break`; their red run is the
-artifact built before §4.1 to §4.4 land, which the first build produces anyway.
+called done. INV-113 and INV-114 have no `--break`; their red run is a
+build of today's code, with `tray.py` as the recipe's entry, before §4.1 to
+§4.4 land.
 
 The new verifiers are added to `.claude/rules/verifiers.md`, and
 `verify_paths.py` to `./local-CI.sh`.
@@ -428,8 +436,10 @@ The new verifiers are added to `.claude/rules/verifiers.md`, and
   item's 2026-09-28 note asks.
 - Bulk history import (adb) from the AppImage. A source checkout keeps
   `tools/import_adb.py`; an AppImage user copies the resulting file in.
-- `check.py`, `results.py`, `find_lotto_sms.py` and `backfill.py`'s own command
-  line are not in the AppImage. They stay source-checkout tools.
+- The command lines of `check.py`, `results.py`, `find_lotto_sms.py` and
+  `backfill.py`. The AppImage offers none of them, but bundles all four as
+  modules: the page imports `check` and `results`, the watcher imports
+  `find_lotto_sms`, and `history` imports `backfill`.
 
 ## 10. What checks this
 
@@ -441,6 +451,7 @@ The new verifiers are added to `.claude/rules/verifiers.md`, and
 | INV-108 | `tools/verify_paths.py::autostart_exec` (frozen); `tools/verify_page.py` autostart assertions (source) |
 | INV-109 | Partial: `tools/verify_paths.py::host_env` checks the environment handed over; **nothing** checks that a browser started with the bundle's path would fail |
 | INV-110 | `tools/verify_page.py::no_dump_names_folder` |
+| `lottotracker.py` imports each module inside its branch | **nothing** — INV-19's check imports `serve` and `supervise`, never the dispatcher |
 | INV-111 | `tools/verify_page.py::no_archive_points_at_menu` |
 | INV-112 | `tools/verify_page.py::fetch_older_reports_outcome` |
 | INV-113 | Partial: `tools/verify_appimage.py`, hand-run and before a release; **nothing** runs it on push |
