@@ -504,6 +504,122 @@ def daemon_restart_is_read():
     return bad
 
 
+def not_ready_at_start_is_waited_for():
+    """INV-39: a daemon not ready at START is waited for, not a crash.
+
+    Seen 2026-11-06 at boot (LOTTO-0097): the device object existed but its
+    conversations plugin had not loaded, so connect() - which only builds a
+    proxy and calls nothing - succeeded, and the FIRST real call raised
+    `UnknownInterface`. That call was outside every retry guard, so the error
+    left run() and the watcher stopped for the whole session.
+
+    Drives the real run() against stand-in dbus and GLib modules and a stand-in
+    clock, so it needs no phone, no KDE Connect and no dbus-python. The first
+    phone handle fails its first call; every later one answers. The watcher
+    must survive that and reach for KDE Connect again.
+    """
+    import contextlib
+    import io
+    import types
+
+    class DBusException(Exception):
+        pass
+
+    class Phone:
+        def __init__(self, ready):
+            self.ready, self.asked = ready, 0
+
+        def requestAllConversationThreads(self):
+            self.asked += 1
+            if not self.ready:
+                raise DBusException(
+                    "org.freedesktop.DBus.Error.UnknownInterface")
+
+        def activeConversations(self):
+            return []
+
+    handed = []
+
+    def connect():
+        handed.append(Phone(ready=bool(handed)))
+        return handed[-1]
+
+    now = [1000.0]
+    loop_ran = [False]
+
+    class MainLoop:
+        def run(self):
+            loop_ran[0] = True
+            self.stop = False
+            for _ in range(5):
+                now[0] += watch_sms.RETRY_EVERY + 1
+                if ticks[0]() is False or self.stop:
+                    break
+
+        def quit(self):
+            self.stop = True
+
+    ticks: list = [None]
+    glib = types.SimpleNamespace(
+        MainLoop=MainLoop,
+        timeout_add_seconds=lambda _n, fn: ticks.__setitem__(0, fn))
+    bus = types.SimpleNamespace(add_signal_receiver=lambda *a, **k: None)
+    # Namespaces rather than ModuleType: the import system takes any object
+    # already in sys.modules, and a namespace lets the checkers see the names.
+    glib_mod = types.SimpleNamespace(DBusGMainLoop=lambda **_k: None)
+    mainloop = types.SimpleNamespace(glib=glib_mod)
+    fake_dbus = types.SimpleNamespace(DBusException=DBusException,
+                                      SessionBus=lambda: bus,
+                                      mainloop=mainloop)
+    repo = types.SimpleNamespace(GLib=glib)
+    gi = types.SimpleNamespace(repository=repo)
+    fakes: dict = {"dbus": fake_dbus, "dbus.mainloop": mainloop,
+                   "dbus.mainloop.glib": glib_mod, "gi": gi,
+                   "gi.repository": repo}
+
+    saved_mods = {k: sys.modules.get(k) for k in fakes}
+    saved = (watch_sms.connect, watch_sms.time)
+    sys.modules.update(fakes)
+    watch_sms.connect = connect
+    watch_sms.time = types.SimpleNamespace(
+        monotonic=lambda: now[0], time=time.time, sleep=time.sleep)
+    died = None
+    try:
+        with tempfile.TemporaryDirectory() as tmp, \
+                contextlib.redirect_stdout(io.StringIO()):
+            try:
+                watch_sms.run(path=os.path.join(tmp, "dump.txt"),
+                              threads_path=os.path.join(tmp, "threads.json"))
+            except Exception as exc:  # noqa: BLE001 - the defect under test
+                died = type(exc).__name__
+    finally:
+        watch_sms.connect, watch_sms.time = saved
+        for k, v in saved_mods.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+
+    bad = 0
+    # Anti-vacuity: the fault was actually injected and fired.
+    if not handed or handed[0].asked != 1:
+        print("  NOT READY: the not-ready phone was never called - the case "
+              "tested nothing")
+        return 1
+    if died:
+        print(f"  NOT READY: the watcher stopped at start ({died}) instead of "
+              "waiting for KDE Connect")
+        bad += 1
+    if not loop_ran[0]:
+        print("  NOT READY: the watcher never started listening")
+        bad += 1
+    if not any(p.ready and p.asked for p in handed[1:]):
+        print(f"  NOT READY: KDE Connect was never reached for again "
+              f"({len(handed)} attempt(s))")
+        bad += 1
+    return bad
+
+
 def empty_list_is_not_finished():
     """INV-88: a conversation list still empty has not finished filling.
 
@@ -593,6 +709,7 @@ CASES = (
     ("concurrent_appends_serialise", concurrent_appends_serialise),
     ("lock_never_creates_the_dump", lock_never_creates_the_dump),
     ("daemon_restart_is_read", daemon_restart_is_read),
+    ("not_ready_at_start_is_waited_for", not_ready_at_start_is_waited_for),
     ("notice_names_a_live_action", notice_names_a_live_action),
     ("empty_list_is_not_finished", empty_list_is_not_finished),
 )

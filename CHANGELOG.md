@@ -55,6 +55,10 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **New tickets are collected after a reboot, even when KDE Connect is slow to get ready** (LOTTO-0097)
+  At boot the SMS watcher could stop for the whole session if the phone's
+  messages were not available yet. It now waits and tries again every minute.
+
 - **Stopping Lotto Tracker no longer closes your browser** (LOTTO-0094)
   The tray now opens the page in a browser that runs on its own, so stopping
   the tray stops only the tray. You close the tab yourself.

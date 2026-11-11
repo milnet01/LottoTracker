@@ -4384,7 +4384,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: perf.
   Source: user-request-2026-11-06.
 
-- 📋 [LOTTO-0097] **The SMS watcher must wait for KDE Connect at boot instead of giving up.**
+- ✅ [LOTTO-0097] **The SMS watcher must wait for KDE Connect at boot instead of giving up.**
   Seen 2026-11-06 in the tray unit's journal: at the 07:27 boot the watcher
   exited with org.freedesktop.DBus.Error.UnknownInterface (no
   org.kde.kdeconnect.device.conversations on the device object), so no SMS
@@ -4392,6 +4392,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   listened normally. Likely the device object exists before its
   conversations plugin loads; LOTTO-0003 §4.8's retry covers a daemon
   restart, not this. The user chose this as the next task.
+  Shipped 2026-11-11. Cause: connect() only builds a proxy, so the first
+  real call - begin_catchup() at startup in watch_sms.run() - sat
+  outside every retry guard and its UnknownInterface left run(). Now
+  guarded like tick()'s retry: waiting phase, retried every RETRY_EVERY.
+  Checked by tools/verify_watch.py::not_ready_at_start_is_waited_for
+  (seen red first).
   **Layman:** New tickets keep arriving after a reboot, even when the phone connects a little after the tray starts.
   Kind: fix.
   Source: user-request-2026-11-06.

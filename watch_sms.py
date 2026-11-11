@@ -538,7 +538,19 @@ def run(once=False, path=DUMP, threads_path=THREADS):
 
     loop = GLib.MainLoop()
     if conv:
-        begin_catchup()
+        # connect() only builds a proxy and calls nothing, so it succeeds
+        # against a daemon that is up but not ready. This is the FIRST call,
+        # and at boot it raised UnknownInterface: the device object was there
+        # before its conversations plugin was (LOTTO-0097). Unguarded, that
+        # left run() and stopped the watcher for the session - the INV-39
+        # breach the guard above exists to prevent. Same wait as tick()'s.
+        try:
+            begin_catchup()
+        except (Exception, SystemExit) as err:  # noqa: BLE001 - "not yet"
+            state["phase"] = "waiting"
+            state["retry_at"] = time.monotonic() + RETRY_EVERY
+            print(f"KDE Connect is not ready yet ({err.__class__.__name__}) "
+                  "- waiting for it.", flush=True)
 
     def tick():
         """Two seconds at a time: reconnect, fill, catch up, then idle."""
