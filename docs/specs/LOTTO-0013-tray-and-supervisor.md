@@ -376,8 +376,8 @@ MIN_PORT, MAX_PORT = 1024, 65535
             return
         self.token = secrets.token_urlsafe(32)   # per start(), not per process
         self.child = Popen(
-            [sys.executable, os.path.join(HERE, "serve.py")],
-            cwd=HERE,                            # see below — not optional
+            child_command("serve"),              # LOTTO-0015 §4.2
+            cwd=paths.DATA,                      # see below — not optional
             env={**os.environ,
                  "LOTTO_TOKEN": self.token,
                  "LOTTO_PORT": str(self.port),   # both, and both this port
@@ -400,14 +400,17 @@ never calls `stop()`, so the process group is the sole route by which the child
 ever dies, and a detached one survives every signal the manager sends while
 holding the port.
 
-**Both paths are absolute and the interpreter is `sys.executable`, not
+**The command comes from `child_command()`** (LOTTO-0015 §4.2): in a source
+checkout it is the script below, and in a frozen build it is the bundled program
+named by role. **Both paths are absolute and the interpreter is `sys.executable`, not
 `"python3"`.** The tray is launched from an autostart entry whose working
 directory is not the repository, so a relative `"serve.py"` fails in exactly the
 configuration §4.5 adds; and the child must run under the interpreter the parent
 is already using rather than whatever `python3` resolves to in a session `PATH`.
 
-**`cwd=HERE` is load-bearing, and omitting it fails silently in the worst
-possible way.** Fixing the *script* path is only half the problem: the data the
+**`cwd=paths.DATA` is load-bearing, and omitting it fails silently in the worst
+possible way.** `paths.DATA` is the repository in a source checkout and the
+user's data folder in the AppImage (LOTTO-0015 §4.1). Fixing the *script* path is only half the problem: the data the
 server reads is addressed relative to the working directory —
 `history.py::ARCHIVE` is `"archive_results.json"`, `backfill.py::CACHE` is
 `"archive_cache"`, and `tickets.py::load()` defaults to `"lotto_sms_raw.txt"`.
@@ -919,7 +922,7 @@ asks for it. No display is required.
 **What a managed run does not change:** `Supervisor` is constructed exactly as
 before, `port_fallback` is still surfaced (printed rather than notified — the
 same reason §4.6's wording lives in a Qt-free module), and the spawn, the token
-and `cwd=HERE` are §4.2's unchanged. The difference is the presentation layer
+and `cwd=paths.DATA` are §4.2's unchanged. The difference is the presentation layer
 and nothing under it.
 
 ### 4.8 The evening check

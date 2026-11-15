@@ -3051,6 +3051,68 @@ def evening_check_reports_only_wins():
         supervise.CHECK_FAILURES_BEFORE_NOTICE = real_after
 
 
+# ------------------------------------------------- LOTTO-0015: the AppImage
+
+
+# Not this machine's folder, so a notice that printed the real data path
+# instead of the model's would fail.
+FIXTURE_DATA_DIR = "/home/fixture-user/.local/share/LottoTracker"
+
+
+def no_dump_names_folder():
+    """LOTTO-0015 INV-110 — the no-messages notice says where, and how to fill it."""
+    temp_home()
+    html = render_pure({"no_dump": True, "data_dir": FIXTURE_DATA_DIR,
+                        "settings": {"autostart": False, "open_on_start": True}})
+    need(FIXTURE_DATA_DIR in html, "the notice does not name the data folder")
+    need("not zero wins" in html, "the notice does not say this is not zero wins")
+    need("find_lotto_sms.py" not in html,
+         "the notice names find_lotto_sms.py, which writes nothing")
+    need("KDE Connect" in html, "the notice names no way in that writes the file")
+    # LOTTO-0002 §6: nothing beneath it may read as "you have won nothing".
+    # "<table " with the space: the page's script mentions "<table" as text.
+    body = html.split("<script>")[0] + html.split("</script>")[-1]
+    for bad in ("<table ", "<table>", "R0.00", "No unexpired winning"):
+        need(bad not in body, f"{bad!r} renders beneath the no-messages notice")
+
+
+def no_archive_points_at_menu():
+    """LOTTO-0015 INV-111 — a missing archive is said, above the tabs, beside the tickets."""
+    temp_home()
+    html = render_pure(fixture_model(no_archive=True))
+    at = html.find("Fetch older results")
+    need(at >= 0, "no notice names Fetch older results while the archive is missing")
+    panel = html.find('class="tabpanel')
+    need(0 <= at < panel, "the older-results notice is not above the tabs (INV-89)")
+    table = re.search(r'<table id="entries">.*?</table>', html, re.S)
+    need(table is not None and "<td" in table.group(0),
+         "the tickets are gone beneath the older-results notice")
+    need("Fetch older results" not in render_pure(fixture_model()),
+         "the older-results notice shows while the archive is present")
+
+
+def fetch_older_reports_outcome():
+    """LOTTO-0015 INV-112 — the fetch says it failed when it did, with no figure."""
+    def ok():
+        return 1234
+
+    def boom():
+        raise RuntimeError("the archive site refused")
+
+    need(supervise.fetch_older(write=ok) == supervise.FETCH_DONE,
+         "a write that returned was not reported as done")
+    need(supervise.fetch_older(write=boom) == supervise.FETCH_FAILED,
+         "a write that raised was reported as done")
+    msgs = supervise.FETCH_MESSAGE
+    need(set(msgs) == {supervise.FETCH_DONE, supervise.FETCH_FAILED},
+         f"FETCH_MESSAGE covers {sorted(msgs)}, not exactly the two outcomes")
+    for outcome, text in msgs.items():
+        need(not re.search(r"\d", text), f"the {outcome} sentence carries a figure: {text!r}")
+        said = "fetched" in text.casefold()
+        need(said == (outcome == supervise.FETCH_DONE),
+             f"the {outcome} sentence {'says' if said else 'does not say'} 'fetched'")
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -3093,6 +3155,9 @@ CASES = [
     ("filters_say_what_they_hide", "INV-101", filters_say_what_they_hide),
     ("evening_check_when_due", "INV-102", evening_check_when_due),
     ("evening_check_reports_only_wins", "INV-103", evening_check_reports_only_wins),
+    ("no_dump_names_folder", "INV-110", no_dump_names_folder),
+    ("no_archive_points_at_menu", "INV-111", no_archive_points_at_menu),
+    ("fetch_older_reports_outcome", "INV-112", fetch_older_reports_outcome),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -3173,6 +3238,12 @@ BREAKS = {
     "missed_evening_waits": "evening_check_when_due",
     "evening_says_no_wins": "evening_check_reports_only_wins",
     "evening_failure_said_at_once": "evening_check_reports_only_wins",
+    "no_dump_hides_folder": "no_dump_names_folder",
+    "no_dump_inspect_advice": "no_dump_names_folder",
+    "archive_notice_always": "no_archive_points_at_menu",
+    "archive_notice_hides_tickets": "no_archive_points_at_menu",
+    "fetch_failure_is_done": "fetch_older_reports_outcome",
+    "fetch_message_counts": "fetch_older_reports_outcome",
 }
 
 
@@ -3353,6 +3424,29 @@ def apply_render_breaks():
             return real_periods(dict(model, periods=p))
 
         page._periods_section = zero_month
+    real_notice, real_archive = page._notice, page._archive_section
+    if broken("no_dump_hides_folder"):
+        page._notice = lambda m: real_notice({k: v for k, v in m.items() if k != "data_dir"})
+    if broken("no_dump_inspect_advice"):
+        page._notice = lambda m: real_notice(m) + (
+            "Run <code>python3 find_lotto_sms.py</code>." if m.get("no_dump") else "")
+    if broken("archive_notice_always"):
+        page._archive_section = lambda m: real_archive(dict(m, no_archive=True))
+    if broken("archive_notice_hides_tickets"):
+        real_entries = page._entries_section
+        page._entries_section = lambda m: "" if m.get("no_archive") else real_entries(m)
+    if broken("fetch_failure_is_done"):
+        def swallowed(write):
+            try:
+                write()
+            except Exception:  # noqa: BLE001 - the defect being simulated
+                pass
+            return supervise.FETCH_DONE
+        supervise.fetch_older = swallowed
+    if broken("fetch_message_counts"):
+        supervise.FETCH_MESSAGE = dict(
+            supervise.FETCH_MESSAGE,
+            **{supervise.FETCH_DONE: "Older results fetched: 1234 draws."})
     if broken("url_pushstate"):
         page.JS = page.JS.replace(
             'if(%s)poll();', 'history.pushState({},"","?game=lotto");if(%s)poll();'

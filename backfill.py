@@ -23,18 +23,17 @@ import urllib.error
 import urllib.request
 
 import clock
+import paths
 
 BASE = "https://za.national-lottery.com"
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36"
 
-# Anchored to this file, never to the working directory: supervise.py was
-# already working around the cwd-relative form per caller with cwd=HERE, and
-# verify_privacy.py resolves from __file__, so the project held both patterns.
-# history.py imports ARCHIVE from here rather than keeping a second copy - the
-# scraper owns where it writes, and one path cannot drift from itself.
-_HERE = os.path.dirname(os.path.abspath(__file__))
-CACHE = os.path.join(_HERE, "archive_cache")
-ARCHIVE = os.path.join(_HERE, "archive_results.json")
+# From paths.py, never from the working directory or this file's own folder:
+# inside the AppImage this folder is read-only (LOTTO-0015 INV-105). history.py
+# imports ARCHIVE from here rather than keeping a second copy, so one path
+# cannot drift from itself.
+CACHE = paths.CACHE
+ARCHIVE = paths.ARCHIVE
 
 # site slug -> (internal game key, plusFlag)
 SLUGS = {
@@ -281,11 +280,22 @@ def _prize_rows(html):
     return out
 
 
+def write_archive():
+    """build(), then write ARCHIVE whole. Returns the draw count.
+
+    The one writer: this file's __main__ and the tray's "Fetch older results"
+    (LOTTO-0015 §4.6) both call it. Atomic for _write_atomic()'s reason, with
+    more force: this replaces the ONLY copy, and a failure inside json.dump
+    would leave unparseable JSON that makes history.py raise on every later run.
+    build() raises rather than return a partial archive, so a failure leaves
+    the previous one as it was.
+    """
+    paths.ensure_data()
+    data = build()
+    _write_atomic(ARCHIVE, json.dumps(data, indent=1, sort_keys=True))
+    return sum(len(v) for v in data.values())
+
+
 if __name__ == "__main__":
     print("Backfilling archive results...")
-    data = build()
-    # Atomic for _write_atomic()'s reason, with more force: this truncates the
-    # ONLY copy, and a failure inside json.dump leaves unparseable JSON that
-    # makes history.py raise on every subsequent run.
-    _write_atomic(ARCHIVE, json.dumps(data, indent=1, sort_keys=True))
-    print(f"\nwrote archive_results.json ({sum(len(v) for v in data.values())} draws)")
+    print(f"\nwrote archive_results.json ({write_archive()} draws)")

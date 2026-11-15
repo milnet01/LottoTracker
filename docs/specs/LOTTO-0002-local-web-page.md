@@ -235,8 +235,11 @@ happen in `serve.py`'s builder, not in the renderer.
 # It is not a stripped version of the model above: page.py branches on it and
 # renders the notice, so a renderer expecting the full shape must not be handed
 # this one and vice versa.
-{"no_dump": True, "settings": {...}}
+{"no_dump": True, "data_dir": paths.DATA, "settings": {...}}
 ```
+
+The full model also carries `no_archive`: true when the dump exists and
+`paths.ARCHIVE` does not (LOTTO-0015 §4.5).
 
 **The two halves are separate because only one of them can carry the failure.**
 `State.fail()` leaves the model *untouched* by design (§4.2 — that is what
@@ -615,7 +618,8 @@ Three of its rules bind this document's files:
 
 ### 4.5 What the page shows, and the rule it must not drop
 
-Above the sections, after the page's notice, comes LOTTO-0062's *From a sender
+Above the sections, after the page's notice, comes LOTTO-0015's older-results
+notice while the archive is missing (INV-111). Then LOTTO-0062's *From a sender
 not seen before* notice, when there is anything to list; LOTTO-0062 §4.4 owns
 its contract and INV-75 checks it. Then the uncheckable banner below.
 
@@ -932,12 +936,15 @@ LOTTO-0014's INV-14 asserts them byte-for-byte:
 Type=Application
 Name=Lotto Tracker
 Comment=Tray control for the local lottery page
-Exec="<sys.executable>" "<dirname(abspath(serve.__file__))>/tray.py"
+Exec=<serve.autostart_exec()>
 Terminal=false
 Categories=Utility;
 X-GNOME-Autostart-enabled=true
 ```
 
+In a source checkout `serve.autostart_exec()` is
+`"<sys.executable>" "<dirname(abspath(serve.__file__))>/tray.py"`; in the
+AppImage it is `"<$APPIMAGE>"`, the file's own path (LOTTO-0015 §4.4, INV-108).
 Both fields are quoted, because a repository directory containing a space would
 otherwise split into two arguments and the entry would silently do nothing. The
 interpreter is `sys.executable`, not the string `python3`: the autostart
@@ -1512,7 +1519,12 @@ them unqualified.
   tray's fallback cannot mislead a manager.
 - **`lotto_sms_raw.txt` is absent.** The page renders its empty state and says
   the dump is missing and how to produce it — never "0 tickets, R0.00", which
-  reads as "you have never won".
+  reads as "you have never won". The notice names the data folder by its full
+  path and only ways in that write the file: the tray's watcher with KDE
+  Connect paired, or copying a dump in (LOTTO-0015 INV-110).
+- **`archive_results.json` is absent, the dump present.** The page renders in
+  full, with a notice above the tabs that older results have not been fetched
+  and that the tray's **Fetch older results** fetches them (LOTTO-0015 INV-111).
 - **`LOTTO_NO_BUILD` is set** (§4.1 — it exists for LOTTO-0013's INV-20 case,
   LOTTO-0014's INV-13 child and INV-24's three, never for users). The page renders the empty
   state with an explicit *"no build was performed"* notice. It is not an

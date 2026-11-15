@@ -22,12 +22,14 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 import clock
+import paths
 import supervise
 import watch_sms  # for the dump's path only; nothing here imports dbus
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ICON_RUNNING = os.path.join(HERE, "icons", "tray-running.svg")
-ICON_STOPPED = os.path.join(HERE, "icons", "tray-stopped.svg")
+# From the bundle in the AppImage, the repository otherwise (LOTTO-0015 INV-106).
+ICON_RUNNING = paths.resource("icons", "tray-running.svg")
+ICON_STOPPED = paths.resource("icons", "tray-stopped.svg")
+FETCH_LABEL = "Fetch older results"
 POLL_MS = 5000  # bounds how long the icon can claim a dead server is running
 SIGNAL_WAKE_MS = 250  # bounds how long a shutdown signal waits to be noticed
 
@@ -178,6 +180,7 @@ class LottoTray(QSystemTrayIcon):
         menu = QMenu()
         self.act_open = menu.addAction("Open page", self.open_page)
         self.act_refresh = menu.addAction("Refresh results now", self.refresh)
+        self.act_fetch = menu.addAction(FETCH_LABEL, self.fetch_older)
         menu.addSeparator()
         self.act_toggle = menu.addAction("Stop server", self.toggle)
         menu.addSeparator()
@@ -211,6 +214,9 @@ class LottoTray(QSystemTrayIcon):
         # asking to see a page is not asking to start something.
         self.act_refresh.setEnabled(on)
         self.act_open.setEnabled(on)
+        # Needs no server: it writes the archive file, and the refresh after it
+        # is skipped while the server is stopped.
+        self.act_fetch.setEnabled(True)
         self.check_new_tickets()
         self.check_expiring_tickets()
         self.check_quiet_sms()
@@ -378,6 +384,28 @@ class LottoTray(QSystemTrayIcon):
 
         run_async(self.sup.refresh, finished)
 
+    def fetch_older(self):
+        """Download results before the official feed began (LOTTO-0015 §4.6).
+
+        Only when asked: it is slow and network-heavy. Disabled while it runs;
+        on success the page re-scores if the server is up. The sentence comes
+        from supervise.FETCH_MESSAGE and carries no figure, date or game.
+        """
+        if self.busy:
+            return
+        self._begin(self.act_fetch, "fetching older results")
+        self.act_fetch.setText("Fetching older results…")
+
+        def finished(ok, msg):
+            self._end(self.act_fetch, FETCH_LABEL)
+            outcome = msg if ok else supervise.FETCH_FAILED
+            self.note(supervise.FETCH_MESSAGE[outcome],
+                      bad=outcome != supervise.FETCH_DONE)
+            if outcome == supervise.FETCH_DONE and self.sup.is_running():
+                self.refresh()
+
+        run_async(supervise.fetch_older, finished)
+
     def toggle(self):
         if self.busy:
             return
@@ -418,6 +446,9 @@ class LottoTray(QSystemTrayIcon):
 
 
 def main():
+    # First, before the managed return: both children write into it, and in the
+    # AppImage it may not exist yet (LOTTO-0015 §4.1, INV-114).
+    paths.ensure_data()
     # Before any Qt object exists: a managed run must not need a display, and
     # must not reach the menu that can stop the server (INV-25).
     if managed():

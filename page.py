@@ -279,11 +279,16 @@ def _notice(model):
             "below is a result.</div>"
         )
     if model.get("no_dump"):
+        # LOTTO-0015 INV-110: name the folder, and only ways in that WRITE the
+        # file. The inspection script prints and writes nothing.
+        where = model.get("data_dir") or "the data folder"
         return (
             '<div class="notice bad"><strong>No messages found.</strong> '
-            "lotto_sms_raw.txt is missing, so there are no tickets to check — "
-            "this is not zero wins. Run <code>python3 find_lotto_sms.py</code> "
-            "to pull them from the phone.</div>"
+            f"There is no <code>lotto_sms_raw.txt</code> in <code>{_e(where)}</code>, "
+            "so there are no tickets to check — this is not zero wins. Keep the "
+            "tray running with KDE Connect paired to your phone, and new lottery "
+            "messages arrive by themselves; or copy an existing "
+            "<code>lotto_sms_raw.txt</code> into that folder.</div>"
         )
     if model.get("stale"):
         return (
@@ -292,6 +297,22 @@ def _notice(model):
             "are still shown rather than being replaced by nothing.</div>"
         )
     return ""
+
+
+def _archive_section(model):
+    """Say older results have not been fetched, and how to fetch them (INV-111).
+
+    Adds to the page and removes nothing: the tickets beneath are still right,
+    and the older ones already say "not checkable".
+    """
+    if not model.get("no_archive"):
+        return ""
+    return (
+        '<div class="notice"><strong>Older results have not been fetched.</strong> '
+        "Tickets for draws before the official results feed began show as not "
+        "checkable until they are. Choose <strong>Fetch older results</strong> "
+        "in the tray menu to fetch them.</div>"
+    )
 
 
 def _sms_quiet_section(model):
@@ -1735,6 +1756,7 @@ def render(model, token):
         )
         body = (
             _notice(model)
+            + _archive_section(model)
             + _sms_quiet_section(model)
             + _senders_section(model)
             + _uncheckable_banner(model.get("uncheckable"))

@@ -138,6 +138,25 @@ for Python 3.13, `python314-` for 3.14. It is what the Wi-Fi path talks to KDE
 Connect through; without it that path fails at import. The USB path does not
 need it.
 
+### Or as one file: the AppImage
+
+The AppImage carries its own Python and Qt, so it needs only KDE Connect. No
+download is published yet; build it from this repository, after the setup
+above and `pip install pyinstaller`:
+
+```bash
+tools/build_appimage.sh                       # writes dist/LottoTracker-<version>-x86_64.AppImage
+./dist/LottoTracker-*-x86_64.AppImage         # starts the tray, the page and the watcher
+```
+
+It runs on systems at least as new as the one that built it. It keeps your
+messages and results in `~/.local/share/LottoTracker`, not beside the file. On
+the first run that folder is empty, and the page names it. Keep KDE Connect
+paired and new messages arrive by themselves, or copy an existing
+`lotto_sms_raw.txt` into it. Choose **Fetch older results** in the tray menu to
+check tickets older than June 2026. If it will not start because FUSE is
+missing, run it with `--appimage-extract-and-run`.
+
 ### Getting your messages (pick either)
 
 **USB — best for importing history.** On the phone: Settings → About phone →
@@ -187,7 +206,8 @@ import anything, however long you leave it.
 
 ```bash
 python3 backfill.py    # one-off: fetch pre-June-2026 results
-                       # (one request per pool per year)
+                       # (one request per pool per year); the tray's
+                       # "Fetch older results" does the same
 python3 check.py       # score every ticket
 ```
 

@@ -47,7 +47,14 @@ python3 watch_sms.py           # the cable-free import (LOTTO-0003): listen over
                                # starts the long-running form
 python3 serve.py               # the local page on http://127.0.0.1:4322 (headless-safe)
 python3 tray.py                # the tray icon: starts serve.py, opens the page, reaps it
+tools/build_appimage.sh        # LOTTO-0015: dist/LottoTracker-<VERSION>-x86_64.AppImage;
+                               # its data lives in ~/.local/share/LottoTracker
+python3 tools/verify_appimage.py  # the built AppImage end to end: by hand, before a
+                               # release, phone unreachable. Not in ./local-CI.sh
 ```
+
+**A data path comes from `paths.py`, never from a module's own folder**: the
+AppImage's code folder is read-only. `.claude/rules/architecture.md` says more.
 
 **`./local-CI.sh` is the pre-push gate — run it before every `git push`.** It
 runs the verifiers below plus `ruff` and a syntax pass, and on the local lane

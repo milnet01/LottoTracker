@@ -75,8 +75,25 @@ python3 tools/verify_boards.py    # INV-67, INV-68, INV-7's oversized half: a
 python3 tools/verify_hooks.py     # LOTTO-0004: .githooks/pre-commit refuses a
                                   # commit carrying a reference, reading the
                                   # STAGED copy; --break/--list like verify_page
+python3 tools/verify_paths.py     # INV-105..INV-109: a frozen build keeps its data
+                                  # in the user's data folder and its icons in the
+                                  # bundle, starts its helpers by name in that
+                                  # folder, names the .AppImage in autostart, and
+                                  # hands a browser the host's environment. Each
+                                  # set-up runs in a fresh interpreter; needs no
+                                  # data, so both lanes; --break/--list like
+                                  # verify_page
 ```
 
-`verify_page.py` is the one verifier that needs PySide6 installed — its
-`tray_headless_when_managed` case imports `tray.py` in a subprocess. It needs no
-display.
+`tools/verify_appimage.py` (INV-113, INV-114) is on **neither** lane. It runs
+the built AppImage in the desktop session against copies of the real dump and
+archive, with the phone unreachable, and is run by hand before a release:
+
+```bash
+tools/build_appimage.sh                     # dist/LottoTracker-<VERSION>-x86_64.AppImage
+python3 tools/verify_appimage.py [--scratch DIR]
+```
+
+`verify_page.py` and `verify_paths.py` need PySide6 installed — the first's
+`tray_headless_when_managed` case and the second's `resources_from_bundle`
+import `tray.py` in a subprocess. Neither needs a display.

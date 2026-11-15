@@ -25,3 +25,7 @@ sms_threads.json*
 
 __pycache__/
 *.pyc
+
+# Build output: tools/build_appimage.sh (LOTTO-0015).
+build/
+dist/

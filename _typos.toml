@@ -7,3 +7,5 @@ mis = "mis"
 empted = "empted"
 # A valid spelling, used in code, messages and specs alike.
 unparseable = "unparseable"
+# PyInstaller's own argument and attribute name (packaging/LottoTracker.spec).
+datas = "datas"

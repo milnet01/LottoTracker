@@ -20,8 +20,8 @@
 # fails verify_sources, verify_coverage, verify_pools, verify_payouts,
 # verify_expiry and verify_periods on missing input, and no amount of YAML fixes
 # without publishing the private data. The rest - verify_page,
-# verify_watch, verify_hooks, verify_senders, verify_boards and verify_privacy
-# - are the CI lane.
+# verify_watch, verify_hooks, verify_senders, verify_boards, verify_paths and
+# verify_privacy - are the CI lane.
 #
 # This paragraph said "three of the five" until 2026-08-20, and had said it
 # since before verify_payouts.py existed. It was found by the review-contract
@@ -171,6 +171,9 @@ run "verify_senders.py" python3 tools/verify_senders.py
 # In the CI lane on purpose: LOTTO-0007 (d)'s fixtures are synthetic and its
 # draw record a seeded memo, so it needs neither the dump nor the archive.
 run "verify_boards.py"  python3 tools/verify_boards.py
+# In the CI lane on purpose: LOTTO-0015's path and spawn cases build a stand-in
+# bundle and data folder, and read neither the dump nor the archive.
+run "verify_paths.py"   python3 tools/verify_paths.py
 # --require-content ONLY on the local lane. It makes verify_privacy.py exit
 # non-zero when the dump is absent, which is the strong mode this machine can
 # always run; a public runner never has the dump, so asking there would fail

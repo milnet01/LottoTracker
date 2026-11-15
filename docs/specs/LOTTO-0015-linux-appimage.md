@@ -1,7 +1,8 @@
 <!-- ants-spec-format: 1 -->
 # LOTTO-0015 — Ship the tracker as one Linux AppImage file
 
-**Status:** accepted (2026-11-11) — two cold-eyes loops, the cap for a spec; the build is its next reader.
+**Status:** accepted (2026-11-11); **implemented and verified 2026-11-15** — §4.3
+amended at the first build, which settled §15.
 **Kind:** package.
 **Source:** ROADMAP LOTTO-0015 (user-request-2026-08-02). The scope decisions
 in §3 were taken with the user on 2026-11-11.
@@ -156,11 +157,19 @@ path can load the wrong libraries. `supervise.open_browser()` starts
 
 ```python
 # supervise.py
+BUNDLE_PATH_VARS = ("QT_PLUGIN_PATH", "QML2_IMPORT_PATH", "GI_TYPELIB_PATH",
+                    "XDG_DATA_DIRS")
 def host_env() -> dict[str, str]:
     # os.environ copied. When FROZEN: LD_LIBRARY_PATH set from
-    # LD_LIBRARY_PATH_ORIG, or removed where that is absent.
-    # Not frozen: os.environ unchanged.
+    # LD_LIBRARY_PATH_ORIG, or removed where that is absent; and each of
+    # BUNDLE_PATH_VARS loses every entry inside sys._MEIPASS, removed if
+    # none is left. Not frozen: os.environ unchanged.
 ```
+
+PyInstaller's runtime hooks for PySide6 and GLib put the bundle on those four
+search paths and keep no copy of the old value (first build, 2026-11-15). On
+KDE, `xdg-open` can hand the page to a Qt program, which would then load the
+bundle's Qt plugins.
 
 `open_browser()` passes `env=host_env()` to its `Popen`. Its `webbrowser.open()`
 fallback, taken only where `systemd-run` or `xdg-open` is missing, takes no
@@ -304,12 +313,13 @@ project's modules, because every path is fixed at import.
 
 - **INV-109** — In a frozen run, `supervise.host_env()` sets
   `LD_LIBRARY_PATH` from `LD_LIBRARY_PATH_ORIG`, or removes it where that is
-  absent; in a source run it returns the environment unchanged.
-  `open_browser()` passes it.
+  absent, and drops every entry inside the bundle from `BUNDLE_PATH_VARS`; in
+  a source run it returns the environment unchanged. `open_browser()` passes it.
   *Test:* `tools/verify_paths.py`, case `host_env`, for the function and for
   the `env` `open_browser()` hands its `Popen`, with `shutil.which` stubbed to
   find both programs.
-  *Breaks when:* `open_browser()` omits `env=` (`--break browser_bundle_env`).
+  *Breaks when:* `open_browser()` omits `env=` (`--break browser_bundle_env`),
+  or the bundle's search paths are handed on (`--break bundle_paths_kept`).
   Whether a browser started with the bundle's path actually fails is not
   tested; the case checks that it is not given that path.
 
@@ -506,9 +516,14 @@ Rows live in `../reviews/LOTTO-0015-linux-appimage-loop-log.md`.
 
 ## 15. Open questions
 
-- The `appimagetool` release to pin, and its hashes — recorded when
-  `tools/build_appimage.sh` is written (§4.7).
-- Whether the AppImage's `LD_LIBRARY_PATH_ORIG` holds the host's value, as
-  §4.3 assumes, and whether the bundle's runtime hooks set other variables a
-  host program inherits (`QT_PLUGIN_PATH`, `GI_TYPELIB_PATH`) — compared at
-  the first build against the launching shell's `env`.
+None. Both were settled at the first build, 2026-11-15:
+
+- **The pins.** `appimagetool` 1.9.1 and the type2 runtime 20251108, the newest
+  fixed release tags; each SHA-256 is in `tools/build_appimage.sh` and matches
+  the digest GitHub publishes for the asset. `continuous` is rebuilt in place,
+  so a hash would not hold.
+- **The environment.** Launched with `LD_LIBRARY_PATH` unset, the bundle sets it
+  and sets no `LD_LIBRARY_PATH_ORIG`, so `host_env()` removes it. The runtime
+  hooks also set `QT_PLUGIN_PATH`, `QML2_IMPORT_PATH`, `GI_TYPELIB_PATH` and
+  `XDG_DATA_DIRS`, which §4.3 now strips. `tools/verify_appimage.py` prints
+  this comparison on every run.

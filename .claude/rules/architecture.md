@@ -137,6 +137,21 @@ tool; an Ants-verb read does not load it.
   reads `LWSM_MANAGED` — `=1` means a process manager started it, so it runs
   with no icon and, above all, no path that stops the server (INV-25). It is a
   presentation hint with no security value; nothing else may hang off it.
+- **`paths.py`** is the one answer to "where" (LOTTO-0015 §4.1). A source
+  checkout keeps its data in the repository; a frozen build (the AppImage)
+  keeps it in `$XDG_DATA_HOME/LottoTracker` and reads its icons and font from
+  the bundle. Every module's data path is an alias of a `paths` name — never a
+  fresh `os.path.dirname(__file__)` — and nothing in it touches a file at
+  import; `ensure_data()` creates the folder from each `main()`.
+  **`lottotracker.py`** is the frozen build's entry point and nothing imports
+  it: it dispatches `serve` and `watch` to their modules, imports each inside
+  its branch so those children never load Qt, and exits on any other argument.
+  `supervise.py` also owns how a helper is started (`child_command()`), the
+  environment a program that is not ours gets (`host_env()`, which strips the
+  bundle's library and search paths), and the **Fetch older results** outcome
+  and wording (`fetch_older()`, `FETCH_MESSAGE`), Qt-free for
+  `refresh_message()`'s reason. `backfill.write_archive()` is the archive's one
+  writer.
 - **`tools/verify_*.py`** import the modules directly via a `sys.path` insert.
 
 ## Load-bearing decisions — do not "simplify" these

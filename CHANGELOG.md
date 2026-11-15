@@ -8,6 +8,13 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The tracker can be built as one Linux AppImage file** (LOTTO-0015)
+  `tools/build_appimage.sh` builds it. It needs nothing installed but KDE
+  Connect, and keeps its data in `~/.local/share/LottoTracker`. The first build,
+  2026-11-15, is 65 MB. A new tray item, **Fetch older results**, fetches
+  results older than June 2026 without a terminal, in a source checkout too.
+  The Windows build is still to come.
+
 - **A *Bank's record* tab shows where the bank's payments differ from what the app worked out** (LOTTO-0032)
   Each such ticket shows both amounts, what the difference means, and why where
   a reason is known. Tickets where the two agree are counted, not listed. If no
@@ -37,6 +44,11 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   No figure changes. A difference that fits no reason is printed as `NO REASON FOUND`.
 
 ### Changed
+
+- **The page says where your messages file belongs when it is missing** (LOTTO-0015)
+  It names the folder and two ways to fill it. It no longer suggests
+  `find_lotto_sms.py`, which only prints messages and saves nothing. While older
+  results are not fetched, a notice says so and points at **Fetch older results**.
 
 - **The pre-push checks finish in about a third of the time** (LOTTO-0096)
   The checks that read live lottery results now ask the results site once

@@ -27,6 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import clock
 import expiry
 import page
+import paths
 
 # Module scope, not lazy inside refresh()'s work(): GET /status reads
 # results.requests_made on every poll, so it is needed outside a build too
@@ -35,11 +36,12 @@ import page
 import results
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# ONE answer for where the dump is. build_model()'s guard resolved it against
-# HERE and tickets.load() against the working directory, so started from
-# anywhere else the page reported "the first build failed" for a dump that is
-# merely missing - two named states of the cardinal rule collapsed into one.
-DUMP = os.path.join(HERE, "lotto_sms_raw.txt")
+# ONE answer for where the dump is, and it is paths.py's (LOTTO-0015 INV-105).
+# build_model()'s guard and tickets.load() once resolved it two different ways,
+# so started from anywhere else the page reported "the first build failed" for
+# a dump that is merely missing - two named states of the cardinal rule
+# collapsed into one.
+DUMP = paths.DUMP
 DEFAULT_PORT = 4322
 MAX_BODY = 4096  # LOTTO-0014 §4.1: an unbounded rfile.read() is a hang
 BODY_KEYS = ("autostart", "open_on_start")
@@ -62,7 +64,7 @@ def _data_address(mime, *path):
     refuse to show anyone their tickets.
     """
     try:
-        with open(os.path.join(HERE, *path), "rb") as fh:
+        with open(paths.resource(*path), "rb") as fh:
             return f"data:{mime};base64," + base64.b64encode(fh.read()).decode()
     except OSError:
         return None
@@ -96,11 +98,23 @@ DESKTOP_ENTRY = """[Desktop Entry]
 Type=Application
 Name=Lotto Tracker
 Comment=Tray control for the local lottery page
-Exec="{python}" "{here}/tray.py"
+Exec={exec}
 Terminal=false
 Categories=Utility;
 X-GNOME-Autostart-enabled=true
 """
+
+
+def autostart_exec():
+    """The autostart entry's Exec value (LOTTO-0015 §4.4, INV-108).
+
+    The AppImage names its own file, $APPIMAGE: sys.executable there points into
+    a temporary mount that is gone at the next login. An unpacked frozen build
+    names its program. A source checkout writes the bytes it always has.
+    """
+    if paths.FROZEN:
+        return f'"{os.environ.get("APPIMAGE") or sys.executable}"'
+    return f'"{sys.executable}" "{HERE}/tray.py"'
 
 
 def _settings_snapshot():
@@ -130,7 +144,7 @@ def write_settings(changes):
             if changes["autostart"]:
                 write_atomic(
                     path,
-                    DESKTOP_ENTRY.format(python=sys.executable, here=HERE),
+                    DESKTOP_ENTRY.format(exec=autostart_exec()),
                 )
             else:
                 # Delete it. Rewriting X-GNOME-Autostart-enabled to false would
@@ -296,7 +310,9 @@ def build_model():
     import tickets
 
     if not os.path.exists(DUMP):
-        return {"no_dump": True, "settings": _settings_snapshot()}
+        # data_dir so the notice can say where the file belongs (INV-110).
+        return {"no_dump": True, "data_dir": paths.DATA,
+                "settings": _settings_snapshot()}
 
     all_tickets = tickets.load(DUMP)
 
@@ -467,6 +483,9 @@ def build_model():
         # LOTTO-0083. The date, not a verdict: sms_quiet_view() judges it each
         # time the page is shown, because a quiet phone triggers no rebuild.
         "newest_sms": _iso(tickets.newest_record_date(today, DUMP)),
+        # LOTTO-0015 INV-111: older tickets are "not checkable" until the tray's
+        # "Fetch older results" has written the archive, and the page says so.
+        "no_archive": not os.path.exists(paths.ARCHIVE),
         "settings": _settings_snapshot(),
     }
 
@@ -1017,6 +1036,7 @@ def resolve_port(env=None):
 
 
 def main():
+    paths.ensure_data()  # LOTTO-0015 §4.1: the AppImage's folder may be new
     port = resolve_port()
     token = os.environ.get("LOTTO_TOKEN") or secrets.token_urlsafe(32)
     no_build = bool(os.environ.get("LOTTO_NO_BUILD"))

@@ -1,0 +1,7 @@
+#!/bin/sh
+# The AppImage's launcher (LOTTO-0015 §4.7). exec, so the tray IS this
+# process and a SIGTERM to the AppImage reaches it rather than a shell.
+# Sets no LD_LIBRARY_PATH: PyInstaller's bootloader sets its own and keeps the
+# host's in LD_LIBRARY_PATH_ORIG, which supervise.host_env() hands on.
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/lib/lottotracker/lottotracker" "$@"

@@ -30,9 +30,12 @@ import re
 import sys
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-DUMP = os.path.join(HERE, "lotto_sms_raw.txt")
-THREADS = os.path.join(HERE, "sms_threads.json")
+import paths
+
+# From paths.py (LOTTO-0015 INV-105): the repository in a source checkout, the
+# user's data folder in the AppImage, whose code folder is read-only.
+DUMP = paths.DUMP
+THREADS = paths.THREADS
 
 # ------------------------------------------------------------------- the filter
 #
@@ -659,6 +662,7 @@ def run(once=False, path=DUMP, threads_path=THREADS):
 
 def main():
     once = "--once" in sys.argv[1:]
+    paths.ensure_data()  # the dump and its lock are written here (LOTTO-0015)
     try:
         written = run(once=once)
     except ImportError as err:

@@ -243,10 +243,11 @@ written after one history request — depends on that wait.
 `supervise.SmsWatch` owns `watch_sms.py` with the same spawn-and-reap contract
 `Supervisor` has for `serve.py`, in the same Qt-free module so the lifecycle
 stays checkable from a headless script — but with no token and no port, because
-this child talks to the phone and never to us. `cwd=HERE` for the reason
-`Supervisor.start()` gives: the dump and the thread state are resolved relative
-to the working directory, and an autostarted session's cwd is not the
-repository.
+this child talks to the phone and never to us. Its command is
+`child_command("watch")` and its `cwd` is `paths.DATA` (LOTTO-0015 §4.2), for
+the reason `Supervisor.start()` gives: the dump and the thread state are
+resolved relative to the working directory, and an autostarted session's cwd is
+not the data folder.
 
 The command is injectable (`SmsWatch(command=...)`) for one reason, stated at
 its site: INV-36's case must drive spawn-and-reap **without running the real

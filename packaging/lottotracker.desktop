@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Lotto Tracker
+Comment=Tray control for the local lottery page
+Exec=lottotracker
+Icon=lottotracker
+Terminal=false
+Categories=Utility;

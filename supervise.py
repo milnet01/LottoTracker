@@ -28,15 +28,101 @@ import urllib.request
 import webbrowser
 
 import expiry
+import paths
 from tickets import load as load_tickets
 from tickets import newest_record_date
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# Anchored here, never to the working folder: a tray started at login does not
-# run in the repository (LOTTO-0034 INV-81).
-DUMP = os.path.join(HERE, "lotto_sms_raw.txt")
+# From paths.py, never the working folder: a tray started at login does not
+# run in the repository (LOTTO-0034 INV-81), and inside the AppImage the code
+# folder is read-only (LOTTO-0015 INV-105).
+DUMP = paths.DUMP
 DEFAULT_PORT = 4322
 MIN_PORT, MAX_PORT = 1024, 65535
+
+# ------------------------------------------------------------ starting helpers
+#
+# LOTTO-0015 §4.2. A source checkout starts each helper as a script; a frozen
+# build has no .py files and its sys.executable is the bundled program, which
+# lottotracker.py dispatches on its first argument.
+
+SCRIPT = {"serve": "serve.py", "watch": "watch_sms.py"}
+
+
+def child_command(name, *args):
+    """The command line that starts helper `name` ("serve" or "watch"). INV-107."""
+    if paths.FROZEN:
+        return [sys.executable, name, *args]
+    return [sys.executable, os.path.join(HERE, SCRIPT[name]), *args]
+
+
+# Search paths PyInstaller's runtime hooks for Qt and GLib point into the
+# bundle, keeping no copy of the old value (measured at the first build).
+BUNDLE_PATH_VARS = ("QT_PLUGIN_PATH", "QML2_IMPORT_PATH", "GI_TYPELIB_PATH",
+                    "XDG_DATA_DIRS")
+
+
+def _in_bundle(path):
+    path = os.path.abspath(path)
+    return path == paths.RESOURCES or path.startswith(paths.RESOURCES + os.sep)
+
+
+def host_env():
+    """The environment for a program that is not ours, such as the browser. INV-109.
+
+    PyInstaller's bootloader points LD_LIBRARY_PATH at the bundle and keeps the
+    host's value in LD_LIBRARY_PATH_ORIG; a host program given the bundle's path
+    can load the wrong libraries. Its runtime hooks also put the bundle on the
+    BUNDLE_PATH_VARS search paths, so those lose every entry inside the bundle -
+    on KDE, xdg-open can hand the page to a Qt program. The project's own
+    children keep the bundle's environment: they are the bundle.
+    """
+    env = dict(os.environ)
+    if paths.FROZEN:
+        orig = env.get("LD_LIBRARY_PATH_ORIG")
+        if orig is None:
+            env.pop("LD_LIBRARY_PATH", None)
+        else:
+            env["LD_LIBRARY_PATH"] = orig
+        for name in BUNDLE_PATH_VARS:
+            if name in env:
+                kept = [p for p in env[name].split(os.pathsep) if p and not _in_bundle(p)]
+                if kept:
+                    env[name] = os.pathsep.join(kept)
+                else:
+                    del env[name]
+    return env
+
+
+# ------------------------------------------------------- fetch older results
+#
+# LOTTO-0015 §4.6. The tray's "Fetch older results" item. The wording lives
+# here, Qt-free, for refresh_message()'s reason: a headless case can read it.
+# A sentence carries no figure, date or game (CLAUDE.md § Privacy), and only
+# FETCH_DONE's says "fetched" (INV-112).
+
+FETCH_DONE, FETCH_FAILED = "done", "failed"
+FETCH_MESSAGE = {
+    FETCH_DONE: "Older results fetched. Older tickets can now be checked.",
+    FETCH_FAILED: "Could not get the older results. Nothing was changed; "
+                  "try again later.",
+}
+
+
+def fetch_older(write=None):
+    """Run the older-results download; FETCH_DONE only if `write` returned.
+
+    `write` defaults to backfill.write_archive, imported here rather than at
+    module scope so importing this module stays as light as it was.
+    """
+    if write is None:
+        import backfill
+        write = backfill.write_archive
+    try:
+        write()
+    except Exception:  # noqa: BLE001 - any failure is reported as one outcome
+        return FETCH_FAILED
+    return FETCH_DONE
 
 # ------------------------------------------------------------ refresh outcomes
 #
@@ -632,6 +718,7 @@ def open_browser(url):
              "--", "xdg-open", url],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=host_env(),  # not the bundle's library path (INV-109)
         )
     except OSError:
         return False
@@ -721,14 +808,13 @@ class Supervisor:
         token = secrets.token_urlsafe(32)
         try:
             child = subprocess.Popen(
-                [sys.executable, os.path.join(HERE, "serve.py")],
+                child_command("serve"),
                 # Not optional. tickets.load()'s default dump path is relative
                 # to the working directory, and an autostart session's cwd is
-                # not the repository, so without this the child finds no
-                # messages and renders an empty page. history.ARCHIVE and
-                # backfill.CACHE were on the same list until LOTTO-0041
-                # anchored them to __file__.
-                cwd=HERE,
+                # not the data folder, so without this the child finds no
+                # messages and renders an empty page. paths.DATA is the
+                # repository in a source checkout (LOTTO-0015 §4.2).
+                cwd=paths.DATA,
                 env={
                     **os.environ,
                     "LOTTO_TOKEN": token,
@@ -915,7 +1001,7 @@ class SmsWatch:
         # supervisor: INV-36's case has to drive spawn-and-reap without running
         # the real watcher, which would talk to the phone and APPEND TO THE
         # REAL DUMP. A verifier with a side effect on live data is not one.
-        self.command = command or [sys.executable, os.path.join(HERE, "watch_sms.py")]
+        self.command = command or child_command("watch")
         self.child = None
         # Raised by stop() before it terminates, so died_early() can tell a
         # watcher that was stopped from one that fell over at startup.
@@ -930,8 +1016,8 @@ class SmsWatch:
             self.command,
             # For the reason Supervisor.start() gives: the dump, and the thread
             # state beside it, are resolved relative to the working directory,
-            # and an autostarted session's cwd is not the repository.
-            cwd=HERE,
+            # and an autostarted session's cwd is not the data folder.
+            cwd=paths.DATA,
         )
 
     def is_running(self):

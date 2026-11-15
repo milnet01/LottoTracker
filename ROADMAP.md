@@ -384,7 +384,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   itself is LOTTO-0002; the checkable-entries-only rule is spec §4.7.
   Source: user-request-2026-08-01.
 
-- 📋 [LOTTO-0015] **Ship a Linux AppImage and a Windows executable, both build-tested locally first.**
+- 🚧 [LOTTO-0015] **Ship a Linux AppImage and a Windows executable, both build-tested locally first.**
   Kind: package. Source: user-request-2026-08-02.
   Layman: One file you can double-click, instead of needing Python and PySide6 installed.
   Verified 2026-08-02: the project has no packaging manifest and no `.github/`
@@ -456,6 +456,17 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   LD_LIBRARY_PATH in LD_LIBRARY_PATH_ORIG, which other variables the
   bundle's hooks set, and whether a SIGTERM to the AppImage reaches the
   tray. Record: docs/reviews/LOTTO-0015-linux-appimage-loop-log.md.
+  Linux half built and verified (2026-11-15). tools/build_appimage.sh
+  builds dist/LottoTracker-<VERSION>-x86_64.AppImage, 65 MB at the first
+  build. tools/verify_appimage.py passed both runs: the AppImage, run from
+  outside the repository over copies of the real files, shows the same
+  entry rows as the source checkout, and SIGTERM reaps both children. It
+  failed both on a red build whose frozen spawn still named a script.
+  Every --break in verify_paths.py and verify_page.py was seen red. The
+  first build settled spec section 15 and amended section 4.3: the bundle
+  also sets Qt and GLib search paths, which host_env() now strips. Still
+  open: the Windows half, and publishing the AppImage at the first
+  release.
   Source: user-request-2026-08-02.
 
 - ✅ [LOTTO-0016] **Run the CI locally before pushing, from the same script CI runs.**
