@@ -43,10 +43,11 @@ You need all four of these:
 - **You buy through Standard Bank**, which texts you each ticket. Other banks
   word their messages differently, and the app cannot read them yet. You can
   help with that: see [Adding your bank](#adding-your-bank).
-- **Your phone is an Android phone.** The app gets your messages off the phone
-  by USB cable or over Wi-Fi with KDE Connect, and both are Android-only.
-  **iPhones are not supported**: Apple does not let other apps read an iPhone's
-  text messages.
+- **Your phone is an Android phone.** Any make works: Samsung, Motorola,
+  Huawei and others. The app gets your messages off the phone by USB cable or
+  over Wi-Fi with KDE Connect, and both are Android-only.
+  **It does not work with an iPhone**: Apple does not let other apps read an
+  iPhone's text messages.
 - **Your computer runs Linux.** A Windows version is planned but not started.
 
 ## Getting started
@@ -78,6 +79,10 @@ it with `--appimage-extract-and-run` after the file name.
 3. Put both on the same Wi-Fi network, and pair them from either app.
 4. On the phone, give KDE Connect permission to read SMS: Settings → Apps →
    KDE Connect → Permissions → SMS. Pairing alone is not enough.
+5. **On a Huawei phone**, two extra steps. Newer Huawei phones have no Play
+   Store, so get KDE Connect from F-Droid. Then switch off battery saving for
+   KDE Connect in the phone's battery settings; otherwise the phone may close
+   it, and new messages stop arriving.
 
 From then on, each new lottery message reaches the app by itself.
 
