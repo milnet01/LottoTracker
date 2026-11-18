@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=103 -->
+<!-- ants-roadmap-id-high-water: LOTTO=104 -->
 
 # ROADMAP — LottoTracker
 
@@ -1970,6 +1970,23 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   third writer, under the same forged-record rule as watch_sms.py.
   **Layman:** iPhones cannot share their text messages with the app today; this asks whether a workaround exists.
   Kind: research.
+  Source: user-request-2026-11-18.
+
+- 📋 [LOTTO-0104] **Let the user accept a draw the bank has not fully paid, so it stops being highlighted.**
+  The user, 2026-11-18, while reviewing the LOTTO-0100 mock-up: "I
+  should be able to accept draws where the app says the bank hasn't fully
+  paid me and thus it doesn't need to be highlighted anymore."
+  Today such a draw is listed under Wins > Not yet paid (payment
+  "unpaid" or "partly paid", page.py::_waiting()), is counted in the
+  Overview's "waiting on the bank" figure, and its ticket appears on
+  the Bank's record tab (check.py CATEGORY_NOTE "unpaid" or "high").
+  An accepted draw must stay visible somewhere and be undoable: it is
+  the user's choice not to chase it, never the app deciding it was
+  paid. Sign 5 (README) still holds: the bank's figure is never
+  replaced. The choice has to persist across rebuilds, so it is stored
+  under paths.py's data folder, and the page needs a way to send it.
+  **Layman:** You can mark a prize the bank underpaid or never paid as accepted, and the app stops flagging it.
+  Kind: feature.
   Source: user-request-2026-11-18.
 
 ## Hardening
