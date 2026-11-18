@@ -1674,6 +1674,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   to look professional and production-ready: LOTTO-0100 and LOTTO-0101.
   Until then each release raises the MINOR number
   (docs/standards/versioning-overrides.md).
+  Changed by the user, 2026-11-18, later the same day: releases before
+  1.0.0 follow the machine-wide versioning standard. A feature raises
+  the MINOR; fixes alone raise the PATCH. The project's own every-0.x-
+  raises-the-MINOR rule is withdrawn.
   **Layman:** We have never written down which jobs have to be finished before we can call this version 1.0.
   Kind: release.
   Source: user-decision-2026-09-02.

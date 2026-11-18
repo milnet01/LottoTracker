@@ -218,9 +218,9 @@ staged. `git add -A` first, then run the check, if the change adds a file.
   idle page. Prefer what the browser and the standard library already provide
   over a new dependency. Nothing checks this, so measure a change that could
   cost memory or time before calling it done.
-- **Version numbers: every 0.x release raises the MINOR** (0.1.0, 0.2.0, …,
-  then 1.0.0). `docs/standards/versioning-overrides.md` holds the rule and
-  what makes 1.0.0.
+- **Version numbers follow `~/.claude/standards/versioning.md`**: a
+  release with a feature raises the MINOR, fixes alone the PATCH.
+  `docs/standards/versioning-overrides.md` says what makes 1.0.0.
 - **Count in entries, not tickets.** `LOTTO-0009` shipped 2026-08-01: every
   paid entry is scored, where before a ticket counted once however many pools
   its price had paid for.
