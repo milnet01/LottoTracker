@@ -1997,6 +1997,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   paid. Sign 5 (README) still holds: the bank's figure is never
   replaced. The choice has to persist across rebuilds, so it is stored
   under paths.py's data folder, and the page needs a way to send it.
+  Spec docs/specs/LOTTO-0104-accept-underpaid-wins.md gated by
+  review-contract on 2026-11-18: 2 loops (the cap for a spec), 18
+  verified findings, 17 fixed, 1 surfaced to the user; Status accepted.
+  Open for the user: a reload after Accept lands on the Overview tab,
+  because LOTTO-0002 INV-89 says tabs store nothing. Loop log in the
+  spec's section 12.
   **Layman:** You can mark a prize the bank underpaid or never paid as accepted, and the app stops flagging it.
   Kind: feature.
   Source: user-request-2026-11-18.
