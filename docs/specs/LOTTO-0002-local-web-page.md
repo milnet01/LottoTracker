@@ -419,11 +419,12 @@ reads, which the third defines:
 to. LOTTO-0014 §4.3 owns that rule and the reason for it.
 
 `page.py` emits the page's inline JavaScript along with its markup. It has
-exactly seven jobs and no others: the two POSTs (which must carry a custom
+exactly eight jobs and no others: the two POSTs (which must carry a custom
 header, LOTTO-0014 §4.3), filtering the ticket table (which must not touch the
 URL, LOTTO-0014 INV-21), sorting it under the same rule (INV-85), copying each
 heading onto its cells for a narrow window's cards (INV-86), switching tabs
-(INV-89), applying a colour theme (INV-63), and **polling `GET /status` every 2 s while `building`
+(INV-89), applying a colour theme (INV-63), remembering which sections are
+folded (INV-115), and **polling `GET /status` every 2 s while `building`
 is true, or after a `POST /refresh`, reloading when `built` changes**. **The poll also
 terminates on failure**: a refresh that raises leaves `built` unchanged and
 `building` false, so a poll watching only `built` waits for a change that never
@@ -1457,6 +1458,18 @@ them unqualified.
   script.** What a filter does when chosen was checked by hand in Firefox.
   *Breaks when:* a row's `data-check` is taken from anything but `won_cents`, or
   the note stops counting the hidden uncheckable entries.
+- **INV-115** — Every section on every tab folds from its title, and every fold
+  opens by default, so a first visit and a page with no script show everything.
+  A folded section still shows a count, never a sum of money. What says to act
+  never folds: the notices above the tabs, and the Overview's headline and
+  ticket slips. The page stores which sections are folded in one browser key,
+  holding fold ids and nothing else, and checks a stored id before using it.
+  Added 2026-11-18 (LOTTO-0101).
+  *Test:* `tools/verify_page.py`, case `sections_fold`. Breaks
+  `section_not_folded`, `fold_starts_closed` and `headline_in_a_fold`. **What a
+  click does runs in the browser and no case runs it.**
+  *Breaks when:* a new section is written without `_fold()`, or a notice moves
+  into a fold.
 
 ## 6. Failure modes
 
@@ -1594,6 +1607,7 @@ share their fixtures, their temporary-directory setup and their stub builder.
 | `dates_read_as_words` | INV-100 |
 | `filters_say_what_they_hide` | INV-101 |
 | `tabs_never_hide_a_warning` | INV-89 |
+| `sections_fold` | INV-115 |
 | `buy_again_on_overview` | INV-93 |
 | `paid_wins_shown` | INV-94 |
 | `bank_record_shown` | INV-104 |
@@ -1769,6 +1783,7 @@ LOTTO-0014 §8.)
 | §4.1 the builder passing `reconcile()`'s records to `bank_view()` | **nothing** — no case runs `build_model()`; checked by hand over the real dump on 2026-11-11 |
 | INV-95 game names, never pool keys | `tools/verify_page.py::games_by_their_names` — red-tested by `--break pool_keys_shown` |
 | INV-89 tabs under a sticky bar, with every notice above them | `tools/verify_page.py::tabs_never_hide_a_warning` — red-tested by `--break warning_in_a_tab`. **Nothing** runs a click |
+| INV-115 every section folds, nothing that says to act does, one fold key | `tools/verify_page.py::sections_fold` — red-tested by three breaks. **Nothing** runs a click or reads the stored key back |
 | INV-48 the numbers chosen beside the numbers drawn, absence said in words | `tools/verify_page.py::numbers_chosen_and_drawn` — two disjoint fixture sets, so a renderer echoing the chosen numbers into both columns fails; red-tested by `--break no_drawn_numbers` and `--break blank_numbers_cell` |
 | §4.1 the *resolved* port being what builds LOTTO-0014 §4.2's `Host` allowlist, not either variable read again | **nothing** — and the gap is structural rather than an omission: `port_from_environment`'s probes count **any** HTTP status as an answer, deliberately, because the question they ask is whether something bound. A server that bound the resolved port and allowlisted a different one answers 421 to everything and passes both. The breach is loud to a *user* — every request fails — and invisible to the suite |
 | §4.1 `page.py` performing no I/O | `tools/verify_page.py` — a *raising* `all_draws` double that `render_pure()` installs before `render()` is called, for every case that renders `page.py` directly (§7 scopes it). Absent the raising double the row would be false: with no `archive_results.json`, `history.all_draws()` falls straight through to `api_draws()`, which **succeeds** on a connected machine, so a renderer calling it would pass |
@@ -1901,6 +1916,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 0101-impl | 2026-11-18 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0100 and LOTTO-0101: the user approved a mock-up of the new look, every section now folds, and the page script gained an eighth job, remembering folds. INV-115 added. INV-63's case now checks the theme's own key, since the page writes a second one. |
 | 0095-fix | 2026-11-06 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0095: §4.7's `open_on_start` default moved from true to false at the user's request, because the autostarted tray opened a browser tab at every boot. `supervise.read_settings()` changed with it. No invariant moved. |
 | amend-0092 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0092, the user's request to keep improving the look. Adds matched balls, period bars and theme previews; INV-97, INV-98. |
 | amend-0091 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0091, the user's request to make the page look pretty. Adds the typeface; INV-96. |

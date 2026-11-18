@@ -676,7 +676,7 @@ def deadline_only_when_unpaid():
         win("unpaid", "2026-01-01", expired=True),
     ]
     html = render_pure(fixture_model(wins=wins))
-    sec = re.search(r"<h2>Not yet paid</h2>.*?</section>", html, re.S)
+    sec = re.search(r"<h2>Not yet paid</h2>.*?</details>", html, re.S)
     if sec is None:
         raise Fail("section 1 is not headed 'Not yet paid'")
     rows = re.findall(r"<tr class=.*?</tr>", sec.group(0), re.S)
@@ -687,12 +687,13 @@ def deadline_only_when_unpaid():
 
     for date, label in (
         ("2027-02-01", "partly paid — the bank paid R30.00 of R50.00 on this ticket"),
-        ("2027-03-01", "<td>unpaid</td>"),
+        ("2027-03-01", "unpaid"),
         ("2027-04-01", "payment unknown"),
     ):
         r = row(date)
         need(r is not None, f"the win expiring {date} is missing from section 1")
-        need(label in (r or ""), f"the win expiring {date} lacks its label {label!r}")
+        words = " ".join(re.sub(r"<[^>]+>", "", r or "").split())
+        need(label in words, f"the win expiring {date} lacks its label {label!r}")
     need(row("2027-01-01") is None, "a paid win is listed with a deadline")
     need(row("2026-01-01") is None, "an expired win is listed")
     need("Claimable" not in html, "the retired 'Claimable' wording is still on the page")
@@ -2348,8 +2349,10 @@ def theme_is_dark_and_readable():
 
         # 6. INV-63: the theme writes one browser key and nothing else. No URL
         #    is touched, and no ticket data is stored anywhere.
-        need(html.count("setItem(") == 1 and 'setItem("lotto-theme"' in html,
-             "something other than the theme name is written to browser storage")
+        # The fold key is INV-115's, and sections_fold holds the whole list.
+        need(html.count('setItem("lotto-theme"') == 1
+             and 'setItem("lotto-theme",th.value)' in html,
+             "something other than the theme name is written under the theme's key")
         for forbidden in ("pushState", "replaceState", "location.hash",
                           "location.search", "location.href"):
             need(forbidden not in html,
@@ -2583,6 +2586,72 @@ def tabs_never_hide_a_warning():
              "a page with no tickets offers tabs of nothing")
 
 
+FOLD_OPEN = re.compile(r'<details class="[^"]*\bfold\b[^"]*" id="(fold-[a-z]+)"( open)?>')
+
+
+def sections_fold():
+    """INV-115 — every section on every tab folds; nothing that says to act does.
+
+    Only the markup and the script's text are checked. What a click does runs in
+    the browser and no case runs it; LOTTO-0002 §11 says so.
+    """
+    import datetime
+
+    quiet = {"newest": None, "days": None}
+    u = dict(fixture_model()["uncheckable"], uncheckable=1, no_pool=1, partly=1)
+    # A ticket on its last draw day, so the Overview draws a slip and says buy.
+    running = running_for([{"ref": SENTINEL, "game": "daily", "start": "2026-10-30",
+                            "ndraws": 4}], datetime.date(2026, 11, 2))
+    html = render_pure(fixture_model(uncheckable=u, sms_quiet=quiet, running=running))
+
+    # 1. Every section heading is a fold's title, and every fold opens: with no
+    #    script, or a first visit, the whole page shows.
+    titles = re.findall(r"<h2>([^<]*)</h2>", html)
+    need(titles, "the page has no section headings at all")
+    for t in titles:
+        need(re.search(r'<summary><span class="foldball" aria-hidden="true"></span>'
+                       rf"<h2>{re.escape(t)}</h2>", html),
+             f"the section {t!r} does not fold")
+    folds = FOLD_OPEN.findall(html)
+    ids = [i for i, _open in folds]
+    need(len(ids) == len(set(ids)), f"two folds share an id: {ids}")
+    need(all(o for _i, o in folds), "a fold starts closed, so a first visit hides it")
+
+    # 2. Every tab holds at least one fold, the Overview included.
+    panels = re.split(r'<div class="tabpanel[^"]*" id="panel-', html)[1:]
+    need(panels, "the page has no tab panels")
+    for p in panels:
+        need(FOLD_OPEN.search(p), f"the {p.split(chr(34), 1)[0]!r} tab has nothing that folds")
+
+    # 3. What says to act never folds: the notices above the tabs, and the
+    #    Overview's headline and slips, all sit before the first fold.
+    first = FOLD_OPEN.search(html)
+    if first is None:
+        raise Fail("the page has no folds")
+    first_fold = first.start()
+    for must in ("No lottery SMS", "cannot be checked", 'class="headline"', 'class="runs"'):
+        at = html.find(must)
+        need(at != -1, f"the page does not carry {must!r}")
+        need(at < first_fold, f"{must!r} sits inside a fold, where it can be hidden")
+
+    # 4. A fold remembers itself in one browser key, holding fold ids alone, and
+    #    a stored value is checked before it is used.
+    keys = re.findall(r'setItem\("([a-z-]+)"', html)
+    need(sorted(keys) == ["lotto-folds", "lotto-theme"] and html.count("setItem(") == 2,
+         f"browser storage is written under {keys}, not the theme and the folds alone")
+    need("/^fold-[a-z]+$/" in html, "a stored fold id is used unchecked")
+
+    # 5. The pages with no tickets fold their Settings too, below the notice.
+    for state in ({"no_dump": True}, {"no_build": True}):
+        bare = render_pure(state)
+        need('id="fold-settings"' in bare, f"{state}: Settings does not fold")
+        fold = FOLD_OPEN.search(bare)
+        if fold is None:
+            raise Fail(f"{state}: the page has no folds")
+        need(bare.find('class="notice') < fold.start(),
+             f"{state}: the notice sits inside a fold")
+
+
 def overview_html(model):
     found = re.search(r'<section class="overview">.*?</section>', render_pure(model), re.S)
     if found is None:
@@ -2741,7 +2810,7 @@ def bank_record_shown():
     table = re.search(r'<table id="bank">.*?</table>', html, re.S)
     if table is None:
         raise Fail("the differences have no table")
-    rows = re.findall(r"<tr>.*?</tr>", table.group(0).split("<tbody>", 1)[1], re.S)
+    rows = re.findall(r"<tr[ >].*?</tr>", table.group(0).split("<tbody>", 1)[1], re.S)
     need(len(rows) == 4, f"{len(rows)} rows for 4 differences")
     by_cat = {}
     for r in rows:
@@ -2763,7 +2832,7 @@ def bank_record_shown():
 
     for empty in (None, {}):
         bare = render_pure(fixture_model(bank=empty))
-        panel = bare.split('id="panel-bank"', 1)[1].split("</section>", 1)[0]
+        panel = bare.split('id="panel-bank"', 1)[1].split("</details>", 1)[0]
         need("nothing here has been compared" in panel,
              "no payout data does not say nothing was compared")
         need("agree" not in panel.replace("the bank agreeing", "")
@@ -2812,7 +2881,7 @@ def filters_say_what_they_hide():
     rows = re.findall(r"<tr [^>]*data-check=\"(\w+)\"[^>]*>(.*?)</tr>", table, re.S)
     need(len(rows) == 3, f"expected 3 entry rows carrying data-check, found {len(rows)}")
     for check, cells in rows:
-        uncheckable = "not checkable</td>" in cells
+        uncheckable = re.search(r"not checkable(</span>)?</td>", cells) is not None
         need(check == ("no" if uncheckable else "yes"),
              f"a row's data-check={check!r} disagrees with its Won cell")
     years = re.search(r'<select id="yearfilter">(.*?)</select>', html, re.S)
@@ -3145,6 +3214,7 @@ CASES = [
     ("app_icon_in_page", "INV-87", app_icon_in_page),
     ("typeface_in_page", "INV-96", typeface_in_page),
     ("tabs_never_hide_a_warning", "INV-89", tabs_never_hide_a_warning),
+    ("sections_fold", "INV-115", sections_fold),
     ("estimate_is_said", "INV-90", estimate_is_said),
     ("buy_again_on_overview", "INV-93", buy_again_on_overview),
     ("paid_wins_shown", "INV-94", paid_wins_shown),
@@ -3171,6 +3241,9 @@ BREAKS = {
     "no_icon": "app_icon_in_page",
     "no_font": "typeface_in_page",
     "warning_in_a_tab": "tabs_never_hide_a_warning",
+    "section_not_folded": "sections_fold",
+    "fold_starts_closed": "sections_fold",
+    "headline_in_a_fold": "sections_fold",
     "estimate_unmarked": "estimate_is_said",
     "rebuy_judged_at_build": "buy_again_on_overview",
     "unknown_ticket_dropped": "buy_again_on_overview",
@@ -3267,8 +3340,21 @@ def apply_render_breaks():
         page._bank_section = lambda m: real_bank(
             dict(m, bank=m.get("bank") or {"agree": 0, "differ": []}))
     if broken("bank_none_as_zero"):
-        page._bank_row = lambda r: real_bank_row(
-            dict(r, computed_cents=r.get("computed_cents") or 0))
+        page._bank_row = lambda r, game=None: real_bank_row(
+            dict(r, computed_cents=r.get("computed_cents") or 0), game)
+    real_fold = page._fold
+    if broken("section_not_folded"):
+        # One section left as it was before LOTTO-0101.
+        page._fold = lambda key, title, gist, body, *a: (
+            f"<section><h2>{title}</h2>{body}</section>" if key == "entries"
+            else real_fold(key, title, gist, body, *a))
+    if broken("fold_starts_closed"):
+        page._fold = lambda *a: real_fold(*a).replace(
+            'id="fold-paid" open>', 'id="fold-paid">')
+    if broken("headline_in_a_fold"):
+        real_overview = page._overview_section
+        page._overview_section = lambda m: real_fold(
+            "buy", "When to buy", "", real_overview(m))
     if broken("oldest_first"):
         page._newest_first = lambda items, key: sorted(
             items, key=lambda i: i.get(key) or "")

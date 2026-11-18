@@ -1925,7 +1925,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Source: user-request-2026-11-18.
   Splits-from: LOTTO-0015.
 
-- 📋 [LOTTO-0100] **Make the page look professional and production-ready, the gate for v1.0.0.**
+- ✅ [LOTTO-0100] **Make the page look professional and production-ready, the gate for v1.0.0.**
   The user, 2026-11-18: v1.0.0 waits until the page looks professional
   and production-ready. The design is left to the session; propose it to
   the user before building. Every tab, not only the Overview. Keep the
@@ -1937,16 +1937,24 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   for approval before building. Once it ships, re-film the website
   trailer from the new look (the user chose to wait for the redesign),
   then message ants-projects-hub-website.
+  Built 2026-11-18 from the mock-up the user approved that day: every
+  win and entry is a slip in its game's colour, payment shows as a
+  stamp, and not checkable is a dashed badge. LOTTO-0002 INV-115 and
+  §4.1 amended.
   **Layman:** The page gets a polished, finished look before the app is called version 1.0.
   Kind: ux.
   Source: user-request-2026-11-18.
 
-- 📋 [LOTTO-0101] **Let every section on every tab of the page collapse and expand.**
+- ✅ [LOTTO-0101] **Let every section on every tab of the page collapse and expand.**
   The user, 2026-11-18. v1.0.0 work, with LOTTO-0100. Prefer the browser's
   own details/summary element: it needs no script and costs nothing
   while idle. Whether a fold is remembered between visits is a design
   choice to put to the user. A warning above the tabs must never be
   foldable out of sight: it is what tells the user to buy again.
+  Built 2026-11-18. Every section folds from a draw ball beside its
+  title and opens by default; folds are remembered in one browser key.
+  The notices and the Overview's headline and slips never fold (the
+  user, 2026-11-18). LOTTO-0002 INV-115, case sections_fold.
   **Layman:** Each part of the page can be folded away, so you see only what you want.
   Kind: ux.
   Source: user-request-2026-11-18.

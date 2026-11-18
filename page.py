@@ -80,7 +80,7 @@ def _money_cell(won_cents):
     the empty-looking strings INV-15 forbids.
     """
     if won_cents is None:
-        return '<td class="notcheckable money">not checkable</td>'
+        return '<td class="notcheckable money"><span class="nc">not checkable</span></td>'
     # A prize stands out and a checked zero steps back, in weight as well as in
     # colour. Both still print their figure, so R0.00 cannot read as no data.
     look = "money won" if won_cents else "money nil"
@@ -94,7 +94,8 @@ def _draws_cell(value):
     checked" on a 2019 ticket reads as a result rather than as an absence.
     """
     if value is None:
-        return '<td class="notcheckable">unknown &mdash; not checkable</td>'
+        return ('<td class="notcheckable"><span class="nc">unknown &mdash; not '
+                'checkable</span></td>')
     return f"<td>{_e(value)}</td>"
 
 
@@ -367,6 +368,23 @@ def _count(n, one, many):
     return f"{n:,} {one if n == 1 else many}"
 
 
+def _fold(key, title, gist, body, cls="", level="h2"):
+    """A section that folds from its title (LOTTO-0101, INV-115).
+
+    It opens by default, so a first visit and a page with no script show
+    everything; the script closes the ones the reader folded last time. The
+    gist is what a folded section still says, so it is a count and never a
+    figure that could read as a loss. Nothing that says to act goes in one.
+    """
+    return (
+        f'<details class="{f"{cls} " if cls else ""}fold" id="fold-{key}" open>'
+        f'<summary><span class="foldball" aria-hidden="true"></span>'
+        f"<{level}>{title}</{level}>"
+        + (f'<span class="gist">{gist}</span>' if gist else "")
+        + f'</summary><div class="foldbody">{body}</div></details>'
+    )
+
+
 def _uncheckable_banner(u):
     """Renders above the wins, never below, and is not collapsible (§4.5)."""
     if not u or not u.get("uncheckable"):
@@ -415,14 +433,15 @@ def _payment_cell(w):
     """
     state = w.get("payment", "unknown")
     if state == "partly paid":
+        stamp = '<span class="stamp wait">partly paid</span>'
         p, c = w.get("ref_paid_cents"), w.get("ref_computed_cents")
         if p is not None and c is not None:
-            return (f'<td class="wrap">partly paid — the bank paid {_e(_rands(p))} of '
-                    f"{_e(_rands(c))} on this ticket</td>")
-        return "<td>partly paid</td>"
+            return (f'<td class="stampcell wrap">{stamp} — the bank paid {_e(_rands(p))} '
+                    f"of {_e(_rands(c))} on this ticket</td>")
+        return f'<td class="stampcell">{stamp}</td>'
     if state == "unpaid":
-        return "<td>unpaid</td>"
-    return "<td>payment unknown</td>"
+        return '<td class="stampcell"><span class="stamp wait">unpaid</span></td>'
+    return '<td class="stampcell"><span class="stamp dim">payment unknown</span></td>'
 
 
 def _waiting(wins):
@@ -509,7 +528,9 @@ def _wins_section(model):
             "".join(rows),
             5,
         )
-    return f"<section><h2>Not yet paid</h2>{body}</section>"
+    gist = (f"{_count(len(live), 'win', 'wins')} waiting on the bank" if live
+            else "None waiting")
+    return _fold("wins", "Not yet paid", gist, body)
 
 
 def _paid_section(model):
@@ -533,14 +554,15 @@ def _paid_section(model):
             ),
             5,
         )
-    return f"<section><h2>Paid by the bank</h2>{body}</section>"
+    return _fold("paid", "Paid by the bank",
+                 _count(len(paid), "win", "wins") if paid else "None yet", body)
 
 
 BANK_COLUMNS = [("Ticket", "text"), ("First win", "date"), ("Bank paid", "num"),
                 ("App worked out", "num"), ("What this means", "text")]
 
 
-def _bank_row(r):
+def _bank_row(r, game=None):
     """One reference where the bank and the app differ, both figures shown.
 
     Neither figure stands in for the other (LOTTO-0029 INV-43), and each of the
@@ -556,8 +578,9 @@ def _bank_row(r):
     paid_cell = (f'<td class="money">{_e(_rands(paid))}</td>' if paid is not None
                  else '<td class="money muted">no payment in your messages</td>')
     why = r.get("why")
+    tag = f' data-game="{_e(game)}"' if game else ""
     return (
-        f'<tr><td class="ref">{_e(r.get("ref"))}</td>{first}{paid_cell}'
+        f'<tr{tag}><td class="ref">{_e(r.get("ref"))}</td>{first}{paid_cell}'
         + _money_cell(r.get("computed_cents"))
         + f'<td class="wrap">{_e(r.get("meaning"))}'
         + (f'<br><span class="muted">Why: {_e(why)}</span>' if why else "")
@@ -581,6 +604,7 @@ def _bank_section(model):
         )
     else:
         agree, differ = bank.get("agree", 0), bank.get("differ", [])
+        games = {t.get("ref"): t.get("game") for t in model.get("tickets", [])}
         if not differ:
             body = (f"<p>The bank and this app agree on every ticket: "
                     f"{_e(_count(agree, 'ticket', 'tickets'))}.</p>")
@@ -594,11 +618,20 @@ def _bank_section(model):
                 + _sorted_table(
                     "bank",
                     BANK_COLUMNS,
-                    "".join(_bank_row(r) for r in _newest_first(differ, "first_win")),
+                    # Each row takes its ticket's game colour, as every slip does.
+                    "".join(_bank_row(r, games.get(r.get("ref")))
+                            for r in _newest_first(differ, "first_win")),
                     1,
                 )
             )
-    return f"<section><h2>The bank's record</h2>{body}</section>"
+    if not bank:
+        gist = "Nothing compared"
+    elif not bank.get("differ"):
+        gist = "Agrees on every ticket"
+    else:
+        gist = (f"Agrees on {_count(bank.get('agree', 0), 'ticket', 'tickets')}, "
+                f"{len(bank['differ']):,} differ")
+    return _fold("bank", "The bank's record", gist, body)
 
 
 def _outstanding_section(model):
@@ -659,7 +692,13 @@ def _outstanding_section(model):
         )
     if not parts:
         parts.append('<p class="muted">Nothing outstanding.</p>')
-    return "<section><h2>Still outstanding</h2>" + "".join(parts) + "</section>"
+    said = []
+    if coming:
+        said.append(f"{_count(len(coming), 'entry', 'entries')} with draws to come")
+    if unchecked:
+        said.append(f"{len(unchecked):,} not checkable")
+    return _fold("outstanding", "Still outstanding",
+                 ", ".join(said) or "Nothing outstanding", "".join(parts))
 
 
 def _entries_section(model):
@@ -701,8 +740,8 @@ def _entries_section(model):
         reverse=True,
     )
     yopts = "".join(f'<option value="{_e(y)}">{_e(y)}</option>' for y in years)
-    return (
-        '<section><h2>Every entry</h2><div class="row">'
+    body = (
+        '<div class="row">'
         '<label>Filter by game <select id="gamefilter">'
         f'<option value="">all</option>{opts}</select></label> '
         '<label>Exact game <select id="poolfilter">'
@@ -725,8 +764,8 @@ def _entries_section(model):
             "".join(rows),
             1,
         )
-        + "</section>"
     )
+    return _fold("entries", "Every entry", _count(len(rows), "entry", "entries"), body)
 
 
 def _when(row):
@@ -807,10 +846,8 @@ def _glance_wins(model):
             f"<strong>{_count(len(waiting), 'win', 'wins')}</strong> waiting on "
             f"the bank. The first claim deadline is {_e(_long_date(soonest))}."
         )
-    return (
-        f'<div class="glance"><h3>Prizes</h3><p>{said}</p>'
-        f'{_go("wins", "See your wins")}</div>'
-    )
+    return _fold("prizes", "Prizes", "", f'<p>{said}</p>{_go("wins", "See your wins")}',
+                 "glance", "h3")
 
 
 def _glance_money(model):
@@ -826,10 +863,9 @@ def _glance_money(model):
             f'<strong>{_e(_rands(year["spend_cents"]))}</strong>, won '
             f'<strong>{_e(_rands(year["won_cents"]))}</strong>.'
         )
-    return (
-        f'<div class="glance"><h3>Money</h3><p>{said}</p>'
-        f'{_go("spending", "See spending by period")}</div>'
-    )
+    return _fold("money", "Money", "",
+                 f'<p>{said}</p>{_go("spending", "See spending by period")}',
+                 "glance", "h3")
 
 
 def _overview_section(model):
@@ -879,8 +915,7 @@ def _spend_section(model):
             f'<td class="muted">{s["unresolved_tickets"]:,} tickets &mdash; '
             "reported, not guessed at; in neither side of the comparison</td></tr>"
         )
-    return (
-        "<section><h2>Spend against winnings</h2>"
+    return _fold("spend", "Spend against winnings", "", (
         '<p class="muted">The comparison is drawn over the entries that could '
         "actually be checked, on resolved tickets only. Comparing lifetime "
         "spend against it would turn every unscorable entry into a loss.</p>"
@@ -892,8 +927,8 @@ def _spend_section(model):
         f'<tr><td>Lifetime spend, every entry</td><td class="money">'
         f'{_e(_rands(s.get("lifetime_cents", 0)))}</td>'
         '<td class="muted">separate figure &mdash; never subtracted from the line above</td></tr>'
-        f"{unresolved}</tbody></table></section>"
-    )
+        f"{unresolved}</tbody></table>"
+    ))
 
 
 def _period_bars(bucket):
@@ -940,13 +975,12 @@ def _periods_section(model):
         # naming why is what CLAUDE.md's "an empty page is correct only when
         # it carries a notice naming why" asks for. User decision 2026-09-02;
         # s6 said caption and no table.
-        return (
-            "<section><h2>Spend against winnings by period</h2>"
+        return _fold("periods", "Spend against winnings by period", "", (
             '<p class="notcheckable">No period has a scored draw in it yet, so '
             "there is nothing to compare. This is not a total of zero &mdash; "
             "it means no draw this ticket history covers has been checked "
-            "against a result.</p></section>"
-        )
+            "against a result.</p>"
+        ))
     rows, opts = {"year": [], "month": []}, {"year": [], "month": []}
     for i, b in enumerate(buckets):
         hide = "" if i == 0 else ' style="display:none"'
@@ -985,8 +1019,7 @@ def _periods_section(model):
             "result is in, whether it has not happened yet or has not been "
             "fetched.</p>"
         )
-    return (
-        '<section><h2>Spend against winnings by period</h2>'
+    return _fold("periods", "Spend against winnings by period", "", (
         '<p class="muted">By the date of the draw, not of the purchase: a '
         "ticket's price is spread over the draws it paid for, so a period's "
         "two figures describe the same draws. Drawn over the same entries as "
@@ -1003,8 +1036,8 @@ def _periods_section(model):
         '<th>Side by side</th>'
         "</tr></thead><tbody>"
         + "".join(rows["year"] + rows["month"])
-        + f"</tbody></table>{residue}</section>"
-    )
+        + f"</tbody></table>{residue}"
+    ))
 
 
 def _settings_section(model):
@@ -1057,17 +1090,16 @@ def _settings_section(model):
         f'<select id="theme">{opts}</select></div>'
     )
 
-    return (
-        "<section><h2>Settings</h2>"
-        + theme
+    return _fold("settings", "Settings", "", (
+        theme
         + "<h3>Tray</h3>"
         + sw("autostart", "Start the tray when I log in")
         + sw("open_on_start", "Open this page when the tray starts")
         # role=status + aria-live: the switches write their result here, and
         # without it a screen reader is told nothing at all.
         + '<p class="muted" id="settings-msg" role="status" '
-        'aria-live="polite"></p></section>'
-    )
+        'aria-live="polite"></p>'
+    ))
 
 
 # ------------------------------------------------------------------ themes
@@ -1219,6 +1251,27 @@ h1{font-size:1.5rem;font-weight:800;margin:0;letter-spacing:-.015em}
 .js .tabpanel:not(.on){display:none}
 h2{font-size:1.75rem;font-weight:800;line-height:1.25;letter-spacing:-.015em;margin:2rem 0 .6rem}
 h3{font-size:1.25rem;font-weight:700;margin:1.5rem 0 .4rem}
+/* A section folds from a draw ball beside its title, over a tear line like the
+   slips' (LOTTO-0101). Filled while open, a ring once folded: the same filled
+   against empty the matched balls use, so it survives low vision. */
+.fold{margin:2.25rem 0 0}
+.fold>summary{display:flex;align-items:center;flex-wrap:wrap;gap:.25rem 1rem;cursor:pointer;
+ list-style:none;padding:0 0 .7rem;border-bottom:4px dotted var(--line)}
+.fold>summary::-webkit-details-marker{display:none}
+.fold>summary h2,.fold>summary h3{margin:0}
+.gist{color:var(--dim);font-size:1.05rem}
+.foldball{position:relative;flex:none;display:grid;place-items:center;width:2.1rem;height:2.1rem;
+ border-radius:50%;background:var(--accent);color:var(--bg);font-size:1.5rem;font-weight:800;line-height:1}
+.foldball:before{content:"\\2212"}
+.foldball:after{content:"";position:absolute;inset:0;border-radius:50%;
+ background:radial-gradient(circle at 34% 24%,rgba(255,255,255,.4),rgba(255,255,255,0) 50%);
+ box-shadow:inset -1px -3px 5px rgba(0,0,0,.3)}
+.fold:not([open]) .foldball{background:none;color:var(--accent);box-shadow:inset 0 0 0 3px var(--accent)}
+.fold:not([open]) .foldball:before{content:"+"}
+.fold:not([open]) .foldball:after{display:none}
+.fold>summary:hover h2,.fold>summary:hover h3{color:var(--accent)}
+.fold>summary:focus-visible{outline:3px solid var(--accent);outline-offset:4px;border-radius:.3rem}
+.foldbody{padding-top:.9rem}
 table{border-collapse:collapse;width:100%;margin:.5rem 0}
 th,td{text-align:left;padding:.6rem .6rem;border-bottom:1px solid var(--line);font-size:1.05rem}
 th{font-weight:700;color:var(--dim);border-bottom:2px solid var(--line)}
@@ -1305,10 +1358,10 @@ td.stack .muted{display:block}
  html:not(.seen) .burn .ball.used{animation:punch .45s ease-out backwards;animation-delay:calc(var(--i)*70ms)}
 }
 .glances{display:flex;flex-wrap:wrap;gap:1rem}
-.glance{flex:1 1 22rem;display:flex;flex-direction:column;align-items:flex-start;
- padding:.25rem 1.75rem 1.5rem;border-radius:.9rem;background:var(--panel)}
-.glance h3{margin-top:1rem}
-.glance p{flex:1;margin:.3rem 0 1.1rem;max-width:60ch;line-height:1.7}
+.glance{flex:1 1 22rem;margin:0;padding:1.1rem 1.75rem 1.5rem;border-radius:.9rem;background:var(--panel)}
+.glance>summary{border-bottom-width:3px}
+.glance .foldball{width:1.7rem;height:1.7rem;font-size:1.2rem}
+.glance p{margin:.3rem 0 1.1rem;max-width:60ch;line-height:1.7}
 .glance strong{font-size:1.3em;font-weight:800;font-variant-numeric:tabular-nums}
 .golink{cursor:pointer;padding:.45rem 1rem;background:none;border:2px solid var(--accent);font-weight:700;
  transition:background-color .15s,color .15s}
@@ -1368,6 +1421,16 @@ button:focus-visible,select:focus-visible{outline:3px solid var(--accent);outlin
 .sorthead:hover{color:var(--fg);text-decoration:underline}
 th[aria-sort=descending] .sorthead:after{content:" \\25BC"}
 th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
+/* A rubber stamp says what happened to the money, in words, in its own shape. */
+.stamp{display:inline-block;padding:.1rem .65rem;border:3px double currentColor;border-radius:.4rem;
+ font-weight:800;font-size:1rem;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;
+ transform:rotate(-5deg)}
+.stamp.wait{color:var(--warn)}
+.stamp.paid{color:var(--on)}
+.stamp.dim{color:var(--dim)}
+/* Not checkable is a dashed badge, never a figure: it must not read as a zero. */
+.nc{padding:0 .4rem;border:2px dashed currentColor;border-radius:.4rem;font-weight:700;
+ -webkit-box-decoration-break:clone;box-decoration-break:clone}
 /* Narrower than the column's 90rem floor, which is what the widest table needs: each
    row becomes a card, one labelled line per cell. The labels are copied from the
    headings by JS below (INV-86). */
@@ -1379,6 +1442,34 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
  .cards td:before{content:attr(data-label);display:block;color:var(--dim);font-size:.9rem;font-weight:600}
  .cards td:empty{display:none}
  tbody tr:hover td{background:none}
+ /* Each row is a slip, as on the Overview: a stub in its game's colour, a tear
+    line, notches where the tear meets the edge, the facts on the body. */
+ .cards tr[data-game]{--stub:13rem;position:relative;display:grid;gap:0;padding:0;border:0;
+  grid-template-columns:var(--stub) repeat(auto-fill,minmax(13rem,1fr));border-radius:.8rem;
+  mask:radial-gradient(circle .7rem at var(--stub) 0,transparent 97%,#000),
+   radial-gradient(circle .7rem at var(--stub) 100%,transparent 97%,#000);mask-composite:intersect}
+ .cards tr[data-game] td,#wins tr[data-game] td,#paid tr[data-game] td{padding:.8rem 1.1rem .2rem}
+ .cards tr[data-game] td:last-child{padding-bottom:1rem}
+ .cards tr[data-game] td.game,#bank tr[data-game] td.ref{order:-1;grid-column:1;grid-row:1/span 6;
+  padding:1.1rem 1.2rem;background:var(--g);color:#fff;font-size:1.35rem;font-weight:800;line-height:1.2;
+  border-right:4px dotted var(--bg);
+  background-image:linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,0) 65%)}
+ #bank tr[data-game] td.ref{font-size:1.05rem;overflow-wrap:anywhere}
+ .cards td.game:before,#bank tr[data-game] td.ref:before,.cards td.game .pip{display:none}
+ /* A win's amount is printed on its stub, like the total on a receipt. */
+ #wins td.money,#paid td.money{grid-column:1;grid-row:3/span 4;z-index:1;align-self:end;
+  padding:0 1.2rem 1.1rem;color:#fff;font-size:2rem;font-weight:800}
+ #wins td.money:before,#paid td.money:before,#wins td.money .muted{color:#fff}
+ .cards tr:has(> td.stampcell),#paid tr[data-game]{padding-right:12rem}
+ .cards td.stampcell{position:absolute;top:1rem;right:1.2rem;max-width:11rem;padding:0;
+  text-align:right}
+ .cards td.stampcell:before{display:none}
+ #wins tr[data-game] td.stampcell{padding:0}
+ /* A set of numbers takes two columns, so six balls stay on one line. */
+ #wins td.nums,#paid td.nums{grid-column:span 2}
+ #paid tr[data-game]:after{content:"Paid";content:"Paid"/"";position:absolute;top:1rem;right:1.2rem;
+  padding:.1rem .65rem;border:3px double var(--on);border-radius:.4rem;color:var(--on);
+  font-weight:800;letter-spacing:.06em;text-transform:uppercase;transform:rotate(-5deg)}
  .tabs{order:3;flex-basis:100%}
  .baractions{margin-left:auto}
 }
@@ -1394,6 +1485,16 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
 @media(max-width:36rem){
  .burn{padding:.9rem 1.2rem;gap:.25rem}
  .burn .ball{min-width:1.7rem;height:1.7rem}
+ .cards tr[data-game]{grid-template-columns:1fr;mask:none;padding-right:0}
+ .cards tr[data-game] td.game,#bank tr[data-game] td.ref{grid-row:auto;border-right:0;
+  border-bottom:4px dotted var(--bg)}
+ #wins td.money,#paid td.money{grid-column:auto;grid-row:auto;color:inherit;font-size:1.5rem;padding:.6rem 1.1rem 0}
+ #wins td.money:before,#paid td.money:before{color:var(--dim)}
+ .cards td.stampcell{position:static;max-width:none;padding:.6rem 1.1rem 1rem;text-align:left}
+ .cards tr:has(> td.stampcell),#paid tr[data-game]{padding-right:0}
+ #wins td.nums,#paid td.nums{grid-column:auto}
+ #wins tr[data-game] td.stampcell{padding:.6rem 1.1rem 1rem}
+ #paid tr[data-game]:after{position:static;justify-self:start;margin:.6rem 1.1rem 1rem}
  #periods tr{display:grid;grid-template-columns:1fr auto auto}
  #periods th:last-child{display:none}
  #periods td:last-child{grid-column:1/-1}
@@ -1406,11 +1507,12 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
 
 CSS = _themes_css() + BASE_CSS
 
-# Seven jobs and no others (LOTTO-0002 §4.1): the two POSTs (custom header, so a
+# Eight jobs and no others (LOTTO-0002 §4.1): the two POSTs (custom header, so a
 # cross-origin form post cannot forge them), filtering and sorting (must never
 # touch the URL - INV-21), the headings copied onto a phone's card rows, switching
-# tabs (the same rule, INV-89), applying a colour theme (INV-63), and polling
-# /status while a build is in flight.
+# tabs (the same rule, INV-89), applying a colour theme (INV-63), remembering
+# which sections are folded (INV-115), and polling /status while a build is in
+# flight.
 JS = """
 var TOKEN=%s;
 function post(path,body,done){
@@ -1468,6 +1570,20 @@ if(th){
   msg("Theme applied.");
  });
 }
+// The folds (LOTTO-0101, INV-115). One localStorage key holding the ids of the
+// sections the reader folded, and nothing else. Every fold is open in the HTML,
+// so with no script, or nothing stored, the whole page shows. A stored id is
+// checked against the fold pattern before it is used, as the theme's name is.
+var folds=[].slice.call(document.querySelectorAll("details.fold"));
+try{var shut=JSON.parse(localStorage.getItem("lotto-folds")||"[]");
+ if(Array.isArray(shut))shut.forEach(function(id){
+  if(typeof id!=="string"||!/^fold-[a-z]+$/.test(id))return;
+  var d=document.getElementById(id);if(d&&d.tagName==="DETAILS")d.open=false})
+}catch(e){}
+folds.forEach(function(d){d.addEventListener("toggle",function(){
+ var ids=folds.filter(function(f){return !f.open}).map(function(f){return f.id});
+ try{localStorage.setItem("lotto-folds",JSON.stringify(ids))}catch(e){}
+})});
 var rb=document.getElementById("refresh");
 if(rb)rb.addEventListener("click",function(){
  rb.disabled=true;rb.textContent="Refreshing...";

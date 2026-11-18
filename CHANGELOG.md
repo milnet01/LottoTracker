@@ -6,6 +6,20 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Every section on every tab folds away, and stays folded next time** (LOTTO-0101)
+  Click a section's title, or the ball beside it, to fold it. A folded section
+  still shows a short count, such as how many wins are waiting. The warnings
+  at the top and the Overview's buy reminder never fold.
+
+### Changed
+
+- **The page has a finished look** (LOTTO-0100)
+  Every win and entry is a small lottery slip in its game's colour, with a
+  win's amount printed on the slip. Payment shows as a rubber stamp, and "not
+  checkable" has a dashed outline so it can never pass for R0.00.
+
 ## [0.2.0] - 2026-11-18
 
 **Theme:** A new look that says when to buy next, a nightly results check, and a Linux app file to download.
