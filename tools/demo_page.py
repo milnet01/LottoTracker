@@ -77,6 +77,18 @@ model.update({
         {"ref": "demo-daily", "game": "daily", "cost_cents": 2250, "boards": 1,
          "ndraws": 10, "resolved": True, "bought": "2026-09-21", "start": "2026-09-21"},
     ],
+    # The Bank's record tab: the Lotto win agrees, and two tickets differ. One
+    # win has no payment; one payment has no win the app could score, because
+    # its Daily Lotto Plus entry is not checkable.
+    # serve.bank_view() supplies the words, so they are the real page's.
+    "bank": serve.bank_view([
+        {"ref": "demo-lotto", "first_win": "2026-07-18", "paid_cents": 5000,
+         "computed_cents": 5000, "category": "agree", "reason": None},
+        {"ref": "demo-powerball", "first_win": "2026-09-05", "paid_cents": None,
+         "computed_cents": 1500, "category": "unpaid", "reason": None},
+        {"ref": "demo-daily", "first_win": None, "paid_cents": 1000,
+         "computed_cents": 0, "category": "unscored", "reason": None},
+    ]),
     "uncheckable": {"entries": 7, "uncheckable": 1, "too_old": 0, "no_pool": 1,
                     "wholly": 0, "partly": 1},
     "spend": {"compared_cents": 8000, "lifetime_cents": 8750,
