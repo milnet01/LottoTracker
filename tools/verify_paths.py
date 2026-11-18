@@ -53,6 +53,7 @@ def data_paths():
         "watch_sms.DUMP": watch_sms.DUMP, "watch_sms.THREADS": watch_sms.THREADS,
         "watch_sms.lock_path()": watch_sms.lock_path(watch_sms.DUMP),
         "serve.DUMP": serve.DUMP, "supervise.DUMP": supervise.DUMP,
+        "paths.ACCEPTED": paths.ACCEPTED, "serve.ACCEPTED": serve.ACCEPTED,
     }
     for name, p in aliases.items():
         need(os.path.dirname(p) == EXPECT, f"{name} is {p}, not under {EXPECT}")

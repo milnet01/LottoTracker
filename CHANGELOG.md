@@ -8,6 +8,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **You can accept a win the bank has not fully paid** (LOTTO-0104)
+  Every win under *Not yet paid* has an **Accept** button. Press it for a
+  prize you will not chase, and it moves to *Accepted by you* and stops
+  counting as waiting on the Overview. **Undo** moves it back. The bank's
+  record and every total stay as they were.
+
 - **Every section on every tab folds away, and stays folded next time** (LOTTO-0101)
   Click a section's title, or the ball beside it, to fold it. A folded section
   still shows a short count, such as how many wins are waiting. The warnings

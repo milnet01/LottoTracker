@@ -41,7 +41,7 @@ entries = [
     entry("demo-lotto", "lotto", 1, 1000, 10, 0, 0, L),
     entry("demo-lotto", "lotto", 2, 1000, 10, 0, 0, L),
     entry("demo-powerball", "powerball", 0, 1500, 6, 4, 1500, P),
-    entry("demo-powerball", "powerball", 1, 1000, 6, 4, 0, P),
+    entry("demo-powerball", "powerball", 1, 1000, 6, 4, 1200, P),
     entry("demo-daily", "daily", 0, 1500, 3, 2, 0, D),
     entry("demo-daily", "daily", 1, 750, 0, 0, 0, D, scorable=False,
           reason="predates all draw data for this pool (earliest 2025-09-26)"),
@@ -62,7 +62,17 @@ wins = [
      "expired": False, "source": "api",
      "numbers": [7, 14, 22, 35, 41], "special": 12,
      "drawn_main": [5, 14, 28, 39, 48], "drawn_special": 12,
-     "payment": "unpaid", "ref_paid_cents": None, "ref_computed_cents": 1500},
+     "payment": "unpaid", "ref_paid_cents": None, "ref_computed_cents": 2700},
+    # Accepted on the page as not worth chasing, so it shows under Accepted by
+    # you (LOTTO-0104). serve.py sets the flag from the store at each GET /.
+    {"ref": "demo-powerball", "game": "powerball", "plus_flag": 1, "pool_id": 0,
+     "line": "A", "date": "2026-09-01", "division": "Division 9", "matched": "1 + PowerBall",
+     "amount_cents": 1200, "expires": "2027-09-01", "expires_in_days": 341,
+     "expired": False, "source": "api",
+     "numbers": [7, 14, 22, 35, 41], "special": 12,
+     "drawn_main": [3, 14, 19, 27, 44], "drawn_special": 12,
+     "payment": "unpaid", "ref_paid_cents": None, "ref_computed_cents": 2700,
+     "accepted": True},
 ]
 
 model = verify_page.fixture_model()
@@ -84,8 +94,8 @@ model.update({
     "bank": serve.bank_view([
         {"ref": "demo-lotto", "first_win": "2026-07-18", "paid_cents": 5000,
          "computed_cents": 5000, "category": "agree", "reason": None},
-        {"ref": "demo-powerball", "first_win": "2026-09-05", "paid_cents": None,
-         "computed_cents": 1500, "category": "unpaid", "reason": None},
+        {"ref": "demo-powerball", "first_win": "2026-09-01", "paid_cents": None,
+         "computed_cents": 2700, "category": "unpaid", "reason": None},
         {"ref": "demo-daily", "first_win": None, "paid_cents": 1000,
          "computed_cents": 0, "category": "unscored", "reason": None},
     ]),
@@ -93,10 +103,10 @@ model.update({
                     "wholly": 0, "partly": 1},
     "spend": {"compared_cents": 8000, "lifetime_cents": 8750,
               "unresolved_cents": 0, "unresolved_tickets": 0},
-    "won": {"compared_cents": 6500, "lifetime_cents": 6500},
+    "won": {"compared_cents": 7700, "lifetime_cents": 7700},
     "periods": {"buckets": [
-        {"key": "2026", "kind": "year", "label": "2026", "spend_cents": 8000, "won_cents": 6500},
-        {"key": "2026-09", "kind": "month", "label": "September 2026", "spend_cents": 3750, "won_cents": 1500},
+        {"key": "2026", "kind": "year", "label": "2026", "spend_cents": 8000, "won_cents": 7700},
+        {"key": "2026-09", "kind": "month", "label": "September 2026", "spend_cents": 3750, "won_cents": 2700},
         {"key": "2026-08", "kind": "month", "label": "August 2026", "spend_cents": 1000, "won_cents": 0},
         {"key": "2026-07", "kind": "month", "label": "July 2026", "spend_cents": 3250, "won_cents": 5000},
     ], "no_result_cents": 0},

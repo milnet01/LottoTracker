@@ -103,6 +103,12 @@ tool; an Ants-verb read does not load it.
   never a separate calculation. It does **all** the I/O; **`page.py`** is a pure
   function from a model dict to one HTML string, which is what lets the whole
   page be rendered in a test with no socket and no `archive_results.json`.
+- **`serve.py`** also owns the **accepted-wins store** (LOTTO-0104),
+  `accepted.json` at `paths.ACCEPTED`: `read_accepted()` is its one reader, at
+  every `GET /`, and `write_accepted()`, behind `POST /accept`'s lock, its one
+  writer. It holds win keys only. `page.py` sees each win's `accepted` flag and
+  `accepted_unreadable`, never the file, and nothing else reads it — the tray
+  included (INV-120).
 - **`supervise.py`** owns the server child — its token, its port, its reaping —
   and is Qt-free so that lifecycle is checkable from a headless script.
   It also owns **reading** the two settings (`config_home()`, `autostart_path()`,

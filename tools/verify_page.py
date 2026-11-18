@@ -41,6 +41,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from html import unescape
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -77,6 +78,15 @@ def need(cond, msg):
         raise Fail(msg)
 
 
+# LOTTO-0104 §4.1: the six fields that name one win. Written out here, not
+# imported from the code under test, so a field dropped there is seen here.
+WIN_KEY = ("ref", "game", "plus_flag", "pool_id", "line", "date")
+
+
+def accept_key(win):
+    return {f: win.get(f) for f in WIN_KEY}
+
+
 # --------------------------------------------------------------- fixtures
 
 
@@ -95,6 +105,9 @@ def temp_home():
     _TEMP_HOMES.append(d)
     os.environ["HOME"] = d
     os.environ["XDG_CONFIG_HOME"] = os.path.join(d, ".config")
+    # In a source checkout paths.DATA is the repository, so without this a case
+    # posting to /accept would write the checkout's real store (LOTTO-0104 §4.2).
+    serve.ACCEPTED = os.path.join(d, "accepted.json")
     return d
 
 
@@ -308,8 +321,8 @@ def host_allowlist():
             f"127.0.0.1.evil.example:{port}",  # startswith
             f"evil.example.127.0.0.1:{port}",  # endswith
         ]
-        routes = [("GET", "/"), ("GET", "/status"),
-                  ("POST", "/refresh"), ("POST", "/settings")]
+        routes = [("GET", "/"), ("GET", "/status"), ("POST", "/refresh"),
+                  ("POST", "/settings"), ("POST", "/accept")]
         for method, path in routes:
             for h in poison:
                 st, hdrs, body = req(port, method, path, host=h,
@@ -382,13 +395,18 @@ def token_required():
         # Every rejected POST runs BEFORE any accepted one, from a config dir
         # where the file does not exist: "still absent" is only an assertion in
         # that order.
+        bodies = {"/settings": {"autostart": True}, "/refresh": None,
+                  "/accept": {"win": accept_key(fixture_model()["wins"][0]),
+                              "accepted": True}}
         for hdrs, label in rejects:
-            for path in ("/settings", "/refresh"):
+            for path in ("/settings", "/refresh", "/accept"):
                 before = stub.calls
                 st, _, _ = req(port, "POST", path, host=host, headers=hdrs,
-                                body={"autostart": True} if path == "/settings" else None)
+                                body=bodies[path])
                 need(st == 403, f"{path} ({label}): expected 403, got {st}")
                 need(not os.path.exists(ap), f"{path} ({label}): wrote the autostart file")
+                need(not os.path.exists(serve.ACCEPTED),
+                     f"{path} ({label}): wrote the accepted-wins store")
                 need(stub.calls == before, f"{path} ({label}): started a rebuild")
         accepts = [
             ({"X-Lotto-Token": "realtoken-abcdefghij"}, "right token, no Origin"),
@@ -503,6 +521,21 @@ def no_reflected_headers():
                     f"{method} {path}: header {k} echoes the request path",
                 )
         need(open(ap, "rb").read() == before, "the autostart file changed")
+
+        # POST /accept with a poisoned string in its body. It names no current
+        # win, so it is refused, nothing is written, and no header echoes it
+        # (LOTTO-0104 INV-118): the route writes only values copied from the model.
+        key = dict(accept_key(fixture_model()["wins"][0]), ref=poison)
+        st, hdrs, _ = req(port, "POST", "/accept", host=host,
+                          headers={"X-Lotto-Token": "tok"},
+                          body={"win": key, "accepted": True})
+        need(st == 409, f"POST /accept naming no win: expected 409, got {st}")
+        names = {k.lower() for k in hdrs}
+        need(not names - EXPECTED_HEADERS - {"content-type"},
+             f"POST /accept: unexpected header(s) {sorted(names - EXPECTED_HEADERS)}")
+        need(all(poison not in v and "X-Injected" not in v for v in hdrs.values()),
+             "POST /accept: a header echoes the posted string")
+        need(not os.path.exists(serve.ACCEPTED), "POST /accept wrote a posted string")
 
         # Assert the CONTENT outright, not merely that it did not change:
         # byte-equality passes a file that has been wrong since it was written,
@@ -2578,6 +2611,12 @@ def tabs_never_hide_a_warning():
          and 'className="js"' in html.split("<body>", 1)[0],
          "the hiding rule does not depend on the script running")
     need('href="#' not in html, "a link would put a fragment in the URL")
+    # A reload keeps the open tab (LOTTO-0104 §4.3): one sessionStorage write,
+    # holding a tab id, and a stored id is used only if it names a tab.
+    need(html.count("sessionStorage.setItem(") == 1
+         and 'sessionStorage.setItem("lotto-tab",tab.id)' in html,
+         "the open tab is not kept in exactly one sessionStorage key")
+    need("if(t.id===kept)" in html, "a stored tab id is used without checking it names a tab")
     need('id="top-msg"' in html and 'note("That refresh failed' in html,
          "a failed refresh is reported inside a hidden tab")
     for state in ({"building": True, "built": None, "requests": 0},
@@ -2602,7 +2641,12 @@ def sections_fold():
     # A ticket on its last draw day, so the Overview draws a slip and says buy.
     running = running_for([{"ref": SENTINEL, "game": "daily", "start": "2026-10-30",
                             "ndraws": 4}], datetime.date(2026, 11, 2))
-    html = render_pure(fixture_model(uncheckable=u, sms_quiet=quiet, running=running))
+    # A second win, accepted, so the Accepted by you fold is on the page too.
+    wins = fixture_model()["wins"]
+    wins = wins + [dict(wins[0], line="B", payment="unpaid", accepted=True)]
+    html = render_pure(fixture_model(uncheckable=u, sms_quiet=quiet, running=running,
+                                     wins=wins))
+    need('id="fold-accepted"' in html, "the Accepted by you section does not fold")
 
     # 1. Every section heading is a fold's title, and every fold opens: with no
     #    script, or a first visit, the whole page shows.
@@ -2636,8 +2680,9 @@ def sections_fold():
 
     # 4. A fold remembers itself in one browser key, holding fold ids alone, and
     #    a stored value is checked before it is used.
-    keys = re.findall(r'setItem\("([a-z-]+)"', html)
-    need(sorted(keys) == ["lotto-folds", "lotto-theme"] and html.count("setItem(") == 2,
+    keys = re.findall(r'localStorage\.setItem\("([a-z-]+)"', html)
+    need(sorted(keys) == ["lotto-folds", "lotto-theme"]
+         and html.count("localStorage.setItem(") == 2,
          f"browser storage is written under {keys}, not the theme and the folds alone")
     need("/^fold-[a-z]+$/" in html, "a stored fold id is used unchecked")
 
@@ -2773,6 +2818,181 @@ def paid_wins_shown():
     need('<span class="ball">16</span>' not in table.group(0), "an unpaid win is filed as paid")
     none = render_pure(fixture_model(wins=[unpaid]))
     need("No win here has a matching payment" in none, "no paid win leaves the section blank")
+
+
+def fold_of(html, key):
+    """One fold's markup, or "" when the page has no fold by that id."""
+    found = re.search(rf'<details class="[^"]*" id="fold-{key}" open>.*?</details>', html, re.S)
+    return found.group(0) if found else ""
+
+
+def accept_fixture():
+    """Four wins on one ticket, told apart by board line and draw date, and a
+    Bank's record row for that ticket. Win A is unpaid, so only the accepted
+    flag can move it, and its claim date is near, so a marking would show."""
+    base = fixture_model()["wins"][0]
+    wins = [
+        dict(base, line="A", payment="unpaid", date="2026-07-01", expires_in_days=10),
+        dict(base, line="B", payment="partly paid", ref_paid_cents=1000,
+             ref_computed_cents=10000, date="2026-07-08", expires="2027-07-08"),
+        dict(base, line="C", payment="paid", date="2026-06-03", expires="2027-06-03"),
+        dict(base, line="D", payment="unpaid", date="2025-05-01", expires="2026-05-01",
+             expired=True, expires_in_days=-30),
+    ]
+    bank = serve.bank_view([{"ref": SENTINEL, "paid_cents": 1000, "computed_cents": 10000,
+                             "category": "high", "first_win": "2026-06-03",
+                             "reason": None}])
+    return wins, bank
+
+
+def has_win(section, date):
+    return f'data-sort="{date}"' in section
+
+
+ACCEPT_EMPTY = "No win is waiting on the bank that you have not accepted."
+
+
+def accepting_moves_a_win():
+    """LOTTO-0104 INV-116, INV-117 — accepting moves one win out of Not yet paid
+    and the Overview count, into Accepted by you, and changes nothing else."""
+    wins, bank = accept_fixture()
+    plain = render_pure(fixture_model(wins=wins, bank=bank))
+    # A, the paid C and the expired D are flagged; B is not.
+    flagged = [dict(w, accepted=True) if w["line"] != "B" else w for w in wins]
+    taken = render_pure(fixture_model(wins=flagged, bank=bank))
+
+    need(has_win(fold_of(plain, "wins"), "2026-07-01"), "win A is not under Not yet paid")
+    need("data-win=" in fold_of(plain, "wins"), "Not yet paid offers no Accept button")
+    need(not fold_of(plain, "accepted"), "Accepted by you shows with nothing accepted")
+
+    waiting, accepted = fold_of(taken, "wins"), fold_of(taken, "accepted")
+    need(not has_win(waiting, "2026-07-01"), "an accepted win is still under Not yet paid")
+    need(has_win(waiting, "2026-07-08"), "a win nobody accepted left Not yet paid")
+    need(has_win(accepted, "2026-07-01"), "an accepted win is not under Accepted by you")
+    need('<span class="stamp acc">accepted</span>' in accepted,
+         "an accepted win is not stamped accepted")
+    need(">Undo</button>" in accepted, "an accepted win offers no Undo")
+    need('class="soon"' not in accepted and 'class="today"' not in accepted,
+         "an accepted win is marked for its near deadline")
+    # INV-117: a paid win is never shown as accepted; an expired one in neither.
+    need(not has_win(accepted, "2026-06-03"), "a paid win is shown as accepted")
+    need(has_win(fold_of(taken, "paid"), "2026-06-03"), "a paid, flagged win left Paid by the bank")
+    for sec in (waiting, accepted):
+        need(not has_win(sec, "2025-05-01"), "an expired win is listed")
+
+    need("<strong>2 wins</strong>" in fold_of(plain, "prizes"),
+         "the Overview does not count both waiting wins")
+    need("<strong>1 win</strong>" in fold_of(taken, "prizes"),
+         "the Overview still counts an accepted win")
+
+    # Nothing else moves: cut the three folds acceptance may change, and the
+    # rest of the two pages must be the same bytes.
+    def rest(html):
+        return re.sub(r'<details class="[^"]*" id="fold-(wins|accepted|prizes)" open>.*?</details>',
+                      "", html, flags=re.S)
+
+    need(rest(plain) == rest(taken), "accepting a win changed the page outside its three sections")
+
+    # With every waiting win accepted, both empty states say so.
+    alone = render_pure(fixture_model(wins=[dict(wins[0], accepted=True)], bank=bank))
+    need(alone.count(ACCEPT_EMPTY) == 2,
+         "with every waiting win accepted, the two empty states do not say so")
+
+
+def accept_route_guards():
+    """LOTTO-0104 INV-116, INV-118 to INV-120 — POST /accept writes only a
+    current win's key, the page reads the store at every GET /, and an
+    unreadable store reads as empty."""
+    temp_home()
+    wins, bank = accept_fixture()
+    stub = Stub(fixture_model(wins=wins, bank=bank))
+    srv, state, port, _t = serve_on(stub)
+    host = f"127.0.0.1:{port}"
+    store = serve.ACCEPTED
+    tok = {"X-Lotto-Token": "tok"}
+
+    def post(body, headers=tok):
+        st, _h, data = req(port, "POST", "/accept", host=host, headers=headers, body=body)
+        return st, data
+
+    def page_now():
+        return req(port, "GET", "/", host=host)[2].decode()
+
+    def stored():
+        return open(store, "rb").read() if os.path.exists(store) else None
+
+    try:
+        need(serve.refresh(state, stub), "the opening refresh was declined")
+        need(state.wait_idle(5), "the opening build did not finish")
+        status = req(port, "GET", "/status", host=host)[2]
+        html = page_now()
+        # Win A's own button: the key the page carries is the one posted.
+        keys = [json.loads(unescape(k))
+                for k in re.findall(r'data-win="([^"]*)"', fold_of(html, "wins"))]
+        key_a = next((k for k in keys if k.get("line") == "A"), None)
+        if key_a is None:
+            raise Fail("win A's row under Not yet paid carries no data-win key to post")
+        need(set(key_a) == set(WIN_KEY), f"data-win holds {sorted(key_a)}, not the six fields")
+
+        # Refused, each with the store untouched (absent, here).
+        refused = [
+            ({"win": key_a, "accepted": True}, {}, 403, "no token"),
+            ({"win": accept_key(wins[2]), "accepted": True}, tok, 409, "a paid win"),
+            ({"win": dict(key_a, line="Z"), "accepted": True}, tok, 409, "a key naming no win"),
+            ({"win": key_a, "accepted": False}, tok, 409, "an undo of a key not stored"),
+            ({"win": key_a}, tok, 400, "a body missing accepted"),
+            ({"win": dict(key_a, extra=1), "accepted": True}, tok, 400, "a seventh field"),
+        ]
+        for body, hdrs, want, label in refused:
+            st, _ = post(body, hdrs)
+            need(st == want, f"{label}: expected {want}, got {st}")
+            need(stored() is None, f"{label}: the store was written")
+
+        st, data = post({"win": key_a, "accepted": True})
+        need(st == 200, f"accepting a waiting win: expected 200, got {st}")
+        need(json.loads(data) == {"accepted": 1}, f"the reply is {data!r}, not the count")
+        saved = json.loads(stored() or b"null")
+        need(isinstance(saved, dict) and set(saved) == {"version", "accepted"},
+             f"the store holds {saved!r}")
+        need(all(set(e) == set(WIN_KEY) for e in saved["accepted"]),
+             "a store entry holds something other than the six key fields")
+        need(saved["accepted"] == [accept_key(wins[0])],
+             f"the store holds {saved['accepted']!r}, not win A's key")
+        html = page_now()
+        need(has_win(fold_of(html, "accepted"), "2026-07-01")
+             and not has_win(fold_of(html, "wins"), "2026-07-01"),
+             "after the accept, GET / does not list the win under Accepted by you alone")
+        need(req(port, "GET", "/status", host=host)[2] == status,
+             "GET /status changed with an accept")
+
+        before = stored()
+        for body, label in (({"win": key_a, "accepted": True}, "a second accept"),
+                            ({"win": accept_key(wins[1]), "accepted": False},
+                             "an undo of a key not stored")):
+            st, _ = post(body)
+            need(st == 409, f"{label}: expected 409, got {st}")
+            need(stored() == before, f"{label}: the store changed")
+
+        st, data = post({"win": key_a, "accepted": False})
+        need(st == 200 and json.loads(data) == {"accepted": 0}, f"the undo: got {st} {data!r}")
+        html = page_now()
+        need(has_win(fold_of(html, "wins"), "2026-07-01")
+             and not fold_of(html, "accepted"),
+             "after the undo, GET / does not list the win under Not yet paid again")
+
+        # An unreadable store reads as empty, and the page says so.
+        st, _ = post({"win": key_a, "accepted": True})
+        need(st == 200, f"the second accept after the undo: got {st}")
+        with open(store, "w") as fh:
+            fh.write("{")
+        html = page_now()
+        need(has_win(fold_of(html, "wins"), "2026-07-01"),
+             "with the store unreadable, the win is not under Not yet paid")
+        need(not fold_of(html, "accepted"), "an unreadable store still shows wins as accepted")
+        need("Your accepted wins could not be read" in fold_of(html, "wins"),
+             "the page does not say the store could not be read")
+    finally:
+        srv.shutdown()
 
 
 def bank_record_shown():
@@ -3218,6 +3438,8 @@ CASES = [
     ("estimate_is_said", "INV-90", estimate_is_said),
     ("buy_again_on_overview", "INV-93", buy_again_on_overview),
     ("paid_wins_shown", "INV-94", paid_wins_shown),
+    ("accepting_moves_a_win", "INV-116", accepting_moves_a_win),
+    ("accept_route_guards", "INV-118", accept_route_guards),
     ("bank_record_shown", "INV-104", bank_record_shown),
     ("games_by_their_names", "INV-95", games_by_their_names),
     ("matched_balls_marked", "INV-97", matched_balls_marked),
@@ -3251,6 +3473,9 @@ BREAKS = {
     "no_overview_answer": "buy_again_on_overview",
     "overview_money_zero": "buy_again_on_overview",
     "no_paid_section": "paid_wins_shown",
+    "accept_hides_bank_row": "accepting_moves_a_win",
+    "accept_any_key": "accept_route_guards",
+    "store_unread_hides": "accept_route_guards",
     "bank_figure_adopted": "bank_record_shown",
     "agreements_listed": "bank_record_shown",
     "no_data_as_agreement": "bank_record_shown",
@@ -3426,6 +3651,32 @@ def apply_render_breaks():
             "Spent R0.00, nothing to compare.")
     if broken("no_paid_section"):
         page._paid_section = lambda model: ""
+    if broken("accept_hides_bank_row"):
+        # Acceptance reaching the bank's record: the ticket's row dropped.
+        real_bank_a = page._bank_section
+
+        def hides_accepted(m):
+            gone = {w["ref"] for w in m.get("wins", []) if w.get("accepted")}
+            bank = m.get("bank")
+            if bank:
+                bank = dict(bank, differ=[r for r in bank["differ"] if r["ref"] not in gone])
+            return real_bank_a(dict(m, bank=bank))
+
+        page._bank_section = hides_accepted
+    if broken("accept_any_key"):
+        # The route trusting the posted key: no current-win check.
+        serve.accept_target = lambda wins, key: dict(key)
+    if broken("store_unread_hides"):
+        # An unreadable store read as "accept everything".
+        real_accepted_view = serve.accepted_view
+
+        def accepts_all(wins):
+            flagged, unreadable = real_accepted_view(wins)
+            if unreadable:
+                flagged = [dict(w, accepted=True) for w in flagged]
+            return flagged, unreadable
+
+        serve.accepted_view = accepts_all
     if broken("powerball_read_as_bonus"):
         real_cells = page._win_number_cells
         page._win_number_cells = lambda w: real_cells(dict(w, game="lotto"))

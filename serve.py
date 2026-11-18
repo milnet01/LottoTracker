@@ -42,6 +42,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # a dump that is merely missing - two named states of the cardinal rule
 # collapsed into one.
 DUMP = paths.DUMP
+# The accepted-wins store (LOTTO-0104 §4.2). Looked up at each call, so a test
+# can point it into a temporary folder; this file is its one reader and writer.
+ACCEPTED = paths.ACCEPTED
 DEFAULT_PORT = 4322
 MAX_BODY = 4096  # LOTTO-0014 §4.1: an unbounded rfile.read() is a hang
 BODY_KEYS = ("autostart", "open_on_start")
@@ -54,7 +57,8 @@ SECURITY_HEADERS = (
     ("Content-Security-Policy", "frame-ancestors 'none'"),
     ("Cache-Control", "no-store"),
 )
-ALLOW = {"/": "GET", "/status": "GET", "/refresh": "POST", "/settings": "POST"}
+ALLOW = {"/": "GET", "/status": "GET", "/refresh": "POST", "/settings": "POST",
+         "/accept": "POST"}
 
 
 def _data_address(mime, *path):
@@ -160,6 +164,99 @@ def write_settings(changes):
                 json.dumps({"open_on_start": changes["open_on_start"]}),
             )
         return read_settings()
+
+
+def _settings_body_ok(obj):
+    """POST /settings: the two booleans, each optional, and nothing else."""
+    return all(k in BODY_KEYS and isinstance(v, bool) for k, v in obj.items())
+
+
+# --------------------------------------------------------- accepted wins I/O
+#
+# LOTTO-0104. The user's choice not to chase a win the bank has not fully paid.
+# The store holds win keys only (page.ACCEPT_KEY's six fields), never an amount.
+
+_accepted_lock = threading.Lock()
+
+
+def _is_key(obj):
+    """A dict of exactly the six key fields, each a plain value."""
+    return (isinstance(obj, dict) and set(obj) == set(page.ACCEPT_KEY)
+            and all(v is None or isinstance(v, (str, int)) for v in obj.values()))
+
+
+def _key_of(win):
+    return tuple(win.get(f) for f in page.ACCEPT_KEY)
+
+
+def _accept_body_ok(obj):
+    """POST /accept: {"win": <key>, "accepted": bool}, and nothing else."""
+    return (set(obj) == {"win", "accepted"} and isinstance(obj["accepted"], bool)
+            and _is_key(obj["win"]))
+
+
+def read_accepted():
+    """-> (entries, unreadable). An absent file is an empty store. Anything
+    else that cannot be read, or has the wrong shape, is empty AND unreadable:
+    a lost store flags its wins again, never hides one (LOTTO-0104 §6)."""
+    try:
+        with open(ACCEPTED, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return [], False
+    except (OSError, ValueError):
+        return [], True
+    if (not isinstance(data, dict) or set(data) != {"version", "accepted"}
+            or data["version"] != 1 or not isinstance(data["accepted"], list)
+            or not all(_is_key(e) for e in data["accepted"])):
+        return [], True
+    return data["accepted"], False
+
+
+def _flag(wins, entries):
+    """A copy of each win, `accepted: True` where its key is stored. The
+    model's own wins are never changed: do_GET's view is a shallow copy."""
+    keys = {_key_of(e) for e in entries}
+    return [dict(w, accepted=True) if _key_of(w) in keys else dict(w) for w in wins]
+
+
+def accepted_view(wins):
+    """-> (wins flagged from the store, unreadable). Read at every GET /, so an
+    acceptance shows at the next page load with no rebuild."""
+    entries, unreadable = read_accepted()
+    return _flag(wins, entries), unreadable
+
+
+def accept_target(wins, key):
+    """The win under Not yet paid, with the store applied, whose key is `key`;
+    else None. page._waiting() decides that list, so the route and the page
+    cannot disagree about what may be accepted (INV-118)."""
+    want = _key_of(key)
+    return next((w for w in page._waiting(wins) if _key_of(w) == want), None)
+
+
+def write_accepted(key, accepted, wins):
+    """-> (status, entries now stored). 409 writes nothing.
+
+    Under one lock across the read, the change and the write, for the reason
+    write_settings() holds one. The entry written is the matched model win's
+    own fields, and Undo removes the store's own entry, so no request-derived
+    string is ever written (LOTTO-0014 INV-14).
+    """
+    with _accepted_lock:
+        entries, _unreadable = read_accepted()
+        if accepted:
+            target = accept_target(_flag(wins, entries), key)
+            if target is None:
+                return 409, None
+            entries = entries + [{f: target.get(f) for f in page.ACCEPT_KEY}]
+        else:
+            kept = [e for e in entries if _key_of(e) != _key_of(key)]
+            if len(kept) == len(entries):
+                return 409, None
+            entries = kept
+        write_atomic(ACCEPTED, json.dumps({"version": 1, "accepted": entries}, indent=1) + "\n")
+        return 200, len(entries)
 
 
 # ----------------------------------------------------------------- the model
@@ -819,7 +916,7 @@ def make_server(build_model_fn, token, port):
                 return False
             return secrets.compare_digest(got, token)
 
-        def _read_body(self):
+        def _read_body(self, valid):
             self._body_read = True
             raw = self.headers.get("Content-Length")
             if raw is None:
@@ -837,11 +934,8 @@ def make_server(build_model_fn, token, port):
                 obj = json.loads(data or b"{}")
             except ValueError:
                 return None, 400
-            if not isinstance(obj, dict):
+            if not isinstance(obj, dict) or not valid(obj):
                 return None, 400
-            for k, v in obj.items():
-                if k not in BODY_KEYS or not isinstance(v, bool):
-                    return None, 400
             return obj, 200
 
         # Set per request, before any handler runs, so _send() can tell a
@@ -927,6 +1021,8 @@ def make_server(build_model_fn, token, port):
             # that. Read only when absent; a built model already carries it.
             if "settings" not in view:
                 view["settings"] = _settings_snapshot()
+            # LOTTO-0104 §4.4: a copy of each win, flagged from the store.
+            view["wins"], view["accepted_unreadable"] = accepted_view(view.get("wins") or [])
             try:
                 body = page.render(view, token).encode()
             except Exception as exc:  # noqa: BLE001
@@ -978,7 +1074,10 @@ def make_server(build_model_fn, token, port):
             if path == "/refresh":
                 self._send(202 if refresh(state, build_model_fn) else 409)
                 return
-            changes, code = self._read_body()
+            if path == "/accept":
+                self._accept()
+                return
+            changes, code = self._read_body(_settings_body_ok)
             if changes is None:
                 self._send(code)
                 return
@@ -988,6 +1087,24 @@ def make_server(build_model_fn, token, port):
                 self._send(500)
                 return
             self._send(200, json.dumps(now).encode(), "application/json")
+
+        def _accept(self):
+            body, code = self._read_body(_accept_body_ok)
+            if body is None:
+                self._send(code)
+                return
+            model = state.get()[0] or {}
+            try:
+                code, count = write_accepted(body["win"], body["accepted"],
+                                             model.get("wins") or [])
+            except OSError:
+                self._send(500)
+                return
+            if code != 200:
+                self._send(code)
+                return
+            # A count, never ticket data, as GET /status carries only counts.
+            self._send(200, json.dumps({"accepted": count}).encode(), "application/json")
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     # The read timeout lives on Handler (see its `timeout`), because

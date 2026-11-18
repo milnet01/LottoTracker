@@ -2,6 +2,7 @@
 
 **Status:** accepted (2026-08-02) — three cold-eyes loops, converged by cap
 and by the collateral trigger; 78 verified findings fixed, 0 deferred. See §13.
+**Amended 2026-11-18** for LOTTO-0104: §1, §4.1, §4.4, INV-14, §11, §13.
 **Kind:** security.
 **Source:** ROADMAP LOTTO-0014 — split out of LOTTO-0002 on 2026-08-02, second
 cut. The security constraints were researched with the user on 2026-08-01 and
@@ -17,7 +18,7 @@ your lottery tickets off the page running on your own machine.*
 
 ## 1. Goal
 
-After this ships, `serve.py` answers exactly four routes and nothing else; a
+After this ships, `serve.py` answers exactly five routes and nothing else; a
 request whose `Host` header is not one this server serves gets a 421 with no
 body; a POST that changes anything must carry a secret only the real page was
 given; no caller-supplied **string** is ever echoed into a response header or a
@@ -71,9 +72,9 @@ INV-13, INV-14 and INV-21; §5 maps the rest.
 
 ## 4. Design
 
-### 4.1 The four routes, and the routing floor
+### 4.1 The five routes, and the routing floor
 
-Four routes, and nothing else — every other path is 404.
+Five routes, and nothing else — every other path is 404.
 
 | Method | Path | Returns | Changes state |
 |---|---|---|---|
@@ -81,6 +82,7 @@ Four routes, and nothing else — every other path is 404.
 | GET | `/status` | `{"building": bool, "built": "<ISO>"\|null, "stale": bool, "requests": int, "found": {"new_wins": int, "new_cents": int}\|null}` | no |
 | POST | `/refresh` | 202 accepted, or 409 if one is already running | results only |
 | POST | `/settings` | 200 + the settings as now stored | writes or removes LOTTO-0002 §4.7's two files |
+| POST | `/accept` | 200 + `{"accepted": int}`, the entries now stored; 409 when the request names no win it may change | writes LOTTO-0104's accepted-wins store |
 
 `POST /settings` takes `{"autostart": bool, "open_on_start": bool}` as JSON and
 returns the same shape **re-read from disk after writing**, not the request
@@ -90,14 +92,18 @@ that setting alone, and `{}` is valid — a no-op returning 200 with the setting
 unchanged. A body that is not an object of those two keys with boolean values is
 400, and nothing is written. `POST /refresh` takes no body.
 
-**The body rules below apply to `POST /settings` only.** `POST /refresh` takes
+`POST /accept` takes `{"win": <key>, "accepted": bool}`, where the key is an
+object of exactly LOTTO-0104 §4.1's six fields. Any other body is 400, and
+nothing is written. LOTTO-0104 §4.3 owns when it is 200 and when 409.
+
+**The body rules below apply to `POST /settings` and `POST /accept` only.** `POST /refresh` takes
 no body and is accepted with `Content-Length: 0` or with the header absent
 entirely — which is what a bodiless `urllib` POST sends, and therefore what
 LOTTO-0013 §4.1's `post()` sends. A rule that 400'd a missing `Content-Length`
 on every route would break the tray's Refresh item: the same failure §4.3's
 token channel exists to prevent, arriving through validation instead.
 
-**`POST /settings`'s body is read bounded, never `rfile.read()` to EOF.** At
+**A POST body is read bounded, never `rfile.read()` to EOF.** At
 most `Content-Length` bytes and at most **4 KiB**; a declared length above that
 is **413** and nothing is read past the cap, and a missing, non-numeric or
 negative `Content-Length` is **400**. **The socket carries a read timeout**
@@ -123,9 +129,9 @@ interpreter, which is not something a security boundary should volunteer.
 <!-- `requests` and `found` added by LOTTO-0019 §4.2. Both are counts, never
      ticket data: `/status` stays strictly a smaller disclosure than `GET /`. -->
 
-| `200` on `GET /status`, `POST /settings` | `Server`, `Date`, `Content-Type: application/json`, `Content-Length`, + the three below |
+| `200` on `GET /status`, `POST /settings`, `POST /accept` | `Server`, `Date`, `Content-Type: application/json`, `Content-Length`, + the three below |
 | `202` / `409` on `POST /refresh` | `Server`, `Date`, `Content-Length: 0`, + the three below |
-| `400` / `403` / `413` / `500` | `Server`, `Date`, `Content-Length: 0`, + the three below |
+| `400` / `403` / `413` / `500`, and `409` on `POST /accept` | `Server`, `Date`, `Content-Length: 0`, + the three below |
 | `404` | `Server`, `Date`, `Content-Length: 0`, + the three below |
 | `405` | as `404`, plus `Allow` from the fixed per-path table |
 | `421` | `Server`, `Date`, `Content-Length: 0`, + the three below |
@@ -176,7 +182,9 @@ build its response (§4.1), and two concurrent toggles without a lock can each
 return the other's result — a switch that snaps to a value the user did not
 choose, which is the exact failure the re-read was introduced to prevent.
 LOTTO-0002 §4.2 puts the model behind one lock for the same reason; this is the
-file half of it.
+file half of it. **`POST /accept` holds its own lock across its read, its
+change and its write**, for the same reason: two accepts at once would each
+write a store missing the other's entry.
 
 ### 4.2 Host allowlist, and why `Origin` is not a substitute
 
@@ -321,7 +329,9 @@ file, precisely so the switch cannot drift from what the desktop actually does.
 Writing an `autostart` key into `settings.json` would create the duplicated
 state that decision exists to prevent. This is why INV-14 is scoped to
 request-derived *strings*.) The only request-derived
-values ever written are §4.1's two validated booleans. INV-14.
+values ever written are §4.1's two validated booleans. `POST /accept` writes
+only values copied from the model: the matched win's own fields, or the
+store less its own entry (LOTTO-0104 §4.3). INV-14.
 
 **That file names `tray.py`, not the module that writes it.** The writer is
 `serve.py` — `POST /settings` is a server route — so `os.path.abspath(__file__)`
@@ -473,7 +483,8 @@ names only what the splits moved.
 
 - **INV-14** — No request-derived **string** reaches a response header or a
   written file. The only request-derived values ever written are §4.1's two
-  validated booleans; the `.desktop` file's contents are constant.
+  validated booleans; the `.desktop` file's contents are constant; and
+  `POST /accept` writes only values copied from the model.
   *Test:* `tools/verify_page.py`, case `no_reflected_headers` — the poison is
   **percent-encoded** (`/a%0d%0aX-Injected:+yes`), not raw, and the `Host`
   header is valid on every request. The case **first issues a valid
@@ -498,6 +509,9 @@ names only what the splits moved.
   the case goes green against exactly the bug it was written for. §7's own
   prescribed breakage ("reflect `self.path` into a response header") would not
   turn it red. It also asserts the `.desktop` file is byte-identical afterwards.
+  It then posts `/accept` with the poison as the key's `ref`: no win has that
+  key, so it asserts a 409, the header-name set, no header echoing the poison,
+  and no store written (LOTTO-0104 INV-118).
   **The same case covers §4.1's body validation**, because that rule is what
   keeps this invariant's "the only request-derived values ever written are two
   validated booleans" true: a body with a non-boolean value, a body with an
@@ -696,7 +710,7 @@ breakages, each stated precisely enough to actually go red:
 | §4.2 the lowercased, whole-string `Host` comparison | `tools/verify_page.py::host_allowlist` — one poison per weaker comparison (§4.2's table) |
 | §4.4 the access log silenced, so no request line reaches stderr | **nothing** — no case reads the server's stderr. The exposure is bounded by INV-21 anyway, since a request line can carry no ticket data; code review only |
 | §4.1 the fixed check order (Host before token before body) | `tools/verify_page.py::host_allowlist` — its poisoned POSTs expect 421, which only a Host-first implementation returns |
-| §4.1 the write lock on `POST /settings` | **nothing** — two concurrent toggles need two clients racing; observable only as a switch snapping to a value nobody chose |
+| §4.1 the write locks on `POST /settings` and `POST /accept` | **nothing** — two concurrent writes need two clients racing; observable only as a switch snapping to a value nobody chose, or an accepted win showing again |
 | §4.1 no request path ever joined to a filesystem path | **nothing** — the class is removed by construction (`BaseHTTPRequestHandler`, bodies built in memory) rather than defended, so there is nothing to probe; code review only |
 | §4.1 the per-route `Content-Type` | **nothing** — no case asserts it; a wrong one is visible immediately in a browser rather than silent |
 | §4.4 anti-framing headers on every response | `tools/verify_page.py::host_allowlist` |
@@ -735,3 +749,4 @@ Eighteen rows, six `nothing`.
 | 2 | 2026-08-02 | 2 | 1 | 8 | 11 | 12 | All 32 verified findings fixed; 0 unverified, 0 deferred. **Origin split: roughly 12 fix collateral against 4 draft defects**, so the batch was answered by re-sweeping wholesale. Loop 1 fixed four security cases that could pass against an undefended server; loop 2 found that three of those fixes were themselves wrong. **The CRITICAL was loop 1's own poison list.** It specified five `Host` values hard-coded to port 4322, while every case binds an ephemeral port — so against a server on any other port `evil.example.127.0.0.1:4322` stops satisfying `endswith("127.0.0.1:<bound port>")`, the prescribed §7 breakage stays green, and the case proves nothing. The values are now built from the port the case actually bound. **Loop 1's header-injection fix was literally unsatisfiable:** it required that no response header value contain "any substring of the requested path", and the path shares single characters with `application/json` and `no-store` — computed, 7 and 5 shared substrings respectively — so the assertion could never pass. Restated as the whole path or a percent-decoded form of it. Its companion clause, a "fixed expected list" of header names on every response, could not hold either: §4.1 gives 421/404/405 no `Content-Type` and gives 405 an `Allow` the others lack, so the expected set is now per response shape. **And loop 1's own red-test disclaimer was wrong** — it warned that `host.endswith(allowlisted_value)` might leave the case green, when that string IS the allowlisted value and `evil.example.127.0.0.1:4322` does satisfy it; verified, and the disclaimer deleted. One collateral finding was a genuine functional risk: loop 1 added "a missing, non-numeric or negative `Content-Length` is 400" without scoping it, and a bodiless `urllib` POST — which is exactly what LOTTO-0013's `post()` sends to `/refresh` — omits that header, so the rule as written 400s the tray's Refresh item. The body rules are now scoped to `/settings`. Genuine draft defects: §1 promised a "bare 421" and "nothing a caller sends is ever echoed into a written file", contradicting §4.2's headers-on-every-response and §4.4's two validated booleans in `settings.json`; §4.1 never said routing matches the path component only, under which reading INV-21's `GET /?x=1` comparison would 404 twice and pass vacuously against a server that renders nothing; and §10 claimed the browser's six-connection limit as a bound while §2's threat model is a hostile page that can open tabs and workers — now an explicit acceptance with its reasoning rather than a false bound. Two duplicated words and two review-history asides in the contract body were removed, and the CORS-while-debugging rationale went from three statements to one. Doc grew 603 -> 648 lines. |
 | 3 | 2026-08-02 | 2 | 1 | 4 | 8 | 8 | **Converged by cap, and by the collateral trigger — both fired together.** All 21 verified findings fixed; 0 unverified, 0 deferred. Origin split: roughly 8 fix collateral against 4 draft defects, after loop 2's 12-against-4 — two loops running, which is the stop-and-consolidate signal, reached on the same pass as the cap. **Both lanes led on the same CRITICAL, and loop 1 had created it.** Loop 1 wrote that `POST /settings` writes "exactly two validated booleans" into `settings.json`. It writes **one**: LOTTO-0002 §4.7 stores autostart as the *presence* of the `.desktop` file and says so explicitly — "The autostart setting has no separate record — the file *is* the state, so the switch cannot drift". An implementer satisfying INV-14 as written would have added an `autostart` key and built exactly the duplicated state that decision exists to forbid. Corrected in both places, with the reason stated so it is not reintroduced. **A HIGH that only an implementer would have hit:** INV-14's central assertion — the response header name set is "exactly the set that response shape is supposed to carry" — had no referent anywhere in the document, and `BaseHTTPRequestHandler.send_response()` emits `Server` and `Date` whether or not the handler asks for them (measured: a minimal handler returns `Server: BaseHTTP/0.6 Python/3.13.14`, `Date`, `Content-Type`). §4.1 now carries a per-shape header table naming every header on every status, and `Server` is overridden to a constant — the default volunteers both the server and the interpreter version from a security boundary. **The check order was load-bearing and lived only in a test note**: INV-12 fires poisoned hosts at both POST routes expecting 421, which only a Host-before-token implementation returns, so an implementer ordering them the other way fails a case written against a correct server. §4.1 now states the ladder. And `host_allowlist` never exercised `localhost` or case-folding at all, while §11 claimed it covered "the lowercased, whole-string comparison" — the allowlist's second entry was shipping untested; the case now carries three good hosts including a mixed-case one. Genuine draft defects: `ThreadingHTTPServer` plus two files and a read-back with no lock, so concurrent toggles can each return the other's result — the exact failure the read-back was added to prevent; no socket read timeout, so a client declaring 4000 bytes and sending 1 hangs a thread just as completely as an unbounded read; and §4.4's anti-framing rationale claimed the framing page obtains the token, which it cannot — the attack is clickjacking, and a wrong mechanism in a security rationale invites wrong reasoning elsewhere. §11 grew to eighteen rows and six `nothing`. Doc grew 648 -> 722 lines. |
 | 0-split | 2026-08-02 | — | — | — | — | — | **Provenance row — no reviewer was dispatched, and this is not a review loop.** Second cut of `docs/specs/LOTTO-0002-local-web-page.md`, taken by the user on 2026-08-02 after the first cut (LOTTO-0013, the tray) removed only 66 of 1,161 lines and left the page half at 1,095. The seam here is subject rather than invariant count: this document is the web-security boundary — the routes, the `Host` allowlist, the token and the response-header rules — and what remains in LOTTO-0002 is the lottery-data honesty rules. They need different expertise to review, which is the argument for the cut. Carried over unchanged in substance: the parent's §4.3 (now §4.1) and §4.4 (now §4.2–§4.4), and INV-12, INV-13, INV-14 and INV-21 with their test clauses. **The parent's three cold-eyes loops confer nothing on this document** — they were run against 1,161 lines that no longer exist, and this file starts at loop 1 on its own bytes. Their record is archived at `docs/specs/LOTTO-0002-pre-split-review-log.md`. Two edits were made rather than copied: INV-13's test clause said "four POSTs" while listing five, corrected here to five; and the parent's §4.4 carried three bare references to "§4.7", a section that now lives in another document, all three of which are qualified here. The last of them survived the first qualifying pass and was caught by a mechanical cross-reference sweep rather than by reading. |
+| 0104-impl | 2026-11-18 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0104 adds a fifth route, `POST /accept`, which writes the accepted-wins store. §1 and §4.1 count five routes; §4.1 gains its row, its body, its response headers and its own lock; §4.4 and INV-14 say it writes only values copied from the model. `host_allowlist`, `token_required` and `no_reflected_headers` now send it. |

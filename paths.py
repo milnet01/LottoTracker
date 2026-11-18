@@ -35,6 +35,9 @@ DUMP = os.path.join(DATA, "lotto_sms_raw.txt")
 THREADS = os.path.join(DATA, "sms_threads.json")
 ARCHIVE = os.path.join(DATA, "archive_results.json")
 CACHE = os.path.join(DATA, "archive_cache")
+# The wins the user accepted as not worth chasing (LOTTO-0104). serve.py is its
+# one reader and one writer.
+ACCEPTED = os.path.join(DATA, "accepted.json")
 
 
 def resource(*parts):

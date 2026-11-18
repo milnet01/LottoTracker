@@ -104,6 +104,8 @@ The page opens on an overview: when to buy next, each ticket still running,
 the wins still waiting on the bank, and this year's money. Other tabs show
 every win, every entry with its cost and winnings, your spending against your
 winnings by period, and the bank's own record beside the app's.
+On the Wins tab, **Accept** moves a win the bank has not fully paid out of the
+waiting count, and **Undo** brings it back.
 
 A settings panel has two switches. One starts the icon when you log in. The
 other opens the page when the icon starts.

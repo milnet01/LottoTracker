@@ -431,17 +431,33 @@ def _payment_cell(w):
     A win with no `payment` key reads as unknown: missing data never reads as
     paid, and a deadline with no state beside it would hide that it is missing.
     """
+    cls, words, detail = _payment_state(w)
+    stamp = f'<span class="stamp {cls}">{words}</span>'
+    if detail:
+        return f'<td class="stampcell wrap">{stamp} — {detail}</td>'
+    return f'<td class="stampcell">{stamp}</td>'
+
+
+def _payment_state(w):
+    """(stamp class, words, detail or "") for a win the bank has not fully paid."""
     state = w.get("payment", "unknown")
     if state == "partly paid":
-        stamp = '<span class="stamp wait">partly paid</span>'
         p, c = w.get("ref_paid_cents"), w.get("ref_computed_cents")
+        detail = ""
         if p is not None and c is not None:
-            return (f'<td class="stampcell wrap">{stamp} — the bank paid {_e(_rands(p))} '
-                    f"of {_e(_rands(c))} on this ticket</td>")
-        return f'<td class="stampcell">{stamp}</td>'
+            detail = f"the bank paid {_e(_rands(p))} of {_e(_rands(c))} on this ticket"
+        return "wait", "partly paid", detail
     if state == "unpaid":
-        return '<td class="stampcell"><span class="stamp wait">unpaid</span></td>'
-    return '<td class="stampcell"><span class="stamp dim">payment unknown</span></td>'
+        return "wait", "unpaid", ""
+    return "dim", "payment unknown", ""
+
+
+def _accepted_payment_cell(w):
+    """Stamped accepted; what the bank did is still said, in words."""
+    _cls, words, detail = _payment_state(w)
+    said = f"{words} — {detail}" if detail else words
+    return (f'<td class="stampcell wrap"><span class="stamp acc">accepted</span> '
+            f'<span class="muted">{said}</span></td>')
 
 
 def _waiting(wins):
@@ -449,10 +465,38 @@ def _waiting(wins):
 
     A win the bank paid carries no deadline anywhere on the page. Every other
     unexpired win is here, "unknown" included - which is what keeps the
-    empty-state sentence true when no payout data parsed at all.
+    empty-state sentence true when no payout data parsed at all - unless the
+    user accepted it (LOTTO-0104).
     """
     return [w for w in wins
-            if not w.get("expired") and w.get("payment", "unknown") != "paid"]
+            if not w.get("expired") and w.get("payment", "unknown") != "paid"
+            and not w.get("accepted")]
+
+
+def _accepted(wins):
+    """The wins under Accepted by you: accepted, unexpired, and not paid
+    (LOTTO-0104 INV-117). A paid win shows under Paid by the bank only."""
+    return [w for w in wins
+            if w.get("accepted") and not w.get("expired")
+            and w.get("payment", "unknown") != "paid"]
+
+
+# The six fields that name one win (LOTTO-0104 §4.1). No amount, so a corrected
+# price does not orphan an acceptance. serve.py matches and stores on these.
+ACCEPT_KEY = ("ref", "game", "plus_flag", "pool_id", "line", "date")
+
+# Said by both empty states when the only waiting wins are accepted ones, where
+# "No unexpired win is waiting on the bank" would be false.
+ACCEPTED_EMPTY = "No win is waiting on the bank that you have not accepted."
+
+
+def _choice_cell(w, accept):
+    """Accept or Undo. The key goes in one data-win attribute, as JSON, and the
+    script posts it unchanged (LOTTO-0104 §4.4)."""
+    key = json.dumps({f: w.get(f) for f in ACCEPT_KEY})
+    words = "Accept" if accept else "Undo"
+    return (f'<td class="act"><button type="button" class="choose" data-win="{_e(key)}" '
+            f'data-accept="{"1" if accept else "0"}">{words}</button></td>')
 
 
 # The cells a win shows whatever its payment state. "Draw" is the default sort.
@@ -483,54 +527,83 @@ def _ball_key(model):
     )
 
 
+def _expires_cell(w):
+    """-> (row class, the Expires cell). A deadline within 30 days is marked."""
+    d = w.get("expires_in_days")
+    cls = "soon" if d is not None and d <= 30 else ""
+    if d == 0:
+        return "today", f'<td class="stack" data-sort="{_e(w.get("expires"))}">today</td>'
+    if d is not None and d < 0:
+        # Past its claim date. Not "today" - and s4.5 requires every
+        # win to name its date, which the old `d <= 0` branch threw
+        # away along with the distinction.
+        return "today", _date_cell(
+            w.get("expires"), ' <span class="muted">(claim date passed)</span>', "stack")
+    return cls, _date_cell(
+        w.get("expires"),
+        "" if d is None else f' <span class="muted">({_count(d, "day", "days")})</span>',
+        "stack")
+
+
+# Not yet paid and Accepted by you show the same cells. The last column holds
+# the Accept or Undo button and has no heading words: the button says it.
+WAIT_COLUMNS = WIN_COLUMNS + [("Payment", "text"), ("Expires", "date"), ("", None)]
+
+
 def _wins_section(model):
-    live = _waiting(model.get("wins", []))
+    wins = model.get("wins", [])
+    live = _waiting(wins)
     # Latest draw first, the user's call of 2026-11-02 (INV-85). A deadline
     # within 30 days stays marked, and the Expires heading sorts by it.
     live = _newest_first(live, "date")
+    unread = ""
+    if model.get("accepted_unreadable"):
+        # LOTTO-0104 §6: a lost store flags its wins again, and says why.
+        unread = ('<p class="notcheckable">Your accepted wins could not be read, '
+                  "so they show here again.</p>")
     if not live:
+        first = (ACCEPTED_EMPTY if _accepted(wins)
+                 else "No unexpired win is waiting on the bank.")
         body = (
-            '<p class="muted">No unexpired win is waiting on the bank. This '
+            f'<p class="muted">{first} This '
             "counts only the entries that could be checked &mdash; see the "
             "banner above.</p>"
         )
     else:
         rows = []
         for w in live:
-            d = w.get("expires_in_days")
-            cls = "soon" if d is not None and d <= 30 else ""
-            if d == 0:
-                cls = "today"
-                expires = f'<td class="stack" data-sort="{_e(w.get("expires"))}">today</td>'
-            elif d is not None and d < 0:
-                # Past its claim date. Not "today" - and s4.5 requires every
-                # win to name its date, which the old `d <= 0` branch threw
-                # away along with the distinction.
-                cls = "today"
-                expires = _date_cell(
-                    w.get("expires"), ' <span class="muted">(claim date passed)</span>', "stack")
-            else:
-                expires = _date_cell(
-                    w.get("expires"),
-                    "" if d is None
-                    else f' <span class="muted">({_count(d, "day", "days")})</span>',
-                    "stack")
+            cls, expires = _expires_cell(w)
             rows.append(
                 f'<tr class="{cls}" data-game="{_e(w["game"])}">'
                 + _win_cells(w)
                 + _payment_cell(w)
                 + expires
+                + _choice_cell(w, accept=True)
                 + "</tr>"
             )
-        body = _sorted_table(
-            "wins",
-            WIN_COLUMNS + [("Payment", "text"), ("Expires", "date")],
-            "".join(rows),
-            5,
-        )
+        body = _sorted_table("wins", WAIT_COLUMNS, "".join(rows), 5)
     gist = (f"{_count(len(live), 'win', 'wins')} waiting on the bank" if live
             else "None waiting")
-    return _fold("wins", "Not yet paid", gist, body)
+    return _fold("wins", "Not yet paid", gist, unread + body)
+
+
+def _accepted_section(model):
+    """Wins the user chose not to chase (LOTTO-0104). Shown only when there is
+    one. No row is marked for a near deadline: the user has let it go."""
+    accepted = _newest_first(_accepted(model.get("wins", [])), "date")
+    if not accepted:
+        return ""
+    rows = "".join(
+        f'<tr data-game="{_e(w["game"])}">'
+        + _win_cells(w)
+        + _accepted_payment_cell(w)
+        + _expires_cell(w)[1]
+        + _choice_cell(w, accept=False)
+        + "</tr>"
+        for w in accepted
+    )
+    return _fold("accepted", "Accepted by you", _count(len(accepted), "win", "wins"),
+                 _sorted_table("accepted", WAIT_COLUMNS, rows, 5))
 
 
 def _paid_section(model):
@@ -834,12 +907,12 @@ def _go(tab, words):
 
 
 def _glance_wins(model):
-    waiting = _waiting(model.get("wins", []))
+    wins = model.get("wins", [])
+    waiting = _waiting(wins)
     if not waiting:
-        said = (
-            "No unexpired win is waiting on the bank. This counts only the "
-            "entries that could be checked."
-        )
+        first = (ACCEPTED_EMPTY if _accepted(wins)
+                 else "No unexpired win is waiting on the bank.")
+        said = f"{first} This counts only the entries that could be checked."
     else:
         soonest = min(w.get("expires") or "9999" for w in waiting)
         said = (
@@ -1278,14 +1351,14 @@ th{font-weight:700;color:var(--dim);border-bottom:2px solid var(--line)}
 tbody tr:hover td{background:var(--panel)}
 .cards th,.cards td{white-space:nowrap}
 .cards td.wrap{white-space:normal;min-width:14rem}
-#wins th,#wins td,#paid th,#paid td{padding-left:.4rem;padding-right:.4rem}
+#wins th,#wins td,#paid th,#paid td,#accepted th,#accepted td{padding-left:.4rem;padding-right:.4rem}
 .tablewrap{overflow-x:auto}
 .money{text-align:right;font-variant-numeric:tabular-nums}
 .won{font-weight:700;color:var(--accent)}
 td.ref{color:var(--dim)}
 td.stack .muted{display:block}
 .nil{color:var(--dim)}
-#wins td.money,#paid td.money{font-size:1.2rem;font-weight:700}
+#wins td.money,#paid td.money,#accepted td.money{font-size:1.2rem;font-weight:700}
 .pip{display:inline-block;width:.8em;height:.8em;margin-right:.5em;border-radius:50%;background:#4a5568}
 .nums{white-space:nowrap}
 .ball{display:inline-block;position:relative;min-width:2rem;height:2rem;line-height:2rem;
@@ -1363,10 +1436,10 @@ td.stack .muted{display:block}
 .glance .foldball{width:1.7rem;height:1.7rem;font-size:1.2rem}
 .glance p{margin:.3rem 0 1.1rem;max-width:60ch;line-height:1.7}
 .glance strong{font-size:1.3em;font-weight:800;font-variant-numeric:tabular-nums}
-.golink{cursor:pointer;padding:.45rem 1rem;background:none;border:2px solid var(--accent);font-weight:700;
+.golink,.choose{cursor:pointer;padding:.45rem 1rem;background:none;border:2px solid var(--accent);font-weight:700;
  transition:background-color .15s,color .15s}
-.golink:hover{background:var(--accent);color:var(--bg)}
-html:not(.js) .golink{display:none}
+.golink:hover,.choose:hover{background:var(--accent);color:var(--bg)}
+html:not(.js) .golink,html:not(.js) .choose,html:not(.js) td.act{display:none}
 tr.soon td{background:var(--warn-bg)}tr.today td{background:var(--bad-bg);font-weight:600}
 .row{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1.25rem;margin:.5rem 0}
 section>p.muted{max-width:75ch}
@@ -1428,6 +1501,8 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
 .stamp.wait{color:var(--warn)}
 .stamp.paid{color:var(--on)}
 .stamp.dim{color:var(--dim)}
+.stamp.acc{color:var(--fg)}
+#accepted td.stampcell .muted{display:block;margin-top:.5rem}
 /* Not checkable is a dashed badge, never a figure: it must not read as a zero. */
 .nc{padding:0 .4rem;border:2px dashed currentColor;border-radius:.4rem;font-weight:700;
  -webkit-box-decoration-break:clone;box-decoration-break:clone}
@@ -1448,7 +1523,7 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
   grid-template-columns:var(--stub) repeat(auto-fill,minmax(13rem,1fr));border-radius:.8rem;
   mask:radial-gradient(circle .7rem at var(--stub) 0,transparent 97%,#000),
    radial-gradient(circle .7rem at var(--stub) 100%,transparent 97%,#000);mask-composite:intersect}
- .cards tr[data-game] td,#wins tr[data-game] td,#paid tr[data-game] td{padding:.8rem 1.1rem .2rem}
+ .cards tr[data-game] td,#wins tr[data-game] td,#paid tr[data-game] td,#accepted tr[data-game] td{padding:.8rem 1.1rem .2rem}
  .cards tr[data-game] td:last-child{padding-bottom:1rem}
  .cards tr[data-game] td.game,#bank tr[data-game] td.ref{order:-1;grid-column:1;grid-row:1/span 6;
   padding:1.1rem 1.2rem;background:var(--g);color:#fff;font-size:1.35rem;font-weight:800;line-height:1.2;
@@ -1457,16 +1532,19 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
  #bank tr[data-game] td.ref{font-size:1.05rem;overflow-wrap:anywhere}
  .cards td.game:before,#bank tr[data-game] td.ref:before,.cards td.game .pip{display:none}
  /* A win's amount is printed on its stub, like the total on a receipt. */
- #wins td.money,#paid td.money{grid-column:1;grid-row:3/span 4;z-index:1;align-self:end;
+ #wins td.money,#paid td.money,#accepted td.money{grid-column:1;grid-row:3/span 4;z-index:1;align-self:end;
   padding:0 1.2rem 1.1rem;color:#fff;font-size:2rem;font-weight:800}
- #wins td.money:before,#paid td.money:before,#wins td.money .muted{color:#fff}
+ #wins td.money:before,#paid td.money:before,#accepted td.money:before,#wins td.money .muted,
+ #accepted td.money .muted{color:#fff}
  .cards tr:has(> td.stampcell),#paid tr[data-game]{padding-right:12rem}
  .cards td.stampcell{position:absolute;top:1rem;right:1.2rem;max-width:11rem;padding:0;
   text-align:right}
  .cards td.stampcell:before{display:none}
- #wins tr[data-game] td.stampcell{padding:0}
+ #wins tr[data-game] td.stampcell,#accepted tr[data-game] td.stampcell{padding:0}
+ /* The button says what it does, so its cell carries no label. */
+ .cards td.act:before{display:none}
  /* A set of numbers takes two columns, so six balls stay on one line. */
- #wins td.nums,#paid td.nums{grid-column:span 2}
+ #wins td.nums,#paid td.nums,#accepted td.nums{grid-column:span 2}
  #paid tr[data-game]:after{content:"Paid";content:"Paid"/"";position:absolute;top:1rem;right:1.2rem;
   padding:.1rem .65rem;border:3px double var(--on);border-radius:.4rem;color:var(--on);
   font-weight:800;letter-spacing:.06em;text-transform:uppercase;transform:rotate(-5deg)}
@@ -1488,19 +1566,20 @@ th[aria-sort=ascending] .sorthead:after{content:" \\25B2"}
  .cards tr[data-game]{grid-template-columns:1fr;mask:none;padding-right:0}
  .cards tr[data-game] td.game,#bank tr[data-game] td.ref{grid-row:auto;border-right:0;
   border-bottom:4px dotted var(--bg)}
- #wins td.money,#paid td.money{grid-column:auto;grid-row:auto;color:inherit;font-size:1.5rem;padding:.6rem 1.1rem 0}
- #wins td.money:before,#paid td.money:before{color:var(--dim)}
+ #wins td.money,#paid td.money,#accepted td.money{grid-column:auto;grid-row:auto;color:inherit;
+  font-size:1.5rem;padding:.6rem 1.1rem 0}
+ #wins td.money:before,#paid td.money:before,#accepted td.money:before{color:var(--dim)}
  .cards td.stampcell{position:static;max-width:none;padding:.6rem 1.1rem 1rem;text-align:left}
  .cards tr:has(> td.stampcell),#paid tr[data-game]{padding-right:0}
- #wins td.nums,#paid td.nums{grid-column:auto}
- #wins tr[data-game] td.stampcell{padding:.6rem 1.1rem 1rem}
+ #wins td.nums,#paid td.nums,#accepted td.nums{grid-column:auto}
+ #wins tr[data-game] td.stampcell,#accepted tr[data-game] td.stampcell{padding:.6rem 1.1rem 1rem}
  #paid tr[data-game]:after{position:static;justify-self:start;margin:.6rem 1.1rem 1rem}
  #periods tr{display:grid;grid-template-columns:1fr auto auto}
  #periods th:last-child{display:none}
  #periods td:last-child{grid-column:1/-1}
 }
 @media(prefers-reduced-motion:reduce){
- .slider,.slider:before,.tab,.golink{transition:none}
+ .slider,.slider:before,.tab,.golink,.choose{transition:none}
  html.seen .tabpanel.on{animation:none}
 }
 """
@@ -1690,21 +1769,31 @@ function wireTable(table){
   sortTable(document.getElementById(sel.getAttribute("data-table")),+want[0],want[1]);
  });
 });
-// Tabs show one panel at a time. They add no fragment and store nothing (INV-89):
-// a stylesheet hides the other panels only once the head has marked the page as
-// running script, so with no script every section is simply on the page.
+// Tabs show one panel at a time. They add no fragment (INV-89): a stylesheet
+// hides the other panels only once the head has marked the page as running
+// script, so with no script every section is simply on the page. The open tab's
+// id is kept in sessionStorage, which belongs to this browser tab alone, so a
+// reload stays on it and a fresh visit opens on the Overview (LOTTO-0104 §4.3).
 var tabs=[].slice.call(document.querySelectorAll(".tab"));
-function showTab(tab,focus){
- document.documentElement.classList.add("seen");
+function setTab(tab){
  tabs.forEach(function(t){
   var on=t===tab;
   t.setAttribute("aria-selected",on?"true":"false");
   t.tabIndex=on?0:-1;
   document.getElementById(t.getAttribute("aria-controls")).classList.toggle("on",on);
  });
+ try{sessionStorage.setItem("lotto-tab",tab.id)}catch(e){}
+}
+function showTab(tab,focus){
+ document.documentElement.classList.add("seen");
+ setTab(tab);
  if(focus)tab.focus();
  window.scrollTo(0,0);
 }
+// A stored id is used only if it names a tab on this page. No scroll here: a
+// reload keeps the reader's place.
+try{var kept=sessionStorage.getItem("lotto-tab");
+ tabs.forEach(function(t){if(t.id===kept)setTab(t)})}catch(e){}
 tabs.forEach(function(tab,i){
  tab.addEventListener("click",function(){showTab(tab)});
  tab.addEventListener("keydown",function(ev){
@@ -1715,6 +1804,22 @@ tabs.forEach(function(tab,i){
 [].forEach.call(document.querySelectorAll(".golink"),function(b){
  b.addEventListener("click",function(){
   showTab(document.getElementById("tab-"+b.getAttribute("data-goto")),true);
+ });
+});
+// Accept and Undo (LOTTO-0104). The button's data-win key is posted unchanged;
+// the server writes only the matching win's own fields. A 200 reloads, which
+// keeps the folds and the open tab and touches no URL (INV-21).
+[].forEach.call(document.querySelectorAll(".choose"),function(b){
+ b.addEventListener("click",function(){
+  var key;try{key=JSON.parse(b.getAttribute("data-win"))}catch(e){return}
+  b.disabled=true;
+  post("/accept",{win:key,accepted:b.getAttribute("data-accept")==="1"},function(code){
+   if(code===200){location.reload();return}
+   b.disabled=false;
+   note(code===403?"This page is from an earlier session - reload it.":
+        code===409?"That win has changed since this page loaded - reload it.":
+        "Could not save that.");
+  });
  });
 });
 // Same rule for the period selector: rows are already in the document and
@@ -1793,7 +1898,7 @@ def render(model, token):
     built = model.get("built")
     building = bool(model.get("building"))
     # serve.py supplies the icon: this file reads no disk. It is a data: address
-    # rather than a route, so the server still answers exactly four (LOTTO-0014).
+    # rather than a route, so it needs no route of its own (LOTTO-0014).
     icon = model.get("icon")
     logo = f'<img src="{_e(icon)}" alt="">' if icon else ""
     # The same arrangement for the typeface (INV-96). Without it the stack in
@@ -1849,7 +1954,8 @@ def render(model, token):
         # is not on this page" must not be something a tab can hide (INV-89).
         tabs = [
             ("overview", "Overview", _overview_section(model)),
-            ("wins", "Wins", _ball_key(model) + _wins_section(model) + _paid_section(model)),
+            ("wins", "Wins", _ball_key(model) + _wins_section(model) + _paid_section(model)
+             + _accepted_section(model)),
             ("bank", "Bank's record", _bank_section(model)),
             ("outstanding", "Still outstanding", _outstanding_section(model)),
             ("entries", "Every entry", _entries_section(model)),

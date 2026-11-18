@@ -3,6 +3,9 @@
 # phone, including ticket references. The repo is public.
 lotto_sms_raw.txt
 *_sms_raw.txt
+# The wins accepted on the page (LOTTO-0104) name real tickets. The `*` covers
+# the temporary file a failed write leaves beside it.
+accepted.json*
 
 # Regenerable: scraped HTML pages and the parsed archive built from them.
 # `python3 backfill.py` rebuilds both. Large, and not ours to redistribute.

@@ -23,6 +23,8 @@ findings were folded into the build. INV-68
 (`tools/verify_boards.py::odd_board_is_named`, three breaks) and INV-70
 (`tools/verify_page.py::deadline_only_when_unpaid`) pass, each observed
 failing under its own breaks.
+**Amended 2026-11-18** for LOTTO-0104: §4.1, §4.3, §4.5, INV-63, INV-70,
+INV-87, INV-89, INV-96, INV-115, §11, §13.
 **Amended 2026-11-11** for LOTTO-0032: §4.5, INV-104, §7, §11.
 **Amended 2026-11-05** for LOTTO-0021: §4.5, INV-101, §7, §11.
 **Amended 2026-11-02** for LOTTO-0093: INV-100, §7, §11.
@@ -274,7 +276,7 @@ signature that cannot carry it would force that caller to widen the contract.
 
 **`settings` is in the model because `page.py` cannot go and look.** The
 renderer is pure (below) and there is no `GET /settings` route — LOTTO-0014
-§4.1's surface is four routes and that is deliberate — so without this key the
+§4.1's surface is a fixed set of routes and that is deliberate — so without this key the
 panel has no way to know which way either switch is currently set, and would
 render both in an arbitrary state on every load. The builder reads them from
 the two places §4.7 names: `autostart` is the *presence* of the `.desktop`
@@ -419,11 +421,12 @@ reads, which the third defines:
 to. LOTTO-0014 §4.3 owns that rule and the reason for it.
 
 `page.py` emits the page's inline JavaScript along with its markup. It has
-exactly eight jobs and no others: the two POSTs (which must carry a custom
-header, LOTTO-0014 §4.3), filtering the ticket table (which must not touch the
+exactly eight jobs and no others: the POSTs to `/refresh`, `/settings` and
+`/accept`, the last for Accept and Undo (each must carry a custom header,
+LOTTO-0014 §4.3), filtering the ticket table (which must not touch the
 URL, LOTTO-0014 INV-21), sorting it under the same rule (INV-85), copying each
 heading onto its cells for a narrow window's cards (INV-86), switching tabs
-(INV-89), applying a colour theme (INV-63), remembering which sections are
+and keeping the open one across a reload (INV-89), applying a colour theme (INV-63), remembering which sections are
 folded (INV-115), and **polling `GET /status` every 2 s while `building`
 is true, or after a `POST /refresh`, reloading when `built` changes**. **The poll also
 terminates on failure**: a refresh that raises leaves `built` unchanged and
@@ -597,10 +600,11 @@ that as a constraint on the cases, since the cases are what drive it directly.
 
 ### 4.3 HTTP surface — LOTTO-0014
 
-The four routes, their bodies, their status codes and the 404/405 routing floor
-moved to LOTTO-0014 §4.1 in the 2026-08-02 split. The two that this document's
-sections depend on: `POST /refresh` drives §4.2's rebuild, and `POST /settings`
-writes §4.7's two files.
+The routes, their bodies, their status codes and the 404/405 routing floor
+moved to LOTTO-0014 §4.1 in the 2026-08-02 split. The three that this document's
+sections depend on: `POST /refresh` drives §4.2's rebuild, `POST /settings`
+writes §4.7's two files, and `POST /accept` writes LOTTO-0104's accepted-wins
+store.
 
 ### 4.4 Security boundary — LOTTO-0014
 
@@ -634,7 +638,8 @@ Four sections follow, in this order — unpaid wins first, because they are the 
 thing on the page with a deadline:
 
 1. **Not yet paid** — every win that is unexpired **and** whose `payment` is
-   not paid (§4.1, LOTTO-0001 §4.4), latest draw first (INV-85), each naming
+   not paid (§4.1, LOTTO-0001 §4.4), and that the user has not accepted
+   (LOTTO-0104), latest draw first (INV-85), each naming
    its exact game (*Lotto Plus 1*, not *Lotto*; INV-95), its division, its amount, its deadline,
    and its payment state in words: *unpaid*; *partly paid — the bank paid R p
    of R c on this ticket*, from `ref_paid_cents` and `ref_computed_cents`; or
@@ -647,8 +652,12 @@ thing on the page with a deadline:
    page can be wrong about. **Empty state:** *No unexpired win is waiting on
    the bank.* That sentence is true only because missing payout data puts
    every win here as *payment unknown* rather than emptying the section.
+   Where the user has accepted every waiting win, it and the Overview's read
+   *No win is waiting on the bank that you have not accepted.* Each row has an
+   **Accept** button.
    **Paid by the bank** follows in the same tab, with the same columns and no
-   deadline (INV-94).
+   deadline (INV-94). **Accepted by you** follows that, only when the user has
+   accepted a win; LOTTO-0104 §4.4 owns it.
 2. **Still outstanding** — two groups under one heading, because both are
    "not finished", and neither is a loss. The heading is deliberately not "Live
    tickets": a 2019 ticket has no draws still to come, and filing 974 unscorable
@@ -1088,7 +1097,7 @@ them unqualified.
   no script the dropdown shows instead (LOTTO-0092). **What a click does runs in
   the browser and no case runs it**; it was checked in Chrome on 2026-11-02.
   *Test:* `tools/verify_page.py`, case `theme_is_dark_and_readable` — the
-  rendered page must carry exactly one `setItem(`, for the theme name, and none
+  rendered page must carry exactly one `setItem("lotto-theme"`, and none
   of the URL-writing calls INV-21 already forbids. Break `theme_preview_dropped`.
 
 - **INV-15** — An entry nothing can score renders as "not checkable" with its
@@ -1293,7 +1302,8 @@ them unqualified.
   so the count of excluded entries no longer adds up on screen.
 
 - **INV-70** — A win appears in section 1 (§4.5), with its claim deadline,
-  only when it is unexpired and its `payment` is not paid; every win shown
+  only when it is unexpired, its `payment` is not paid, and the user has not
+  accepted it (LOTTO-0104 INV-116); every win shown
   names its payment state in words. Missing payout data never reads as paid.
   Added 2026-10-15 (LOTTO-0011).
   *Test:* `tools/verify_page.py`, case `deadline_only_when_unpaid` — renders a
@@ -1386,17 +1396,21 @@ them unqualified.
 
 - **INV-89** — The sections sit in tabs under a sticky bar, in §4.5's order, with
   *Spending* holding both spend sections. Every notice sits above the tabs, so no
-  tab can hide one. A refresh reports in the bar. Tabs touch no URL and store
-  nothing, and with no script every section stays on the page. A page with no
-  tickets offers no tabs. Added 2026-11-02 (LOTTO-0087).
-  *Test:* `tools/verify_page.py`, case `tabs_never_hide_a_warning` — the markup.
+  tab can hide one. A refresh reports in the bar. Tabs touch no URL. A tab is
+  kept in `sessionStorage`, under `lotto-tab`, so a reload stays on it, and
+  nothing else is stored; a stored id is used only if it names a tab. A fresh
+  visit opens on the Overview. With no script every section stays on the page. A page with no
+  tickets offers no tabs. Added 2026-11-02 (LOTTO-0087); the kept tab
+  2026-11-18 (LOTTO-0104).
+  *Test:* `tools/verify_page.py`, case `tabs_never_hide_a_warning` — the markup,
+  and the script's one `sessionStorage` write and its tab-id check.
   Break `warning_in_a_tab`. **What a click does runs in the browser and no case
   runs it**; it was checked by hand in Firefox on 2026-11-02.
   *Breaks when:* a notice moves into a panel, or a refresh failure is written to
   `#settings-msg` inside a hidden tab.
 
 - **INV-87** — Every page state names the tray's running icon as its tab icon, as
-  a `data:` address, so `serve.py` still answers exactly LOTTO-0014's four routes.
+  a `data:` address, so `serve.py` still answers only LOTTO-0014 §4.1's routes.
   `serve.py` reads the file; `page.py` still reads no disk. Added 2026-11-02
   (LOTTO-0087).
   *Test:* `tools/verify_page.py`, case `app_icon_in_page` — fetches the page before
@@ -1405,7 +1419,7 @@ them unqualified.
   model exists.
 
 - **INV-96** — The page carries its own typeface, Atkinson Hyperlegible Next, as a
-  `data:` address, so `serve.py` still answers exactly LOTTO-0014's four routes.
+  `data:` address, so `serve.py` still answers only LOTTO-0014 §4.1's routes.
   `serve.py` reads the file; `page.py` still reads no disk. An unreadable file
   leaves the system's font and a working page. `fonts/OFL.txt` ships beside it.
   Added 2026-11-02 (LOTTO-0091).
@@ -1465,7 +1479,9 @@ them unqualified.
   ticket slips. The page stores which sections are folded in one browser key,
   holding fold ids and nothing else, and checks a stored id before using it.
   Added 2026-11-18 (LOTTO-0101).
-  *Test:* `tools/verify_page.py`, case `sections_fold`. Breaks
+  *Test:* `tools/verify_page.py`, case `sections_fold`. Its fixture holds an
+  accepted win, so *Accepted by you* (`fold-accepted`) is among the folds it
+  checks, and it counts `localStorage` writes only. Breaks
   `section_not_folded`, `fold_starts_closed` and `headline_in_a_fold`. **What a
   click does runs in the browser and no case runs it.**
   *Breaks when:* a new section is written without `_fold()`, or a notice moves
@@ -1766,7 +1782,7 @@ LOTTO-0014 §8.)
 | INV-24 the port comes from `$PORT`, then `$LOTTO_PORT`, then 4322, and a bad non-empty value exits | `tools/verify_page.py::port_from_environment` — which also covers `supervise.py`'s matching precedence and its opposite policy on a bad value (LOTTO-0013 §4.5) |
 | INV-24's `$LOTTO_PORT` and bare-4322 legs reaching the **bind** | **nothing** — both are asserted at `resolve_port()` level only; the three children cover the `$PORT` leg, the rejected leg and the supervised one. A `main()` that resolved correctly and then bound `DEFAULT_PORT` on the `$LOTTO_PORT` path alone would pass |
 | INV-62 dark before any script; every theme complete and readable | `tools/verify_page.py::theme_is_dark_and_readable` — reads `page.THEMES` and one pure render; red-tested by `--break theme_default_light`, `--break ball_without_colour` and `--break theme_unreadable_palette` |
-| INV-63 the theme reaches no URL and writes one browser key | `tools/verify_page.py::theme_is_dark_and_readable` — the same case; it counts `setItem(` and re-checks INV-21's forbidden calls against the pure render |
+| INV-63 the theme reaches no URL and writes one browser key | `tools/verify_page.py::theme_is_dark_and_readable` — the same case; it counts the theme key's `setItem(` and re-checks INV-21's forbidden calls against the pure render |
 | INV-68 an oversized board named as the reason, on the entry and in the banner | `tools/verify_boards.py::odd_board_is_named` — red-tested by `--break odd_board_unnamed`, `--break odd_board_not_in_banner` and `--break pool_before_board` |
 | INV-70 a deadline only on an unexpired win the bank has not paid, its payment state in words | `tools/verify_page.py::deadline_only_when_unpaid` — red-tested by `--break deadline_on_paid_win`. It renders a hand-authored model, so a wrong mapping is LOTTO-0001 INV-69's to catch, not this case's |
 | INV-78 the disclaimer on every page state and in the README | `tools/verify_page.py::disclaimer_on_every_state` — red-tested by `--break disclaimer_with_data_only` |
@@ -1916,6 +1932,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 0104-impl | 2026-11-18 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0104: a win under *Not yet paid* can be accepted, which moves it to *Accepted by you* and out of the Overview's count. INV-70 excludes accepted wins; INV-89 keeps the open tab in `sessionStorage` across a reload; INV-115's case counts `localStorage` writes only and folds *Accepted by you*. §4.1's script jobs, §4.3's route list and §4.5's sections and empty state follow. INV-63's test clause now names the theme's key, which the page's other storage writes had made false. INV-87 and INV-96 no longer count LOTTO-0014's routes. |
 | 0101-impl | 2026-11-18 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0100 and LOTTO-0101: the user approved a mock-up of the new look, every section now folds, and the page script gained an eighth job, remembering folds. INV-115 added. INV-63's case now checks the theme's own key, since the page writes a second one. |
 | 0095-fix | 2026-11-06 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0095: §4.7's `open_on_start` default moved from true to false at the user's request, because the autostarted tray opened a browser tab at every boot. `supervise.read_settings()` changed with it. No invariant moved. |
 | amend-0092 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0092, the user's request to keep improving the look. Adds matched balls, period bars and theme previews; INV-97, INV-98. |
