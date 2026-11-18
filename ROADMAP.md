@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=98 -->
+<!-- ants-roadmap-id-high-water: LOTTO=103 -->
 
 # ROADMAP — LottoTracker
 
@@ -384,7 +384,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   itself is LOTTO-0002; the checkable-entries-only rule is spec §4.7.
   Source: user-request-2026-08-01.
 
-- 🚧 [LOTTO-0015] **Ship a Linux AppImage and a Windows executable, both build-tested locally first.**
+- ✅ [LOTTO-0015] **Ship a Linux AppImage, build-tested locally first.**
   Kind: package. Source: user-request-2026-08-02.
   Layman: One file you can double-click, instead of needing Python and PySide6 installed.
   Verified 2026-08-02: the project has no packaging manifest and no `.github/`
@@ -467,6 +467,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   also sets Qt and GLib search paths, which host_env() now strips. Still
   open: the Windows half, and publishing the AppImage at the first
   release.
+  Split (user, 2026-11-18): this item closes on the Linux AppImage,
+  published with the 0.2.0 release. The Windows half moved to
+  LOTTO-0099, with the constraints above.
+
   Source: user-request-2026-08-02.
 
 - ✅ [LOTTO-0016] **Run the CI locally before pushing, from the same script CI runs.**
@@ -1665,6 +1669,11 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   one change. v1.0.0 is LOTTO-0015, LOTTO-0021, LOTTO-0028 and LOTTO-0032.
   LOTTO-0079, filed after the decision, goes to the version after 1.0.0.
   An item filed from now on is not v1.0.0 work unless the user says so.
+  Scope changed by the user, 2026-11-18: the four items named on
+  2026-11-05 all shipped by 0.2.0, but v1.0.0 now also waits for the page
+  to look professional and production-ready: LOTTO-0100 and LOTTO-0101.
+  Until then each release raises the MINOR number
+  (docs/standards/versioning-overrides.md).
   **Layman:** We have never written down which jobs have to be finished before we can call this version 1.0.
   Kind: release.
   Source: user-decision-2026-09-02.
@@ -1711,7 +1720,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: accessibility.
   Source: user-request-2026-09-06.
 
-- 📋 [LOTTO-0079] **Ask contributors for their own bank's lottery SMSes, so banks other than Standard Bank can be read.**
+- 🚧 [LOTTO-0079] **Ask contributors for their own bank's lottery SMSes, so banks other than Standard Bank can be read.**
   Requested by the user 2026-10-15. Today the parser, the admission filter
   (watch_sms.py::INCLUDE and LOTTO-0001 s4.1's adb clause) and LOTTO-0062's
   sender rule all know only Standard Bank (README.md says so).
@@ -1741,6 +1750,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   NOT v1.0.0 work: the user, 2026-11-05 (LOTTO-0060). It depends on
   strangers sending in samples, so it could hold the release back for an
   open-ended time. It is the first item of the version after 1.0.0.
+  Part 1 done 2026-11-18, at the user's request: README.md, Adding your
+  bank, asks for samples, and .github/ISSUE_TEMPLATE/new-bank.md is the
+  form, both spelling out what to change before posting. Samples stay in
+  issues until part 2 decides otherwise. Part 2, per-bank reading, is open.
   **Layman:** People who bank elsewhere could send in their bank's lottery texts, so the app can learn to read those too.
   Kind: feature.
   Source: user-request-2026-10-15.
@@ -1893,6 +1906,67 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** Dates read like 9 May 2026, the widest table no longer cuts off its last column, and the ticket slips and money figures are larger.
   Kind: ux.
   Source: user-request-2026-11-02.
+
+- 📋 [LOTTO-0099] **Ship a Windows executable, build-tested locally first.**
+  Split from LOTTO-0015 on 2026-11-18, when its Linux half shipped
+  in 0.2.0 (user decision). The design constraints recorded in
+  LOTTO-0015 carry over unchanged: find_lotto_sms.py and watch_sms.py
+  need dbus-python and KDE Connect, which are Linux-only, so a Windows
+  build must NAME the missing SMS import on the page rather than show
+  an empty page. Where its lotto_sms_raw.txt comes from is still the
+  open question; LOTTO-0015 lists the options offered on 2026-11-11.
+  Decision (user, 2026-11-11): Windows waits until someone needs it.
+  **Layman:** One file a Windows user can double-click, the Windows half of the app-file work.
+  Kind: package.
+  Source: user-request-2026-11-18.
+  Splits-from: LOTTO-0015.
+
+- 📋 [LOTTO-0100] **Make the page look professional and production-ready, the gate for v1.0.0.**
+  The user, 2026-11-18: v1.0.0 waits until the page looks professional
+  and production-ready. The design is left to the session; propose it to
+  the user before building. Every tab, not only the Overview. Keep the
+  cardinal rule (CLAUDE.md: no data never reads as did not win) and the
+  low-vision theme option. The app must stay light on RAM, CPU and GPU
+  (CLAUDE.md, Working conventions): no heavy framework, no animation
+  that runs while idle. Collapsible sections are LOTTO-0101.
+  **Layman:** The page gets a polished, finished look before the app is called version 1.0.
+  Kind: ux.
+  Source: user-request-2026-11-18.
+
+- 📋 [LOTTO-0101] **Let every section on every tab of the page collapse and expand.**
+  The user, 2026-11-18. v1.0.0 work, with LOTTO-0100. Prefer the browser's
+  own details/summary element: it needs no script and costs nothing
+  while idle. Whether a fold is remembered between visits is a design
+  choice to put to the user. A warning above the tabs must never be
+  foldable out of sight: it is what tells the user to buy again.
+  **Layman:** Each part of the page can be folded away, so you see only what you want.
+  Kind: ux.
+  Source: user-request-2026-11-18.
+
+- 📋 [LOTTO-0102] **Build the AppImage so it runs on older Linux systems, not only very new ones.**
+  Found 2026-11-18 while writing the README: the 0.2.0 AppImage was built
+  on openSUSE Tumbleweed, whose GNU C library is 2.44 (ldd --version), and
+  tools/build_appimage.sh says it runs only on systems at least as new.
+  The usual fix is to build inside an older distribution's container.
+  README.md, Getting started, tells users how to check their version.
+  **Layman:** The download will not start on most Ubuntu or Mint computers yet; this fixes that.
+  Kind: package.
+  Source: user-request-2026-11-18.
+
+- 💭 [LOTTO-0103] **Find out whether an iPhone can feed lottery SMSes to the app, through an Apple Shortcuts automation.**
+  The user asked 2026-11-18 how the app could work with Apple phones.
+  Today it cannot: both import routes (adb, KDE Connect) are Android-only,
+  and KDE Connect's iOS app has no SMS support because iOS gives other
+  apps no access to messages (KDE forum and mailing-list replies, 2022-2023).
+  The one candidate route: an iOS Shortcuts personal automation with a
+  Message trigger (sender or Message Contains) that appends the text to a
+  file the computer can read. Unverified: whether the automation can read
+  the message body, and whether it runs without a tap. Needs a real iPhone
+  to test. The dump format and its one reader (tickets.py) would need a
+  third writer, under the same forged-record rule as watch_sms.py.
+  **Layman:** iPhones cannot share their text messages with the app today; this asks whether a workaround exists.
+  Kind: research.
+  Source: user-request-2026-11-18.
 
 ## Hardening
 
