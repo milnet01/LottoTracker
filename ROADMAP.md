@@ -1929,6 +1929,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   low-vision theme option. The app must stay light on RAM, CPU and GPU
   (CLAUDE.md, Working conventions): no heavy framework, no animation
   that runs while idle. Collapsible sections are LOTTO-0101.
+  The user, 2026-11-18: this is the next item to start. Show a mock-up
+  for approval before building. Once it ships, re-film the website
+  trailer from the new look (the user chose to wait for the redesign),
+  then message ants-projects-hub-website.
   **Layman:** The page gets a polished, finished look before the app is called version 1.0.
   Kind: ux.
   Source: user-request-2026-11-18.
