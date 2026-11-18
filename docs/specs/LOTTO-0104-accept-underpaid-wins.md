@@ -52,13 +52,17 @@ Shown as a mock-up of the Wins tab and agreed by the user on 2026-11-18:
 3. **The bank's record keeps the bank's figure.** Accepting is the user's
    choice not to chase a win. It is never the app deciding the win was paid.
 4. **It ships with the redesign, before 1.0** (LOTTO-0100, LOTTO-0101).
+5. **A reload keeps the open tab; a fresh visit opens on the Overview.**
+   Asked after the review surfaced that a reload after Accept lands on the
+   Overview; the user chose this over moving the row with no reload, and
+   over leaving it. It helps every reload, a Refresh's included.
 
 Decided by this spec, not the user:
 
-5. **Any win under *Not yet paid* can be accepted**, `unknown` payment
+6. **Any win under *Not yet paid* can be accepted**, `unknown` payment
    included. That section is where the button sits, and an unknown payment is
    the same choice not to chase.
-6. **A fifth route, `POST /accept`**, rather than a wider `POST /settings`
+7. **A fifth route, `POST /accept`**, rather than a wider `POST /settings`
    (§8).
 
 ## 4. Design
@@ -128,7 +132,11 @@ object holding exactly §4.1's six fields, the shape of a store entry.
   the store. A count, never ticket data, for the reason `GET /status` carries
   only counts.
 - The page reloads after a 200. A reload keeps the folds (LOTTO-0002 INV-115)
-  and touches no URL (LOTTO-0014 INV-21).
+  and the open tab, and touches no URL (LOTTO-0014 INV-21). The tab is kept in
+  `sessionStorage` under `lotto-tab`, holding a tab id the script checks
+  against the tabs that exist. `sessionStorage` belongs to one browser tab, so
+  a fresh visit, such as the tray opening the page, still starts on the
+  Overview (LOTTO-0002 INV-93).
 
 ### 4.4 The page
 
@@ -280,12 +288,15 @@ Plus `/accept` added to the route lists of LOTTO-0014's `host_allowlist`,
 | INV-120 nothing outside the page carries the store | `verify_page.py::accept_route_guards`; the `grep` over `*.py` |
 | INV-120's log-line clause | **nothing** — neither §7 case reads a log |
 | §4.2 the write is a rename, so a crash leaves a whole file | **nothing** — a crash between write and rename cannot be arranged in the suite |
-| §4.3 the page reloads after a 200 and keeps its folds | **nothing** — browser-side JavaScript; no case runs a click |
+| §4.3 the page reloads after a 200 and keeps its folds and tab | **Partial:** `verify_page.py::tabs_never_hide_a_warning` reads the script's one `sessionStorage` write and its tab-id check; what a reload does is browser-side and no case runs it |
 | §6 two wins sharing a key | **nothing** — unmeasured over the real dump |
 
 ## 11. Cross-doc impact
 
-- **LOTTO-0002** — INV-70 gains "and not accepted"; §4.5 lists *Accepted by
+- **LOTTO-0002** — INV-89's "tabs store nothing" becomes "a tab is kept in
+  `sessionStorage` for a reload, and nothing else is stored", with its case
+  reading that one write; INV-115's case counts `localStorage` writes only;
+  INV-70 gains "and not accepted"; §4.5 lists *Accepted by
   you* after *Paid by the bank*, and its empty state gains §4.4's accepted
   form; §4.1's script jobs gain the accept and undo
   POSTs; INV-115's fold list gains `fold-accepted`.
@@ -303,3 +314,4 @@ Plus `/accept` added to the route lists of LOTTO-0014's `host_allowlist`,
 |------|------|-------|------|------|-----|-----|---------|
 | 1 | 2026-11-18 | 2, cold, via `neutral-lane`; every lane held every question | — | — | — | — | **Q1 1 · Q2 4 · Q3 3 · Q4 2 (verified 10, fixed 9, surfaced 1; dismissed 2).** Two came from building the packet and were fixed before dispatch: the test cases would have written the checkout's real store, since `paths.DATA` is the repository and `temp_home()` does not move it (now a `serve.ACCEPTED` alias that `temp_home()` points away); and §4.1 cited INV-90 to LOTTO-0002, which is LOTTO-0001's. Both lanes found: `.gitignore` must name `accepted.json*`, because `write_atomic()` leaves a temporary file beside the store on a failed write; LOTTO-0014 INV-14 forbids writing request-derived strings, so the entry is now copied from the model win; no case checked that `serve.py` sets the flag at `GET /`, so `accept_route_guards` now reads the page after an accept and an undo; and with every waiting win accepted, LOTTO-0002 §4.5's empty state would be false, so it gains an accepted form. One lane each: `<key>`'s wire shape is now pinned to a store entry's; INV-120's log-line clause gets a §10 "nothing" row; the 1b fix's "the test cases" became `temp_home()`, so LOTTO-0014's cases are covered too. **Surfaced to the user, not fixed:** a reload after Accept lands on the Overview tab, because LOTTO-0002 INV-89 says tabs store nothing. Dismissed: reusing `serve._win_key`'s five fields (§4.1 pins six and INV-119's test asserts six); a positive control for `/accept` in `host_allowlist` (INV-12's "answered normally" already covers it). Three open questions resolved clean: a missing store is not in §6's unreadable list; `plus_flag` is an integer (`tickets.GAME_MAP`); §6 already says the next accept rewrites a corrupt store. |
 | 2 | 2026-11-18 | 2, cold, via `neutral-lane`; identical brief, packet rebuilt from disk; every lane held every question | — | — | — | — | **Q1 0 · Q2 4 · Q3 3 · Q4 1 (verified 8, fixed 8; dismissed 0).** Both lanes found: `page.py` was to read only the `accepted` flag yet say the store could not be read, so the view now carries `accepted_unreadable`, set when the file exists but cannot be read (an absent file is an empty store, which settles one lane's fresh-install case); and "allowed only for a win … under *Not yet paid*" was judged on a model with no flag, so a second accept would duplicate the entry, now 409 with a case row. One lane each: the flag was to be added to the shared model, which `do_GET`'s shallow copy would have mutated, now a copy per win; the key's path into the script is pinned to one `data-win` JSON attribute; *Accepted by you* rows carry no near-deadline marking, as the user asked; the earlier-session 403 message goes to the bar, since `msg()` writes the hidden Settings tab (LOTTO-0002 INV-89); §7 now lists the `temp_home()` change; INV-120's grep widens to catch a module reaching the store through `serve.ACCEPTED`. Four open questions resolved clean. **Cap reached (2 for a spec); the run ships.** **A calm cap**: 1 of the final loop's 8 verified findings landed on text this run wrote (the `temp_home()` sentence). The second share is not reported: the document is new, so every finding is inside the span that armed the gate. This loop's 8 fixes are read by no lane; implementation is their reader. One finding stays surfaced to the user (loop 1: a reload after Accept lands on the Overview tab). |
+| 2-amend | 2026-11-18 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** The question loop 1 surfaced was put to the user, who chose that a reload keeps the open tab and a fresh visit opens on the Overview (§3 item 5). §4.3, §10 and §11 changed with it; §3's own two calls renumbered to 6 and 7, and only item 3 is cited. Implementation is this text's reader. |
