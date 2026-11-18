@@ -75,7 +75,7 @@ ref, game, plus_flag, pool_id, line, date
 
 All six are already in every win in the model (`serve.py::build_model()`
 copies `check.py`'s records whole). The key holds no amount, so a price
-correction (LOTTO-0002 INV-90's estimates) does not orphan an acceptance.
+correction (LOTTO-0001 INV-90's estimates) does not orphan an acceptance.
 
 ### 4.2 The store
 
@@ -88,13 +88,20 @@ correction (LOTTO-0002 INV-90's estimates) does not orphan an acceptance.
 
 - **One writer**: `serve.py`, behind `POST /accept`, under a lock held across
   the read, the change and the write, for LOTTO-0014 §4.1's reason for
-  `POST /settings`. Written to a temporary file and renamed over the old one,
-  so a crash leaves the old file or the new, never half of either.
+  `POST /settings`. Written through `supervise.write_atomic()`, a temporary
+  file renamed over the old one, so a crash leaves the old file or the new,
+  never half of either.
 - **One reader**: `serve.py`, on every `GET /`. An acceptance takes effect at
   the next page load, with no rebuild, as `serve.running_view()` does.
 - **It holds ticket references**, so it is personal data. In a source
-  checkout `paths.DATA` is the repository root, so **`.gitignore` names it**,
-  beside `lotto_sms_raw.txt`.
+  checkout `paths.DATA` is the repository root, so **`.gitignore` names
+  `accepted.json*`**, beside `lotto_sms_raw.txt`. The `*` covers the
+  temporary file `write_atomic()` leaves beside the store when a write fails.
+- **`serve.py` reads it through a module alias, `ACCEPTED = paths.ACCEPTED`**,
+  looked up at each call, as `serve.DUMP` is. `verify_page.py`'s
+  `temp_home()` points that alias into its temporary directory, so a case
+  calling it gets its own store: in a source checkout `paths.DATA` is the
+  repository, and the real store would otherwise be written.
 - **An entry whose win is gone is kept.** A win can leave the model for a
   build and come back; dropping its acceptance on the way would flag it again.
 - **Unreadable or malformed means empty**, and the page says so (§6). That is
@@ -102,7 +109,8 @@ correction (LOTTO-0002 INV-90's estimates) does not orphan an acceptance.
 
 ### 4.3 The route
 
-`POST /accept` takes `{"win": <key>, "accepted": bool}`.
+`POST /accept` takes `{"win": <key>, "accepted": bool}`, where `<key>` is an
+object holding exactly §4.1's six fields, the shape of a store entry.
 
 - It follows every rule LOTTO-0014 sets for `POST /settings`: the `Host`
   allowlist, the run token, the bounded body read with its 4 KiB cap and its
@@ -111,6 +119,9 @@ correction (LOTTO-0002 INV-90's estimates) does not orphan an acceptance.
   *Not yet paid*. `accepted: false` is allowed only for a win in the store.
   Anything else is **409**, and nothing is written. A body that is not that
   shape is **400**.
+- The entry written is the matched model win's own six fields, never the
+  posted values, and Undo removes the store's own entry. So no
+  request-derived string is written (LOTTO-0014 INV-14).
 - It returns **200** and `{"accepted": <count>}`, the number of entries now in
   the store. A count, never ticket data, for the reason `GET /status` carries
   only counts.
@@ -123,7 +134,9 @@ correction (LOTTO-0002 INV-90's estimates) does not orphan an acceptance.
 store, at `GET /` time. `page.py` stays pure and reads only that flag:
 
 - `_waiting()` leaves out accepted wins, so *Not yet paid* and the Overview
-  count both drop them.
+  count both drop them. Where *Not yet paid* is empty and *Accepted by you*
+  is not, both empty states read "No win is waiting on the bank that you have not
+  accepted." LOTTO-0002 §4.5's sentence would be false there.
 - A new fold, *Accepted by you* (`fold-accepted`), lists accepted wins that are
   unexpired and not paid, with the same cells as *Not yet paid*, a stamp
   reading *accepted*, and **Undo**. It renders only when it has a row.
@@ -138,14 +151,19 @@ store, at `GET /` time. `page.py` stays pure and reads only that flag:
   you*, and removes it from the Overview's waiting count. Undo moves it back.
   No other figure on the page changes: *Bank's record*, the spend and
   winnings totals, and each win's amount render identically with the win
-  accepted or not.
+  accepted or not. With every waiting win accepted, both empty states say
+  so (§4.4).
   *Test:* `tools/verify_page.py`, case `accepting_moves_a_win`. It renders one
   fixture model twice through `render_pure()`, once with a win flagged
   `accepted`, and compares the two pages with the *Not yet paid*, *Accepted
   by you* and Overview *Prizes* folds cut out: the rest must be byte-equal.
   The fixture's accepted win is `unpaid`, so only the accepted flag can move
   it. Break `accept_hides_bank_row`, which drops the accepted win's ticket
-  from *Bank's record*.
+  from *Bank's record*. A second render, whose only waiting win is accepted,
+  must carry §4.4's empty-state sentence twice. Case `accept_route_guards`
+  checks the server's half: after the accept's 200, `GET /` lists the win
+  under *Accepted by you* and not under *Not yet paid*, and after the undo
+  the reverse.
   *Breaks when:* acceptance is applied by filtering the wins list before the
   model is rendered, which takes the win out of every section at once.
 - **INV-117** — A paid win is never shown as accepted, and an expired win is in
@@ -176,7 +194,8 @@ store, at `GET /` time. `page.py` stays pure and reads only that flag:
   `GET /` lists the win under *Not yet paid* and carries the sentence.
   INV-120's grep holds the one writer to `serve.py`.
   `tools/verify_paths.py` asserts `paths.ACCEPTED` resolves under `paths.DATA`,
-  and `git check-ignore accepted.json` exits 0. Break `store_unread_hides`,
+  and `git check-ignore -q` exits 0 for `accepted.json` and for
+  `accepted.json.1.tmp`, one path per call. Break `store_unread_hides`,
   which reads an unreadable store as "accept everything".
   *Breaks when:* a corrupt file raises and the page fails, or reads as
   "accept everything".
@@ -214,7 +233,7 @@ network.
 | Case | Invariants |
 |---|---|
 | `accepting_moves_a_win` | INV-116, INV-117 |
-| `accept_route_guards` | INV-118, INV-119, INV-120 |
+| `accept_route_guards` | INV-116, INV-118, INV-119, INV-120 |
 
 Plus `/accept` added to the route lists of LOTTO-0014's `host_allowlist`,
 `token_required` and `no_reflected_headers` cases, and one assertion in
@@ -244,11 +263,12 @@ Plus `/accept` added to the route lists of LOTTO-0014's `host_allowlist`,
 
 | Rule | Checked by |
 |---|---|
-| INV-116 accepting moves one win, and no other figure | `verify_page.py::accepting_moves_a_win`, break `accept_hides_bank_row` |
+| INV-116 accepting moves one win, and no other figure | `verify_page.py::accepting_moves_a_win`, break `accept_hides_bank_row`; `verify_page.py::accept_route_guards` |
 | INV-117 paid and expired wins are never shown as accepted | `verify_page.py::accepting_moves_a_win` |
 | INV-118 the route writes only a current win's key | `verify_page.py::accept_route_guards`, break `accept_any_key` |
 | INV-119 one writer, keys only, gitignored, unreadable reads as empty | `verify_page.py::accept_route_guards`, break `store_unread_hides`; `verify_paths.py`; `git check-ignore` |
 | INV-120 nothing outside the page carries the store | `verify_page.py::accept_route_guards`; the `grep` over `*.py` |
+| INV-120's log-line clause | **nothing** — neither §7 case reads a log |
 | §4.2 the write is a rename, so a crash leaves a whole file | **nothing** — a crash between write and rename cannot be arranged in the suite |
 | §4.3 the page reloads after a 200 and keeps its folds | **nothing** — browser-side JavaScript; no case runs a click |
 | §6 two wins sharing a key | **nothing** — unmeasured over the real dump |
@@ -256,11 +276,13 @@ Plus `/accept` added to the route lists of LOTTO-0014's `host_allowlist`,
 ## 11. Cross-doc impact
 
 - **LOTTO-0002** — INV-70 gains "and not accepted"; §4.5 lists *Accepted by
-  you* after *Paid by the bank*; §4.1's script jobs gain the accept and undo
+  you* after *Paid by the bank*, and its empty state gains §4.4's accepted
+  form; §4.1's script jobs gain the accept and undo
   POSTs; INV-115's fold list gains `fold-accepted`.
 - **LOTTO-0014** — §4.1's four routes become five, with `POST /accept`'s row
-  and its response's header set; §4.1's lock paragraph covers both routes.
-- **`.gitignore`** — names `accepted.json`.
+  and its response's header set; §4.1's lock paragraph covers both routes;
+  INV-14 says `POST /accept` writes only values copied from the model.
+- **`.gitignore`** — names `accepted.json*`.
 - **`.claude/rules/architecture.md`** — `serve.py` owns the store's one reader
   and one writer.
 - **README** — *Wins* gains one sentence on Accept and Undo.
@@ -269,3 +291,4 @@ Plus `/accept` added to the route lists of LOTTO-0014's `host_allowlist`,
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 1 | 2026-11-18 | 2, cold, via `neutral-lane`; every lane held every question | — | — | — | — | **Q1 1 · Q2 4 · Q3 3 · Q4 2 (verified 10, fixed 9, surfaced 1; dismissed 2).** Two came from building the packet and were fixed before dispatch: the test cases would have written the checkout's real store, since `paths.DATA` is the repository and `temp_home()` does not move it (now a `serve.ACCEPTED` alias that `temp_home()` points away); and §4.1 cited INV-90 to LOTTO-0002, which is LOTTO-0001's. Both lanes found: `.gitignore` must name `accepted.json*`, because `write_atomic()` leaves a temporary file beside the store on a failed write; LOTTO-0014 INV-14 forbids writing request-derived strings, so the entry is now copied from the model win; no case checked that `serve.py` sets the flag at `GET /`, so `accept_route_guards` now reads the page after an accept and an undo; and with every waiting win accepted, LOTTO-0002 §4.5's empty state would be false, so it gains an accepted form. One lane each: `<key>`'s wire shape is now pinned to a store entry's; INV-120's log-line clause gets a §10 "nothing" row; the 1b fix's "the test cases" became `temp_home()`, so LOTTO-0014's cases are covered too. **Surfaced to the user, not fixed:** a reload after Accept lands on the Overview tab, because LOTTO-0002 INV-89 says tabs store nothing. Dismissed: reusing `serve._win_key`'s five fields (§4.1 pins six and INV-119's test asserts six); a positive control for `/accept` in `host_allowlist` (INV-12's "answered normally" already covers it). Three open questions resolved clean: a missing store is not in §6's unreadable list; `plus_flag` is an integer (`tickets.GAME_MAP`); §6 already says the next accept rewrites a corrupt store. |
