@@ -1984,7 +1984,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: research.
   Source: user-request-2026-11-18.
 
-- 📋 [LOTTO-0104] **Let the user accept a draw the bank has not fully paid, so it stops being highlighted.**
+- ✅ [LOTTO-0104] **Let the user accept a draw the bank has not fully paid, so it stops being highlighted.**
   The user, 2026-11-18, while reviewing the LOTTO-0100 mock-up: "I
   should be able to accept draws where the app says the bank hasn't fully
   paid me and thus it doesn't need to be highlighted anymore."
@@ -2003,6 +2003,10 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Open for the user: a reload after Accept lands on the Overview tab,
   because LOTTO-0002 INV-89 says tabs store nothing. Loop log in the
   spec's section 12.
+  Built 2026-11-18 from the accepted spec (commit bbf8161): Accept and
+  Undo on the Wins tab, an Accepted by you fold, POST /accept, and
+  accepted.json in the data folder (gitignored). A reload keeps the open
+  tab (the user, 2026-11-18). LOTTO-0002 and LOTTO-0014 amended.
   **Layman:** You can mark a prize the bank underpaid or never paid as accepted, and the app stops flagging it.
   Kind: feature.
   Source: user-request-2026-11-18.
