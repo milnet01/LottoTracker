@@ -10,5 +10,10 @@
     }
   ],
   "tag": "v{NEW}",
-  "post_check": "grep -q \"^## \\[$(cat VERSION)\\] - \" CHANGELOG.md"
+  "post_check": "grep -q \"^## \\[$(cat VERSION)\\] - \" CHANGELOG.md",
+  "artifacts": [
+    {
+      "path": "dist/LottoTracker-{NEW}-x86_64.AppImage"
+    }
+  ]
 }

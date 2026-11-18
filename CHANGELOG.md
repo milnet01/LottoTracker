@@ -6,14 +6,24 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-18
+
+**Theme:** A new look that says when to buy next, a nightly results check, and a Linux app file to download.
+
 ### Added
 
-- **The tracker can be built as one Linux AppImage file** (LOTTO-0015)
-  `tools/build_appimage.sh` builds it. It needs nothing installed but KDE
-  Connect, and keeps its data in `~/.local/share/LottoTracker`. The first build,
-  2026-11-15, is 65 MB. A new tray item, **Fetch older results**, fetches
-  results older than June 2026 without a terminal, in a source checkout too.
-  The Windows build is still to come.
+- **The tracker can be downloaded as one Linux AppImage file** (LOTTO-0015)
+  It is attached to this release, and `tools/build_appimage.sh` builds it. It
+  needs nothing installed but KDE Connect, and keeps its data in
+  `~/.local/share/LottoTracker`. This build needs version 2.44 or newer of the
+  GNU C library (`ldd --version`), so it will not start on many older systems
+  yet (LOTTO-0102). A new tray item, **Fetch older results**, fetches results
+  older than June 2026 without a terminal, in a source checkout too. The
+  Windows build is still to come (LOTTO-0099).
+
+- **A form for sending in another South African bank's lottery messages** (LOTTO-0079)
+  The README's *Adding your bank* section asks for them, and the **Add my bank**
+  issue form says what to change before posting. The app cannot read them yet.
 
 - **A *Bank's record* tab shows where the bank's payments differ from what the app worked out** (LOTTO-0032)
   Each such ticket shows both amounts, what the difference means, and why where
@@ -44,6 +54,11 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   No figure changes. A difference that fits no reason is printed as `NO REASON FOUND`.
 
 ### Changed
+
+- **The README is written for someone who is not a programmer**
+  It starts with what the app does and how to download and connect it. It says
+  plainly that iPhones are not supported. The technical detail moved to a *For
+  developers* section at the end.
 
 - **The page says where your messages file belongs when it is missing** (LOTTO-0015)
   It names the folder and two ways to fill it. It no longer suggests
