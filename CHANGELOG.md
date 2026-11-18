@@ -6,6 +6,10 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-18
+
+**Theme:** A finished look, sections that fold away, and a way to stop chasing a win the bank will not pay.
+
 ### Added
 
 - **You can accept a win the bank has not fully paid** (LOTTO-0104)
