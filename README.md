@@ -1,127 +1,209 @@
 # LottoTracker
 
-**One consolidated view of every lottery ticket you have bought** — what you
-chose, what came up, what it won, what it cost — built from the confirmations
-your bank already sends by SMS. It tells you **when a ticket is about to run
-out, so you know to buy the next one**, and keeps a running tally of spend
-against winnings over whatever period you care about.
+**LottoTracker keeps one list of every South African lottery ticket you have
+bought.** It shows what you chose, what came up, what each ticket won, and
+what it cost. It builds that list from the text messages your bank already
+sends you.
 
-The bank texts you one message at a time. This is the ledger those messages
-never add up to.
+**Its main job is to warn you when a ticket is about to run out**, so you can
+buy the next one in time. It also adds up what you spent against what you won,
+for any year or month you pick.
 
-Runs entirely on your own machine. No account, no API key, no subscription,
-nothing paid.
+It runs entirely on your own computer. There is no account, no subscription,
+and nothing to pay.
 
 > LottoTracker is an independent app. It is not affiliated with or endorsed by
 > the South African National Lottery, its operator, or Standard Bank. Always
 > check results and claim prizes through the official lottery before relying
 > on what the app shows.
 
-## How you would know it works
+## What it does for you
 
-The five things it is judged against. They are here rather than in a spec
-because they are what the tool is *for*, and a stranger should be able to read
-them without being told where to look.
-
-1. **It tells you when to buy again, before you have to think about it.** A
-   ticket bought for ten draws is used up after the tenth; you are told while
-   there is still time to buy the next one, without opening anything. This is
-   the primary job. The tray warns you once, two draws out, naming the game
-   and the date of the last draw (LOTTO-0034). The page opens by saying the same
-   (LOTTO-0090).
-2. **It shows the numbers you chose beside the numbers that came up.** Per
-   entry, both — whether you picked them or took a quick pick.
-3. **It shows what each ticket won**, consolidated in one place, rather than
-   scattered across one bank SMS per event.
-4. **It totals cost against winnings over a period you choose** — a given year,
-   year to date, a given month, month to date. The page has a *Spend against
-   winnings by period* section with a dropdown (LOTTO-0036). Money belongs to
-   the period of the **draw**, not of the purchase, so a period's two figures
-   describe the same draws.
-5. **Every disagreement with the bank's own record is explained.** Not "the
-   figures match": the bar is that nothing is a mystery. Where the app and the
-   bank differ, each case falls into a named reason, and the unexplained pile
-   is empty. The app may under-report; it must never claim a win that was not
-   paid.
-
-**Where it stands against those today:** all five are done, with one limit on 5.
-`LOTTO-0006` (2026-08-31) pushed the results record back to the earliest ticket,
-which explained most of the gap outright. `LOTTO-0033` and `LOTTO-0037`
-(2026-10-30) explained the rest: from September 2025 Lotto's bottom division paid
-two numbers without the bonus ball, which the app was scoring as a loss. Every
-remaining difference now has a named reason, and `python3 check.py` prints each
-one with its count.
-
-**The limit:** a named reason is not always a settled one. On a few draws the app
-computes a win and the SMS record holds no bank message for it. That may be a lost
-SMS or a prize not paid, and only a bank statement can tell which. The app still
-computes no win on a ticket the bank paid nothing on.
-
-Sign 4 carries one limit worth stating plainly: the periods on offer begin
-where the results record does, because the comparison is drawn only over
-entries something can actually score. `LOTTO-0006` moved that floor back to the
-year of the earliest ticket on 2026-08-31, so the periods now cover almost all
-of lifetime spend rather than about 38% of it. A period nothing can score is
-still not shown as R0.00 — it is not offered at all, because "nothing to
-compare" and "spent nothing" are different things.
+- **Warns you before a ticket runs out.** A small icon by the clock tells you
+  two draws before your last one, naming the game and the date.
+- **Shows your numbers beside the numbers drawn**, for every draw you paid for.
+- **Shows what each ticket won**, in one place instead of one text message at a
+  time.
+- **Adds up spending against winnings** for a year or a month you choose.
+- **Checks its sums against the bank.** When the bank pays a prize, it texts
+  you. The app compares those messages with its own working, and shows you
+  both figures whenever they differ.
+- **Checks for new results every evening** at 22:00, and tells you only when
+  you have won.
+- **Shows each prize's claim deadline.** A prize expires 365 days after its
+  draw. The bank pays most prizes into your account by itself.
 
 ## Is this for you?
 
-**It is specific to South Africa, and currently to Standard Bank.** Two
-separate assumptions are baked in:
+You need all four of these:
 
-- **The lottery** is the South African National Lottery — Lotto, Lotto Plus 1,
+- **You play the South African National Lottery** — Lotto, Lotto Plus 1,
   Lotto 5 Max, PowerBall, PowerBall XTRA, Daily Lotto and, until it ended on
-  31 May 2026, Daily Lotto Plus. Results come from
-  the operator's own public feed.
-- **The SMS format** is Standard Bank's. The parser understands both the
-  wording used before the 2026-06-01 operator handover and the wording used
-  after it.
+  31 May 2026, Daily Lotto Plus.
+- **You buy through Standard Bank**, which texts you each ticket. Other banks
+  word their messages differently, and the app cannot read them yet. You can
+  help with that: see [Adding your bank](#adding-your-bank).
+- **Your phone is an Android phone.** The app gets your messages off the phone
+  by USB cable or over Wi-Fi with KDE Connect, and both are Android-only.
+  **iPhones are not supported**: Apple does not let other apps read an iPhone's
+  text messages.
+- **Your computer runs Linux.** A Windows version is planned but not started.
 
-If you bank elsewhere, the results half works unchanged and only the parser
-needs teaching. See [Adding your bank](#adding-your-bank).
+## Getting started
 
-## What it does
+### 1. Download the app
 
-- Warns you from the tray when a ticket is nearly out of draws, so you can buy
-  the next one
-- Pulls lottery SMSes off an Android phone — by USB, or over Wi-Fi
-- Parses ticket reference, numbers, game, start date, draw count and price
-- Fetches draw results, including for draws before the 2026 handover
-- Works out every draw you paid to enter, from the price, and checks them all
-- Scores every line, expands Multiplay entries correctly, and prices each win
-- Checks each win against the bank's own payout messages
-- Shows what you spent against what you won, by year or month
-- Shows it all on a local page in your browser, started from a tray icon
-- Shows when each prize's claim window closes
+Download the `.AppImage` file from the
+[latest release](https://github.com/milnet01/LottoTracker/releases/latest).
+It is one file that contains everything the app needs.
+
+**It needs a recent Linux.** The current file was built on openSUSE
+Tumbleweed and needs version 2.44 or newer of the GNU C library. To see yours,
+open a terminal and type `ldd --version`. If yours is older, the file will not
+start; run the app from source instead (see [For developers](#for-developers)).
+
+Make the file runnable: right-click it, open **Properties**, then
+**Permissions**, and tick the box that lets it run as a program. Then
+double-click it.
+
+If it does not start and mentions FUSE, open a terminal in its folder and run
+it with `--appimage-extract-and-run` after the file name.
+
+### 2. Connect your phone with KDE Connect
+
+1. Install **KDE Connect** on your computer, from your Linux system's software
+   centre.
+2. Install **KDE Connect** on your Android phone, from the Play Store or
+   F-Droid.
+3. Put both on the same Wi-Fi network, and pair them from either app.
+4. On the phone, give KDE Connect permission to read SMS: Settings → Apps →
+   KDE Connect → Permissions → SMS. Pairing alone is not enough.
+
+From then on, each new lottery message reaches the app by itself.
+
+### 3. Fetch your older tickets and results
+
+When it starts, the app also reads the lottery messages already on your phone.
+To check tickets from before June 2026, choose **Fetch older results** in the
+tray icon's menu once.
+
+The app keeps your messages and results in `~/.local/share/LottoTracker`. On
+the first run that folder is empty, and the page names it.
+
+## The page and the tray icon
+
+The app puts an icon by the clock. Click it to open the page in your web
+browser.
+
+The page opens on an overview: when to buy next, each ticket still running,
+the wins still waiting on the bank, and this year's money. Other tabs show
+every win, every entry with its cost and winnings, your spending against your
+winnings by period, and the bank's own record beside the app's.
+
+A settings panel has two switches. One starts the icon when you log in. The
+other opens the page when the icon starts.
+
+**Leave the log-in switch on if you rely on the warnings.** The app can only
+warn you while the icon is running. If no lottery message arrives for 14 days,
+the page says so and the icon reminds you once a day, in case your phone has
+stopped reaching the computer.
+
+Things worth knowing:
+
+- **"Not checkable" does not mean "did not win".** Some tickets cannot be
+  checked, because no results exist for them. The page says so in words and
+  never shows them as R0.00.
+- **The bank's figure is shown beside the app's, never instead of it.** Where
+  they differ, you see both, and the reason where one is known.
+- **Spending is compared only with what could be checked.** Your lifetime
+  spending is shown too, on its own line, so unchecked tickets never count as
+  losses.
+- **The text is set in Atkinson Hyperlegible**, a typeface made for low
+  vision. It ships in `fonts/` under its own licence.
 
 ## Your messages stay yours
 
-This matters enough to be explicit, because the repository is public:
+The code for this app is public. Your messages are not:
 
-- The USB path filters **on the phone**. Only messages whose text contains
-  `lotto`, `powerball` or `VAS00` (the reference on the bank's payout
-  messages) cross to the PC, minus the electricity-token messages that would
-  otherwise match; everything else is never read. Note
-  this is a keyword filter, not a sender filter — a personal message
-  mentioning the lottery would come across too, so glance at the dump before
-  sharing it.
-- `.gitignore` excludes the SMS dump and the results cache. Verify with
-  `python3 tools/verify_privacy.py`. It compares every tracked file against the
-  dump's own text, and also runs identifying patterns — so it catches a real
-  message pasted into a doc as an "example", not just a stray file. Without the
-  dump only the pattern half runs. Once `git config core.hooksPath .githooks`
-  is set, `.githooks/pre-commit` runs it on the staged files of every commit.
-  It catches copied content, not inferred identity: a figure that pins one
-  real ticket without quoting it, such as an exact win amount beside its
-  draw date, passes. That still needs a human read.
-- Nothing is uploaded anywhere. The only outbound requests are to public
-  lottery results pages.
-- Sample ticket references in this repo are deliberately fake
-  (`VAS00000000000`). Never paste a real one into a doc or an issue — it is
-  the one leak path `.gitignore` cannot cover.
+- **Nothing is uploaded anywhere.** The app only downloads public lottery
+  results.
+- **The page is for your computer alone.** It cannot be reached from your
+  network, and it will not show your tickets to a website you are visiting.
+- **No ticket details appear in desktop notifications.** The one exception is
+  the warning to buy again, which names the game, the last draw's date and the
+  draws left.
+- **Only lottery messages are kept.** The app keeps messages that mention
+  `lotto`, `powerball` or `VAS00` (the bank's prize reference), and skips
+  electricity-token messages. It filters by words, not by sender, so a personal
+  message mentioning the lottery would be kept too.
 
-## Setup
+## Adding your bank
+
+**Do you buy South African lottery tickets through a bank other than Standard
+Bank?** Please send us its messages, so the app can learn to read them. Only
+South African banks can be added, because the app only knows South Africa's
+lottery.
+
+We need two kinds of message:
+
+- **a ticket you bought**, and
+- **a prize the bank paid you**, if you have one.
+
+If your bank changed its wording on 1 June 2026, when the lottery changed
+operator, send one of each from before and after that date too.
+
+**Change your personal details before you send anything.** These messages are
+posted in public:
+
+- Replace the ticket reference with `VAS00000000000`, or with zeros in the
+  same shape if your bank uses a different style.
+- Change every number you chose, every date and every amount.
+- Remove any account or card digits.
+- **Keep everything else exactly as it arrived** — the words, the spacing, the
+  punctuation and the line breaks. That layout is what the app learns to read.
+
+Then [open an issue](https://github.com/milnet01/LottoTracker/issues/new?template=new-bank.md)
+using the **Add my bank** form. It asks for the bank's name and the samples.
+
+For whoever writes the reader: **the special ball is a trap.** In Standard
+Bank's older format, a PowerBall line ends with the PowerBall itself, and
+nothing marks it as different from the five main numbers. Read it as a main
+number and every PowerBall ticket scores one match too many and never matches
+the PowerBall. Check that case first, whatever the bank.
+
+## How you would know it works
+
+The five things the app is judged against:
+
+1. **It tells you when to buy again, before you have to think about it.** A
+   ticket bought for ten draws is used up after the tenth. You are told while
+   there is still time to buy the next one, without opening anything. This is
+   the main job.
+2. **It shows the numbers you chose beside the numbers that came up**, for each
+   entry, whether you picked them or took a quick pick.
+3. **It shows what each ticket won**, in one place, rather than in one bank
+   message per prize.
+4. **It totals cost against winnings over a period you choose** — a year, a
+   month, or so far this year or month. Money counts in the period of the
+   **draw**, not of the purchase, so both figures describe the same draws.
+5. **Every disagreement with the bank's own record is explained.** Where the
+   app and the bank differ, each case has a named reason. The app may count
+   less than the bank paid; it must never claim a win that was not paid.
+
+**Where it stands against those today:** all five are done, with one limit on
+5. On a few draws the app works out a win and no bank message exists for it.
+That may be a lost message or a prize not paid, and only a bank statement can
+tell which.
+
+Sign 4 has a limit too. The periods on offer begin where the results do, so
+a period with nothing checkable is not offered at all, rather than shown as
+R0.00.
+
+## For developers
+
+The rest of this page is for running the app from source, or changing it.
+
+### Running from source
 
 Needs Python 3.9+ and a Linux desktop. Everything below is free software from
 your distribution's repositories. The tray icon additionally needs PySide6 —
@@ -138,32 +220,20 @@ for Python 3.13, `python314-` for 3.14. It is what the Wi-Fi path talks to KDE
 Connect through; without it that path fails at import. The USB path does not
 need it.
 
-### Or as one file: the AppImage
-
-The AppImage carries its own Python and Qt, so it needs only KDE Connect. No
-download is published yet; build it from this repository, after the setup
-above and `pip install pyinstaller`:
-
 ```bash
-tools/build_appimage.sh                       # writes dist/LottoTracker-<version>-x86_64.AppImage
-./dist/LottoTracker-*-x86_64.AppImage         # starts the tray, the page and the watcher
+python3 tray.py     # an icon by the clock; click it to open the page
+python3 serve.py    # or just the page, no icon, no PySide6 needed
 ```
 
-It runs on systems at least as new as the one that built it. It keeps your
-messages and results in `~/.local/share/LottoTracker`, not beside the file. On
-the first run that folder is empty, and the page names it. Keep KDE Connect
-paired and new messages arrive by themselves, or copy an existing
-`lotto_sms_raw.txt` into it. Choose **Fetch older results** in the tray menu to
-check tickets older than June 2026. If it will not start because FUSE is
-missing, run it with `--appimage-extract-and-run`.
+A source checkout keeps its data in the repository folder.
 
-### Getting your messages (pick either)
+### Importing history by USB cable
 
-**USB — best for importing history.** On the phone: Settings → About phone →
-Software information → tap **Build number** seven times, then Settings →
-Developer options → **USB debugging** on. Plug in the cable and **set the USB
-mode to File Transfer** — on Samsung One UI the debugging prompt does not
-appear while the connection is charge-only. Approve the dialog, then:
+**Best for importing years of history at once.** On the phone: Settings →
+About phone → Software information → tap **Build number** seven times, then
+Settings → Developer options → **USB debugging** on. Plug in the cable and
+**set the USB mode to File Transfer** — on Samsung One UI the debugging prompt
+does not appear while the connection is charge-only. Approve the dialog, then:
 
 ```bash
 adb devices          # should say "device", not "unauthorized"
@@ -176,6 +246,8 @@ adb shell "content query --uri content://sms \
   | python3 tools/import_adb.py > lotto_sms_raw.txt
 ```
 
+The filter runs **on the phone**, so other messages never reach the computer.
+
 **The pipe is not optional.** A record begins with a line reading
 `Row: N address=`, and nothing escapes it — so a message whose own body
 contains that line would split into a second, forged record, and
@@ -184,25 +256,21 @@ contains that line would split into a second, forged record, and
 `watch_sms.py` already does on the wireless path. It prints what it found and
 exits non-zero if it neutralised anything.
 
-**KDE Connect — best for picking up new tickets.** Install the KDE Connect app
-on the phone, pair it with the PC over the same Wi-Fi, then grant it **SMS
-permission** (Settings → Apps → KDE Connect → Permissions → SMS). Pairing and
-SMS access are separate grants; pairing alone is not enough.
+### Importing over KDE Connect by hand
 
 ```bash
 python3 watch_sms.py --once   # catch up on what the phone already has, then exit
 python3 watch_sms.py          # or stay listening, and append each new one as it arrives
 ```
 
-The tray icon starts the listening form for you, so if you run `tray.py` you do
-not need to run this yourself.
+The tray icon starts the listening form for you.
 
 There is also `python3 find_lotto_sms.py`, which **prints and writes nothing**.
 It casts a deliberately wider net than the importer, so it is the thing to run
 when you want to see whether a message is reaching the PC at all. It will not
 import anything, however long you leave it.
 
-### Checking your tickets
+### Checking tickets in a terminal
 
 ```bash
 python3 backfill.py    # one-off: fetch pre-June-2026 results
@@ -233,96 +301,45 @@ is worked out from the ticket price, because the game name printed in the SMS
 only ever names the highest one — and since June 2026 it doesn't name it at
 all.
 
-Entries are reported as **uncheckable** rather than as losses when nothing
-can score them — either they predate the results data, or they are in a pool no
-source publishes. That distinction is deliberate and
-load-bearing: a ticket nobody can check is not a ticket that lost. It works
-per entry, so a ticket that can be checked in one draw and not another is
-still scored on the one that can — it is never written off whole.
+A win counts as paid only when the bank says so, from its own sender. Every
+other win is listed as **not yet paid** — unpaid, partly paid, or payment
+unknown when there is no payment message to check — with its deadline. There
+is no total: for a partly paid ticket, what is still owed is not known.
 
-The bank pays winnings into your account by itself, so most prizes need
-nothing from you. The app checks each win against the bank's own "winnings
-paid" messages. A win counts as paid only when the bank says so, from its own
-sender. Every other win is listed as **not yet paid** — unpaid, partly paid,
-or payment unknown when there is no payment message to check — with its
-deadline, because a prize expires **365 days** after the draw. There is no
-total: for a partly paid ticket, what is still owed is not known.
+### Building the AppImage
 
-## The page and the tray icon
-
-The terminal output is a flat list, and there are 1,238 entries. For something
-you can read, there is a small page:
+After the setup above and `pip install pyinstaller`:
 
 ```bash
-python3 tray.py     # an icon by the clock; click it to open the page
-python3 serve.py    # or just the page, no icon, no PySide6 needed
+tools/build_appimage.sh                       # writes dist/LottoTracker-<version>-x86_64.AppImage
+./dist/LottoTracker-*-x86_64.AppImage         # starts the tray, the page and the watcher
 ```
 
-The icon starts the server, opens the page, refreshes the results on demand and
-shuts the server down when you quit. It also checks for new results by itself
-each evening at 22:00, and tells you only if it finds a win. The page opens on an overview: when to buy
-next, each running ticket with a ball for every draw it paid for, the wins waiting
-on the bank, and this year's money. Further tabs show every win, paid or not, what is
-still outstanding, every entry with what it cost and what it won, and what you
-have spent against what you have won. Tabs under a sticky bar take you to each part, and every warning stays above
-them. Ticket tables open latest first, and a
-dropdown or a click on a heading sorts them another way. The page is a centred
-column, 75% of a wide window, and turns each row into a card on a narrow one. Text is set in Atkinson Hyperlegible, a typeface
-made for low vision, which ships in `fonts/` under its own licence. A settings panel has two switches: start the icon when you log in, and open the
-page when it starts.
+It runs on systems at least as new as the one that built it.
 
-Three things worth knowing:
+### Privacy checks
 
-- **It is yours alone.** The server listens only on `127.0.0.1:4322`, so nothing
-  on your network can reach it. It also refuses any request that does not name
-  that address, which is what stops a website you happen to be visiting from
-  quietly reading your tickets out of it — that is a real attack, not a
-  hypothetical one, and it is why the page will not load through any other
-  hostname. Nothing about a ticket ever appears in the address bar or the page
-  title, because browsers sync those.
-- **"Not checkable" is not "did not win".** Entries with no results to check
-  against say exactly that, in words, everywhere they appear. They are never
-  shown as a blank, a dash or R0.00.
-- **The bank's own record is shown beside ours, and never instead of it.** Your
-  bank texts you the amount every time it pays a prize in. Those messages are
-  read and matched to your tickets, and where the bank's figure and this app's
-  disagree you are shown **both** — the app never quietly adopts the bank's
-  number. A figure that agreed with the bank by construction would tell you
-  nothing, and would hide the cases where this app has got the maths wrong.
-  Right now it under-counts: the bank has paid more than this app works out,
-  and you can see exactly which tickets that is.
-- **The comparison is honest about what it covers.** Spend is compared against
-  winnings only over the entries that could actually be checked. Lifetime spend
-  is shown too, on its own line, and the two are never subtracted from each
-  other — that would turn 974 unchecked entries into losses.
+`.gitignore` excludes the SMS dump and the results cache. Verify with
+`python3 tools/verify_privacy.py`. It compares every tracked file against the
+dump's own text, and also runs identifying patterns — so it catches a real
+message pasted into a doc as an "example", not just a stray file. Without the
+dump only the pattern half runs. Once `git config core.hooksPath .githooks`
+is set, `.githooks/pre-commit` runs it on the staged files of every commit.
+It catches copied content, not inferred identity: a figure that pins one
+real ticket without quoting it, such as an exact win amount beside its
+draw date, passes. That still needs a human read.
 
-To have the icon start automatically, use the switch on the page rather than
-editing anything: it writes `~/.config/autostart/lotto-tracker-tray.desktop`,
-and turning it off deletes the file again.
+Sample ticket references in this repo are deliberately fake
+(`VAS00000000000`). Never paste a real one into a doc or an issue — it is
+the one leak path `.gitignore` cannot cover.
 
-**Leave that switch on if you rely on the warnings.** The app can only warn you
-about tickets it has seen. After 14 days with no lottery SMS, the page says so
-and the icon reminds you once a day, in case your phone has stopped reaching it.
-While the icon is not running, nothing can warn you at all.
+The page server listens only on `127.0.0.1:4322` and refuses any request that
+does not name that address. That stops a website you are visiting from reading
+your tickets through it, and it is why the page will not load through any other
+hostname. Nothing about a ticket appears in the address bar or the page title,
+because browsers sync those.
 
-## Adding your bank
-
-The results side is bank-independent; only `tickets.py::parse()` knows about
-message wording. To add a bank, you need one real ticket SMS with the personal
-details scrambled — the reference number changed to gibberish is fine, but keep
-the layout, spacing and punctuation exactly as they arrive.
-
-Open an issue with that sample and the bank's name. What the parser must
-extract: the game, the numbers per board, the start date, the number of draws,
-and the ticket reference.
-
-One warning for anyone writing a parser: **the special ball is a trap.** In
-Standard Bank's older format a PowerBall line ends with the PowerBall itself
-and nothing marks it as different from the five main numbers. Treat it as a
-main number and every PowerBall ticket scores one match too high and never
-matches the PowerBall. Whatever your bank does, check that case first.
-
-## How it fits together
+### How it fits together
 
 | File | Does |
 |------|------|
@@ -343,7 +360,7 @@ matches the PowerBall. Whatever your bank does, check that case first.
 The design contract, including why each source is used and where the traps
 are, is in [`docs/specs/LOTTO-0001-lottery-ticket-tracker.md`](docs/specs/LOTTO-0001-lottery-ticket-tracker.md).
 
-## Caveats
+### Caveats
 
 - The official feed's endpoints are the ones the operator's own website calls.
   They are public and unauthenticated, but carry no compatibility promise and
