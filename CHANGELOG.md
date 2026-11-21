@@ -6,6 +6,10 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-21
+
+**Theme:** The Linux download runs on older systems: Ubuntu 22.04, Mint 21, Debian 12 and newer.
+
 ### Fixed
 
 - **The AppImage runs on older Linux systems** (LOTTO-0102)
