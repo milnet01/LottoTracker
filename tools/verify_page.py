@@ -3449,6 +3449,23 @@ def fetch_older_reports_outcome():
              f"the {outcome} sentence {'says' if said else 'does not say'} 'fetched'")
 
 
+def division_gap_shown():
+    """INV-121 — a prize division check() cannot score is named on the page, as
+    not a loss; with none, nothing renders (LOTTO-0105 (c))."""
+    temp_home()
+    gap = {"game": "lotto", "plus_flag": 1, "pool_id": 101, "era": "feed",
+           "labels": ["MATCH 3"]}
+    html = render_pure(fixture_model(division_gaps=[gap]))
+    need("Some prize divisions cannot be checked" in html,
+         "a pool with an uncountable division got no notice")
+    need("Lotto Plus 1: MATCH 3" in html, "the notice does not name the pool and division")
+    need("not losses" in html, "the notice does not say those wins are not losses")
+    for empty in ([], None):
+        quiet = render_pure(fixture_model(division_gaps=empty))
+        need("Some prize divisions" not in quiet,
+             f"division_gaps={empty!r} still rendered a notice")
+
+
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
@@ -3472,6 +3489,7 @@ CASES = [
     ("numbers_chosen_and_drawn", "INV-48", numbers_chosen_and_drawn),
     ("theme_is_dark_and_readable", "INV-62", theme_is_dark_and_readable),
     ("counts_read_as_english", "0007(w)", counts_read_as_english),
+    ("division_gap_shown", "INV-121", division_gap_shown),
     ("deadline_only_when_unpaid", "INV-70", deadline_only_when_unpaid),
     ("unscored_month_not_zero", "INV-71", unscored_month_not_zero),
     ("disclaimer_on_every_state", "INV-78", disclaimer_on_every_state),
@@ -3512,6 +3530,7 @@ BREAKS = {
     "no_font": "typeface_in_page",
     "warning_in_a_tab": "tabs_never_hide_a_warning",
     "section_not_folded": "sections_fold",
+    "division_gap_hidden": "division_gap_shown",
     "fold_starts_closed": "sections_fold",
     "headline_in_a_fold": "sections_fold",
     "estimate_unmarked": "estimate_is_said",
@@ -3616,6 +3635,8 @@ def apply_render_breaks():
     if broken("bank_none_as_zero"):
         page._bank_row = lambda r, game=None: real_bank_row(
             dict(r, computed_cents=r.get("computed_cents") or 0), game)
+    if broken("division_gap_hidden"):
+        page._division_gap_section = lambda m: ""
     real_fold = page._fold
     if broken("section_not_folded"):
         # One section left as it was before LOTTO-0101.

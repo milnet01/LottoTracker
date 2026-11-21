@@ -579,6 +579,9 @@ def build_model():
         # LOTTO-0062 s4.4: records from a sender the bank is not known to use.
         # Still counted everywhere above; listed so a forgery is visible.
         "unknown_senders": check.unknown_senders(all_tickets, bank_paid),
+        # LOTTO-0105 (c): divisions whose wins check() cannot see (INV-31,
+        # INV-121). Empty is the normal answer, and renders nothing.
+        "division_gaps": check.division_gaps(all_tickets),
         # LOTTO-0083. The date, not a verdict: sms_quiet_view() judges it each
         # time the page is shown, because a quiet phone triggers no rebuild.
         "newest_sms": _iso(tickets.newest_record_date(today, DUMP)),
@@ -800,7 +803,7 @@ def refresh(state, build_model_fn):
     # begin() has already set `building`, and this function returns before
     # work() runs - so a reset inside work() would leave a window where
     # /status reports building:true beside the PREVIOUS build's total.
-    # The three memo clears stay on the worker thread: they satisfy
+    # The memo clears stay on the worker thread: they satisfy
     # LOTTO-0002 §4.2's "cleared before the build" either way.
     results.requests_made = 0
 
@@ -811,6 +814,9 @@ def refresh(state, build_model_fn):
         history._cache.clear()
         results._divisions_cache.clear()
         check._struct.clear()
+        # Both read _struct, so a stale answer would outlive the set it compared.
+        check._retired.clear()
+        check._drifted.clear()
         try:
             state.finish(build_model_fn())
         except BaseException as exc:  # noqa: BLE001 - any failure keeps the model

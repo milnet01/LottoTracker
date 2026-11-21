@@ -29,6 +29,7 @@ PLAIN_TWO_FROM = "2025-09-24"
 
 _struct = {}
 _retired = {}
+_drifted = {}
 
 
 def paying_combinations(game, plus_flag=0, pool_id=100):
@@ -237,6 +238,37 @@ def retired_divisions(game, plus_flag=0, pool_id=100):
                 gap.add(label)
         _retired[key] = sorted(gap)
     return _retired[key]
+
+
+def drifted_divisions(game, plus_flag=0, pool_id=100):
+    """Divisions this pool's OLDEST feed draw paid that the current set cannot name.
+
+    retired_divisions()'s question for the feed era (2026-06-01 on), which INV-31
+    does not reach: paying_combinations() reads the newest draw, so a division
+    the feed itself later dropped would take its older winners with it, silently
+    (LOTTO-0105 (c), INV-121). One divisions() call per pool, memoised there.
+    The oldest draw samples the start of the era, so a division that came and
+    went between the two ends is not seen.
+
+    Raises on an empty division list, as retired_divisions() does: an empty set
+    names nothing and would read clean.
+    """
+    key = (game, plus_flag, pool_id)
+    if key not in _drifted:
+        fed = [d for d in all_draws(game, plus_flag) if d["issue"] is not None]
+        if not fed:
+            _drifted[key] = []
+            return _drifted[key]
+        levels = divisions(game, fed[0]["issue"], pool_id, plus_flag)
+        if not levels:
+            raise RuntimeError(
+                f"{game}/{plus_flag} pool {pool_id}: the feed's draw "
+                f"{fed[0]['issue']} lists no divisions, so a division the feed "
+                f"dropped since cannot be detected"
+            )
+        old = {lvl["matches"].upper().strip() for lvl in levels}
+        _drifted[key] = sorted(old - set(paying_combinations(game, plus_flag, pool_id)))
+    return _drifted[key]
 
 
 def daily_page_price(ticket, plus_flag, draw, hits, special):
@@ -748,8 +780,11 @@ def unknown_senders_report(flagged):
     return lines
 
 
-def retired_report(tickets):
-    """-> lines naming any pool whose archive era paid a division now unnameable.
+def division_gaps(tickets):
+    """-> one record per pool with a division the current set cannot name.
+
+    Each record: game, plus_flag, pool_id, era ("archive" for INV-31's question,
+    "feed" for INV-121's) and labels. Empty is the normal answer.
 
     Pool-level rather than line-level, and deliberately so: the pool and the
     division label are what a reader can act on, and with no gap there are no
@@ -762,21 +797,32 @@ def retired_report(tickets):
     owns that case (INV-11).
     """
     pools = sorted({(t.game, pf, pid) for t in tickets for pf, pid in t.pools})
-    lines = []
+    gaps = []
     for game, plus_flag, pool_id in pools:
         if not all_draws(game, plus_flag):
             continue
-        if gone := retired_divisions(game, plus_flag, pool_id):
-            lines.append(
-                f"  {game}/{plus_flag} pool {pool_id}: archive draws paid "
-                f"{', '.join(repr(g) for g in gone)}, which the current "
-                f"division set does not name"
-            )
-    if lines:
-        lines.insert(
-            0,
-            "SOME ARCHIVE-ERA DIVISIONS HAVE NO CURRENT EQUIVALENT. Wins in "
-            "them are dropped below, and are NOT losses.",
+        for era, find in (("archive", retired_divisions), ("feed", drifted_divisions)):
+            if labels := find(game, plus_flag, pool_id):
+                gaps.append({"game": game, "plus_flag": plus_flag, "pool_id": pool_id,
+                             "era": era, "labels": labels})
+    return gaps
+
+
+def division_gap_report(gaps):
+    """-> terminal lines for division_gaps(), or [] when there is none."""
+    if not gaps:
+        return []
+    era_words = {"archive": "archive draws", "feed": "the feed's oldest draw"}
+    lines = [
+        "SOME PRIZE DIVISIONS ARE NOT IN THE CURRENT DIVISION SET. Wins in "
+        "them are dropped below, and are NOT losses."
+    ]
+    for g in gaps:
+        lines.append(
+            f"  {g['game']}/{g['plus_flag']} pool {g['pool_id']}: "
+            f"{era_words[g['era']]} paid "
+            f"{', '.join(repr(x) for x in g['labels'])}, which the current "
+            f"division set does not name"
         )
     return lines
 
@@ -814,8 +860,8 @@ if __name__ == "__main__":
         print()
 
     # Silent today by design: it prints only when a division actually went
-    # missing, and none has (INV-31).
-    gone_lines = retired_report(all_tickets)
+    # missing, and none has (INV-31, INV-121).
+    gone_lines = division_gap_report(division_gaps(all_tickets))
     if gone_lines:
         print("\n".join(gone_lines))
         print()

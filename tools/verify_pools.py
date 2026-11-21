@@ -560,6 +560,55 @@ def main(argv=()):
         f"retired division, {len(gap_probes) + 1} probes, {blind} blind"
     )
 
+    # INV-121 (LOTTO-0105 (c)): INV-31's question for the FEED era. The newest
+    # draw sets what pays; a division the pool's oldest feed draw paid and the
+    # newest does not name would drop its winners the same way. Live half
+    # first (measured 2026-11-21: none), then three probes, because a check
+    # that can only print zero proves nothing about whether it can still see.
+    drifted = 0
+    for game, plus_flag, pool_id in pools:
+        if gone := check.drifted_divisions(game, plus_flag, pool_id):
+            print(
+                f"  DRIFTED DIVISION {game}/{plus_flag} pool {pool_id}: the "
+                f"feed's oldest draw paid {', '.join(repr(g) for g in gone)}, "
+                f"which the current set does not name"
+            )
+            drifted += 1
+    real_divs = check.divisions
+    try:
+        # A division the newest draw no longer names: must be reported.
+        def _pays_less(g, pf=0, pid=100):
+            table = dict(real_pays(g, pf, pid))
+            table.pop("MATCH 3", None)
+            return table
+        check.paying_combinations = _pays_less
+        check._drifted.clear()
+        if (got := check.drifted_divisions("lotto", 0, 100)) != ["MATCH 3"]:
+            print(f"  MISSED a dropped feed division: expected ['MATCH 3'], got {got}")
+            blind += 1
+        # The healthy pool: nothing, or every run cries wolf.
+        check.paying_combinations = real_pays
+        check._drifted.clear()
+        if noise := check.drifted_divisions("lotto", 0, 100):
+            print(f"  FALSE DRIFT on a healthy pool: {noise}")
+            blind += 1
+        # An empty division list names nothing; it must raise, not read clean.
+        check.divisions = lambda *a, **k: []
+        check._drifted.clear()
+        try:
+            check.drifted_divisions("lotto", 0, 100)
+            print("  SILENT on an empty feed division list")
+            blind += 1
+        except RuntimeError:
+            pass
+    finally:
+        check.paying_combinations = real_pays
+        check.divisions = real_divs
+        check._drifted.clear()
+    stale += drifted
+    print(f"feed-era division guard: {len(pools)} live pools, {drifted} drifted, "
+          f"3 probes, {blind} blind in total")
+
     return (
         0
         if bad == 0

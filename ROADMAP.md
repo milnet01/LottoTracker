@@ -4595,7 +4595,7 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: investigate.
   Source: gate-run-2026-11-11.
 
-- 🚧 [LOTTO-0105] **Close four small rough edges left open at 1.0.0.**
+- ✅ [LOTTO-0105] **Close four small rough edges left open at 1.0.0.**
   (a) A `low` win (the bank paid MORE than the app computed) reads
   "paid" on the Wins tab. check.py PAYMENT_OF maps low to paid, which
   LOTTO-0001 §4.4 and INV-69 record as the user's design of 2026-10-08;
@@ -4617,6 +4617,16 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   page.py::_long_date() does. Checked by
   tools/verify_boards.py::early_reason_reads_as_a_date, red on the old
   code and under --break reason_iso_date; LOTTO-0002 INV-68 amended.
+  Closed 2026-11-21 with the user's answers. (a) kept: a low win
+  still reads "paid" (the user, 2026-11-21, confirming the 2026-10-08
+  design); the Bank's record tab shows the gap. (c) built as the user
+  chose: check.py::drifted_divisions() and division_gaps(), printed by
+  check.py and named on the page as not losses; LOTTO-0001 INV-121.
+  Checked by verify_pools.py's feed-era guard (three probes, two red
+  under a stubbed detector) and verify_page.py::division_gap_shown (red
+  under --break division_gap_hidden). Costs 6 requests and about 4.7 s
+  per build (measured 2026-11-21). A refresh now also clears
+  check._retired and check._drifted.
   **Layman:** Four small things look or read wrong: a blank tray icon at start, dates written as numbers, and two payment and prize-table questions.
   Kind: fix.
   Source: in-session-2026-11-18 (the 1.0.0 session's open list).

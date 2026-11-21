@@ -28,7 +28,7 @@ archive:
 python3 tools/verify_sources.py   # INV-3: the two results sources agree on overlap
 python3 tools/verify_coverage.py  # INV-6: each entry scored over exactly its draws
 python3 tools/verify_privacy.py   # INV-4: no real SMS content is tracked by git
-python3 tools/verify_pools.py     # INV-7/11/22/26/31: prices resolve; partly-checkable
+python3 tools/verify_pools.py     # INV-7/11/22/26/31/121: prices resolve; partly-checkable
                                   # tickets are never written off whole
 python3 tools/verify_page.py      # the page, its security boundary, the tray's
                                   # spawn-and-reap lifecycle, what it reports after a

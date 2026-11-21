@@ -363,6 +363,30 @@ def _senders_section(model):
     )
 
 
+def _division_gap_section(model):
+    """Prize divisions check() cannot score (INV-31, INV-121; LOTTO-0105 (c)).
+
+    Rendered only when there is one, like _senders_section(). Wins in such a
+    division never reach the Wins tab, so this is the only place they show,
+    and it must say they are not losses (the cardinal rule).
+    """
+    gaps = model.get("division_gaps") or []
+    if not gaps:
+        return ""
+    when = {"archive": "before June 2026", "feed": "in the results feed's oldest draw"}
+    rows = "".join(
+        f"<li>{_e(_pool_name(g['game'], g['plus_flag']))}: "
+        f"{_e(', '.join(g['labels']))}, paid {_e(when.get(g['era'], g['era']))}</li>"
+        for g in gaps
+    )
+    return (
+        '<div class="notice bad"><strong>Some prize divisions cannot be '
+        f"checked</strong><ul>{rows}</ul>The draws no longer list these prizes, "
+        "so a win in one is not shown on this page. Those wins are "
+        "<strong>not losses</strong>: they could not be counted.</div>"
+    )
+
+
 def _count(n, one, many):
     """Say "1 entry" and "2 entries"; the page said "1 entries" (LOTTO-0007 (w))."""
     return f"{n:,} {one if n == 1 else many}"
@@ -1981,6 +2005,7 @@ def render(model, token):
             + _archive_section(model)
             + _sms_quiet_section(model)
             + _senders_section(model)
+            + _division_gap_section(model)
             + _uncheckable_banner(model.get("uncheckable"))
             + "".join(
                 f'<div class="tabpanel{" on" if i == 0 else ""}" id="panel-{key}" '

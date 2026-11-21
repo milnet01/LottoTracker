@@ -203,6 +203,7 @@ happen in `serve.py`'s builder, not in the renderer.
     "wholly": 426, "partly": 11,            # TICKET counts, len() of the lists
   },
   "unknown_senders": [ {...} ],             # LOTTO-0062 §4.3-§4.4 owns the shape
+  "division_gaps": [ {...} ],               # LOTTO-0001 INV-121 owns the shape; [] normally
   "spend":  {"compared_cents", "lifetime_cents", "unresolved_cents",
              "unresolved_tickets": int},
   "won":    {"compared_cents", "lifetime_cents"},  # no unexpired total (§4.6)
@@ -626,7 +627,9 @@ Three of its rules bind this document's files:
 Above the sections, after the page's notice, comes LOTTO-0015's older-results
 notice while the archive is missing (INV-111). Then LOTTO-0062's *From a sender
 not seen before* notice, when there is anything to list; LOTTO-0062 §4.4 owns
-its contract and INV-75 checks it. Then the uncheckable banner below.
+its contract and INV-75 checks it. Then *Some prize divisions cannot be
+checked*, when `division_gaps` is non-empty: each pool and division, and that
+its wins are not losses; LOTTO-0001 INV-121 owns it. Then the uncheckable banner below.
 
 **The Overview opens the page**, because telling the user when to buy again is
 the app's first job (`README.md` § How you would know it works). It says, in this
@@ -1936,6 +1939,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 0105-fix-c | 2026-11-21 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0105 (c): §4.1 gains `division_gaps`; when it is non-empty, a notice above the tabs names each pool and division and says its wins are not losses. LOTTO-0001 INV-121 owns the rule and names this page's case. |
 | 0105-fix | 2026-11-21 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0105 (d): §4.5's too-old reason writes its earliest draw as the page writes dates. INV-68's *Test:* clause and §11 row name the new case `early_reason_reads_as_a_date`, seen red on the old code and under `--break reason_iso_date`. |
 | 0104-impl | 2026-11-18 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0104: a win under *Not yet paid* can be accepted, which moves it to *Accepted by you* and out of the Overview's count. INV-70 excludes accepted wins; INV-89 keeps the open tab in `sessionStorage` across a reload; INV-115's case counts `localStorage` writes only and folds *Accepted by you*. §4.1's script jobs, §4.3's route list and §4.5's sections and empty state follow. INV-63's test clause now names the theme's key, which the page's other storage writes had made false. INV-87 and INV-96 no longer count LOTTO-0014's routes. |
 | 0101-impl | 2026-11-18 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0100 and LOTTO-0101: the user approved a mock-up of the new look, every section now folds, and the page script gained an eighth job, remembering folds. INV-115 added. INV-63's case now checks the theme's own key, since the page writes a second one. |

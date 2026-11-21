@@ -812,6 +812,25 @@ in the project, not the next free number in this file.
   an unplaceable key is swallowed, which is the original silent drop wearing a
   tidier filter.
 
+- **INV-121** — Every division a pool's **oldest feed draw** paid is either
+  named by the current division set or **reported**. INV-31's question for the
+  feed era (2026-06-01 on): `paying_combinations()` reads the newest draw, so a
+  division the feed later dropped would drop its older winners at the same pay
+  gate. `check.py::drifted_divisions()` compares one draw per pool, the oldest
+  that carries an issue, and raises on an empty division list.
+  `check.py::division_gaps()` returns both eras' gaps as records; `python3
+  check.py` prints them, and the page names them as not losses (LOTTO-0002
+  §4.5). Added 2026-11-21 by LOTTO-0105 (c), the user's choice.
+  *Test:* `python3 tools/verify_pools.py` → `feed-era division guard: 7 live
+  pools, 0 drifted, 3 probes, 0 blind in total` (2026-11-21). The probes: a
+  division removed from the current set is reported; the real set reports
+  nothing; an empty division list raises. With the detector stubbed to return
+  nothing, two probes were observed red. The page half is
+  `tools/verify_page.py::division_gap_shown`, red under `--break
+  division_gap_hidden`.
+  *Breaks when:* the feed drops a division, or a division appears and vanishes
+  between the oldest and newest draws, which this sample cannot see.
+
 - **INV-67** — A board holding more numbers than one line of its game — more
   than six on PowerBall counting the PowerBall, more than five on Daily Lotto —
   is never scored as a line. `tickets.py::parse()` records each such board's
@@ -1195,6 +1214,7 @@ the figure is a lower bound until it is re-measured.
 | INV-67 oversized board never scored as a line | `tools/verify_boards.py::oversized_not_scored` and `::odd_board_counted_first`. Replaces the row that leaned on LOTTO-0009 INV-7, which now leaves an oversized ticket out of `unresolved`. `tools/verify_coverage.py`'s copy of the size rule (§4.4) is checked by nothing beyond agreeing with `scorable()` on the dump, which holds no oversized board |
 | INV-69 payment answer per win | `tools/verify_payouts.py::payment_follows_record` |
 | INV-77 an unknown sender's payout never pays a win | **Partial:** `tools/verify_senders.py::unknown_sender_never_pays` checks `trusted_payouts()` and the records built from it. That `check.py`'s `__main__` and LOTTO-0002's builder pass `trusted_payouts()` rather than every payout is checked by nothing — no verifier runs either |
+| INV-121 feed-era pay gate | `check.py::drifted_divisions()`, swept per live pool by `tools/verify_pools.py` with three probes; the page's notice by `tools/verify_page.py::division_gap_shown`. Unchecked: a division that came and went between the oldest and newest feed draws |
 | INV-79 a plain `2` row pays two mains | `tools/verify_payouts.py::plain_two_row_pays`, on synthetic draws and pages. That the real pages still read this way is checked by the bank's own record: `python3 check.py` prints the `low` and `unexplained` counts it would raise |
 | §4.4 terminal `NOT YET PAID` list: deadline only on an unexpired win not `paid`, and no summed total | **nothing** — no verifier runs `check.py` as a script. The page's half is LOTTO-0002 INV-70 |
 | §4.2 pools derived from price, not from the game name | `tools/verify_pools.py` (LOTTO-0009 INV-7, INV-8) |
@@ -1230,6 +1250,7 @@ README.md (usage), ROADMAP.md (LOTTO-0002 onward), CHANGELOG.md, and:
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 0105-fix | 2026-11-21 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0105 (c), the user's choice of 2026-11-21. Adds INV-121, the feed-era sibling of INV-31, with its §11 row. Seen red under a stubbed detector before it was believed. |
 | amend-0098 | 2026-11-11 | none | — | — | — | — | **Not a review loop: no reviewer was dispatched.** Origin: LOTTO-0098. §4.3 now states the API is read only from 2026-06-01, after the feed began listing misdated pre-handover Daily Lotto rows; INV-3's `EXPECTED_EMPTY` wording and the pool table follow. No invariant added. |
 | amend-0084 | 2026-11-02 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** Origin: LOTTO-0084. Adds INV-90: Daily Lotto is priced from its results page. |
 | amend-d-0033 | 2026-10-30 | none | — | — | — | — | **Not a review loop: no reviewer was dispatched.** Added INV-79 and corrected §5's reading of a plain `2` row, because the bank's record proved it false. Past two loops, so no gate re-arms. |

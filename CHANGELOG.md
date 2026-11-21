@@ -6,6 +6,13 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The page warns if a prize can no longer be checked** (LOTTO-0105)
+  If the lottery stops listing a prize division, wins in it cannot be
+  counted. A notice above the tabs now names the game and the prize, and
+  says those wins are not losses. Today there are none, so it does not show.
+
 ### Fixed
 
 - **The tray icon shows its picture from the start** (LOTTO-0105)
