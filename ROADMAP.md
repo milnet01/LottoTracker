@@ -2024,6 +2024,17 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   designing); how results are fetched on the phone; and how the
   re-buy warning (the app's primary job) works as a phone notification
   within the notification privacy rule in CLAUDE.md.
+  Checked 2026-11-21 against Google's help pages: Play allows the SMS
+  permissions mainly to the default SMS, Phone or Assistant handler;
+  other uses need a Permissions Declaration Form and an extended review
+  of up to several weeks, so a tracker reading SMS would very likely be
+  refused (support.google.com/googleplay/android-developer/answer/9047303,
+  /9214102). A new personal developer account must also run a closed
+  test with 12 testers for 14 days (/answer/14151465). Routes for the
+  design: install from a file on GitHub (reads SMS, no review); a Play
+  version where the user shares each message into the app (no SMS
+  permission); F-Droid (rules not yet checked). The user asked
+  2026-11-21 whether it can go on the Play Store.
   **Layman:** A phone app that tracks your tickets on its own, with no computer needed.
   Kind: feature.
   Source: user-request-2026-11-21.
