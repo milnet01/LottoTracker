@@ -280,7 +280,9 @@ def entry_reason(ticket, rows):
     if not rows:
         return "no results source carries this pool"
     if ticket.start.strftime("%Y-%m-%d") < rows[0]["date"]:
-        return f"predates all draw data for this pool (earliest {rows[0]['date']})"
+        # Written as the page writes every other date, not as stored.
+        earliest = page._long_date(rows[0]["date"])
+        return f"predates all draw data for this pool (earliest {earliest})"
     return None
 
 

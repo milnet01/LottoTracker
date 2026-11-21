@@ -120,11 +120,22 @@ def odd_board_is_named():
     return "reason pinned in both pools; banner names it with its count"
 
 
+def early_reason_reads_as_a_date():
+    """The too-old reason names its earliest draw the way the page writes dates
+    ("1 Jan 2099"), not as a serial number (LOTTO-0105 (d))."""
+    t = _parse(*PB_SIX)
+    got = serve.entry_reason(t, [{"date": "2099-01-01"}])
+    assert got == "predates all draw data for this pool (earliest 1 Jan 2099)", \
+        f"entry_reason {got!r}"
+    return "earliest draw written 1 Jan 2099"
+
+
 CASES = [
     ("oversized_not_scored", "INV-67", oversized_not_scored),
     ("odd_board_counted_first", "INV-67", odd_board_counted_first),
     ("oversized_not_unresolved", "INV-7", oversized_not_unresolved),
     ("odd_board_is_named", "INV-68", odd_board_is_named),
+    ("early_reason_reads_as_a_date", "INV-68", early_reason_reads_as_a_date),
 ]
 
 ACTIVE_CASE = None  # set by main(); a break fires only in its own case
@@ -136,6 +147,7 @@ BREAKS = {
     "odd_board_unnamed": "odd_board_is_named",
     "odd_board_not_in_banner": "odd_board_is_named",
     "pool_before_board": "odd_board_is_named",
+    "reason_iso_date": "early_reason_reads_as_a_date",
 }
 
 
@@ -177,6 +189,15 @@ def _apply_break(name):
                     else "predates all draw data for this pool"
             return real(ticket, rows)
         serve.entry_reason = scoped(real, broken_reason)
+    elif name == "reason_iso_date":
+        real = serve.entry_reason
+
+        def iso_reason(ticket, rows):        # the earliest date left as stored
+            got = real(ticket, rows)
+            if got and got.startswith("predates") and rows:
+                return f"predates all draw data for this pool (earliest {rows[0]['date']})"
+            return got
+        serve.entry_reason = scoped(real, iso_reason)
     elif name == "odd_board_not_in_banner":
         real = page._uncheckable_banner
         page._uncheckable_banner = scoped(real, lambda u: real({**u, "odd_board": 0}))

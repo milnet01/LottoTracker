@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=104 -->
+<!-- ants-roadmap-id-high-water: LOTTO=105 -->
 
 # ROADMAP — LottoTracker
 
@@ -4594,3 +4594,29 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** The two places the app reads lottery results from now disagree about Daily Lotto Plus, so pushing is blocked until that is sorted out.
   Kind: investigate.
   Source: gate-run-2026-11-11.
+
+- 🚧 [LOTTO-0105] **Close four small rough edges left open at 1.0.0.**
+  (a) A `low` win (the bank paid MORE than the app computed) reads
+  "paid" on the Wins tab. check.py PAYMENT_OF maps low to paid, which
+  LOTTO-0001 §4.4 and INV-69 record as the user's design of 2026-10-08;
+  the Bank's record tab shows the difference. Open: ask the user whether
+  that design still stands.
+  (b) The tray is shown with no icon: tray.py sets its first icon only
+  in sync(), on the status timer's first tick, after main() has called
+  show(). Fixed 2026-11-21: the constructor sets the stopped icon.
+  Checked by tools/verify_page.py::tray_has_icon_before_show, red on the
+  old tray.py and under --break tray_shown_blank.
+  (c) check.py::paying_combinations() reads a pool's divisions from its
+  newest draw only, and applies them to every draw of that pool.
+  retired_divisions() (INV-31) reports archive-era divisions the current
+  set cannot name; nothing compares older API-era draws. Measured
+  2026-11-21: retired_divisions() is empty for all seven pools, so
+  nothing is scored wrongly today. Open: ask the user.
+  (d) The "Why not" reason for a too-old entry wrote its earliest draw
+  as 2025-09-26. Fixed 2026-11-21: serve.py::entry_reason() writes it as
+  page.py::_long_date() does. Checked by
+  tools/verify_boards.py::early_reason_reads_as_a_date, red on the old
+  code and under --break reason_iso_date; LOTTO-0002 INV-68 amended.
+  **Layman:** Four small things look or read wrong: a blank tray icon at start, dates written as numbers, and two payment and prize-table questions.
+  Kind: fix.
+  Source: in-session-2026-11-18 (the 1.0.0 session's open list).

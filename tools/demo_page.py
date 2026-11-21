@@ -44,7 +44,7 @@ entries = [
     entry("demo-powerball", "powerball", 1, 1000, 6, 4, 1200, P),
     entry("demo-daily", "daily", 0, 1500, 3, 2, 0, D),
     entry("demo-daily", "daily", 1, 750, 0, 0, 0, D, scorable=False,
-          reason="predates all draw data for this pool (earliest 2025-09-26)"),
+          reason="predates all draw data for this pool (earliest 26 Sep 2025)"),
 ]
 
 wins = [

@@ -193,6 +193,11 @@ class LottoTray(QSystemTrayIcon):
             else None
         )
 
+        # An icon before main() calls show(): sync() sets the first one only on
+        # the timer's first tick, and Qt shows nothing (and warns) until then.
+        # Stopped is the truth here, because the server is started after show().
+        self.setIcon(self.stopped_icon)
+
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.sync)
         self.timer.start(POLL_MS)

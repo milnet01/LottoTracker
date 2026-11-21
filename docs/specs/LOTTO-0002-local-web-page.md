@@ -734,7 +734,8 @@ def entry_reason(ticket, rows) -> str | None:     # in serve.py
     #       ("boards A, B: ..." for more than one; labels joined by ", ")
     # 2. not rows -> "no results source carries this pool"
     # 3. ticket.start before rows[0]["date"]
-    #    -> f"predates all draw data for this pool (earliest {rows[0]['date']})"
+    #    -> "predates all draw data for this pool (earliest 1 Jan 2019)",
+    #       the date written as page.py::_long_date() writes it
     # 4. otherwise None
 ```
 
@@ -1294,6 +1295,9 @@ them unqualified.
   `entry_reason()` alone; `odd_board_not_in_banner`, which drops it from the
   banner alone, so each half is seen failing on its own; and
   `pool_before_board`, which checks the pool first.
+  Case `early_reason_reads_as_a_date` pins the too-old reason's wording:
+  its earliest draw is written as `page._long_date()` writes it, so the
+  page shows a date and not a stored `YYYY-MM-DD`. Break `reason_iso_date`.
   *Breaks when:* the oversized branch is missing, so an oversized ticket in a
   carried pool returns `None` and renders as not checkable with nothing after
   it — INV-15's half lost; or `entry_reason()` checks the pool before the
@@ -1783,7 +1787,7 @@ LOTTO-0014 §8.)
 | INV-24's `$LOTTO_PORT` and bare-4322 legs reaching the **bind** | **nothing** — both are asserted at `resolve_port()` level only; the three children cover the `$PORT` leg, the rejected leg and the supervised one. A `main()` that resolved correctly and then bound `DEFAULT_PORT` on the `$LOTTO_PORT` path alone would pass |
 | INV-62 dark before any script; every theme complete and readable | `tools/verify_page.py::theme_is_dark_and_readable` — reads `page.THEMES` and one pure render; red-tested by `--break theme_default_light`, `--break ball_without_colour` and `--break theme_unreadable_palette` |
 | INV-63 the theme reaches no URL and writes one browser key | `tools/verify_page.py::theme_is_dark_and_readable` — the same case; it counts the theme key's `setItem(` and re-checks INV-21's forbidden calls against the pure render |
-| INV-68 an oversized board named as the reason, on the entry and in the banner | `tools/verify_boards.py::odd_board_is_named` — red-tested by `--break odd_board_unnamed`, `--break odd_board_not_in_banner` and `--break pool_before_board` |
+| INV-68 an oversized board named as the reason, on the entry and in the banner | `tools/verify_boards.py::odd_board_is_named` — red-tested by `--break odd_board_unnamed`, `--break odd_board_not_in_banner` and `--break pool_before_board`; the too-old wording by `tools/verify_boards.py::early_reason_reads_as_a_date`, red-tested by `--break reason_iso_date` |
 | INV-70 a deadline only on an unexpired win the bank has not paid, its payment state in words | `tools/verify_page.py::deadline_only_when_unpaid` — red-tested by `--break deadline_on_paid_win`. It renders a hand-authored model, so a wrong mapping is LOTTO-0001 INV-69's to catch, not this case's |
 | INV-78 the disclaimer on every page state and in the README | `tools/verify_page.py::disclaimer_on_every_state` — red-tested by `--break disclaimer_with_data_only` |
 | INV-85 every ticket table opens latest first, with two ways to sort | `tools/verify_page.py::latest_first_and_sortable` — red-tested by `--break oldest_first` and `--break no_sort_dropdown`. **Nothing** runs a click |
@@ -1932,6 +1936,7 @@ document no longer has. Review loops below number from 1 on these bytes.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 0105-fix | 2026-11-21 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0105 (d): §4.5's too-old reason writes its earliest draw as the page writes dates. INV-68's *Test:* clause and §11 row name the new case `early_reason_reads_as_a_date`, seen red on the old code and under `--break reason_iso_date`. |
 | 0104-impl | 2026-11-18 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0104: a win under *Not yet paid* can be accepted, which moves it to *Accepted by you* and out of the Overview's count. INV-70 excludes accepted wins; INV-89 keeps the open tab in `sessionStorage` across a reload; INV-115's case counts `localStorage` writes only and folds *Accepted by you*. §4.1's script jobs, §4.3's route list and §4.5's sections and empty state follow. INV-63's test clause now names the theme's key, which the page's other storage writes had made false. INV-87 and INV-96 no longer count LOTTO-0014's routes. |
 | 0101-impl | 2026-11-18 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0100 and LOTTO-0101: the user approved a mock-up of the new look, every section now folds, and the page script gained an eighth job, remembering folds. INV-115 added. INV-63's case now checks the theme's own key, since the page writes a second one. |
 | 0095-fix | 2026-11-06 | — | — | — | — | — | **Amendment row — no reviewer was dispatched, and this is not a review loop.** LOTTO-0095: §4.7's `open_on_start` default moved from true to false at the user's request, because the autostarted tray opened a browser tab at every boot. `supervise.read_settings()` changed with it. No invariant moved. |

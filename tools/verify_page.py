@@ -575,7 +575,7 @@ def uncheckable_not_a_loss():
     forbidden = {"", "-", "–", "—", "0", "0.00", "R0.00",
                  "R0", "0,00", "R 0.00", "n/a", "N/A"}
     partly_reason = "no results source carries this pool"
-    wholly_reason = "predates all draw data for this pool (earliest 2022-01-01)"
+    wholly_reason = "predates all draw data for this pool (earliest 1 Jan 2022)"
     model = fixture_model(
         entries=[
             # partly uncheckable: one pool scorable, one not
@@ -1734,6 +1734,53 @@ def tray_signal_reaps_children():
             for pid in pids.values():
                 if _pid_alive(pid):
                     os.kill(pid, signal.SIGKILL)
+
+
+# The tray as main() builds it, on Qt's offscreen platform: does it carry an icon
+# at the moment main() calls show()? Prints the answer as JSON.
+TRAY_ICON_PROBE = r'''
+import json, os, sys
+sys.path.insert(0, {root!r})
+from PySide6.QtWidgets import QApplication
+import tray
+
+app = QApplication([])
+if os.environ.get("LOTTO_BREAK") == "tray_shown_blank":
+    real_init = tray.LottoTray.__init__
+
+    def blank_init(self, *a, **k):   # the constructor's own setIcon() undone
+        real_init(self, *a, **k)
+        self.setIcon(tray.QIcon())
+
+    tray.LottoTray.__init__ = blank_init
+
+
+class FakeSup:
+    url = "http://127.0.0.1:65000"
+
+    def is_running(self):
+        return False
+
+
+t = tray.LottoTray(FakeSup())
+print(json.dumps({{"icon_null": t.icon().isNull()}}))
+'''
+
+
+def tray_has_icon_before_show():
+    """LOTTO-0105 (b) — the tray carries an icon before main() shows it, not
+    only after the status timer's first tick."""
+    temp_home()
+    env = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "LOTTO_NO_BUILD": "1",
+           "PYTHONPATH": os.pathsep.join(
+               p for p in (USER_SITE, os.environ.get("PYTHONPATH")) if p)}
+    out = subprocess.run(
+        [sys.executable, "-c", TRAY_ICON_PROBE.format(root=ROOT)],
+        cwd=ROOT, capture_output=True, text=True, timeout=60, env=env,
+    )
+    need(out.returncode == 0, f"the tray icon probe died: {out.stderr.strip()[:400]}")
+    got = json.loads(out.stdout.strip().splitlines()[-1])
+    need(not got["icon_null"], "the tray is shown with no icon until the timer ticks")
 
 
 # ------------------------------------------------- LOTTO-0019: build reporting
@@ -3417,6 +3464,7 @@ CASES = [
     ("port_from_environment", "INV-24", port_from_environment),
     ("tray_headless_when_managed", "INV-25", tray_headless_when_managed),
     ("tray_signal_reaps_children", "INV-99", tray_signal_reaps_children),
+    ("tray_has_icon_before_show", "0105(b)", tray_has_icon_before_show),
     ("post_retries_transport_failure", "INV-27", post_retries_transport_failure),
     ("build_progress_is_visible", "INV-28", build_progress_is_visible),
     ("no_comparison_is_not_no_wins", "INV-29", no_comparison_is_not_no_wins),
@@ -3513,6 +3561,7 @@ BREAKS = {
     "tray_icon_when_managed": "tray_headless_when_managed",
     "headless_stops_server": "tray_headless_when_managed",
     "signal_orphans_children": "tray_signal_reaps_children",
+    "tray_shown_blank": "tray_has_icon_before_show",
     "no_retry": "post_retries_transport_failure",
     "retry_http_error": "post_retries_transport_failure",
     "no_counter_reset": "build_progress_is_visible",

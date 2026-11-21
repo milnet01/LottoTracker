@@ -6,6 +6,16 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The tray icon shows its picture from the start** (LOTTO-0105)
+  It used to appear blank for a moment after the tray started, until its
+  first status check.
+
+- **A ticket too old to check names its earliest draw as a date** (LOTTO-0105)
+  The "Why not" column now reads, for example, "earliest 26 Sep 2025"
+  rather than "earliest 2025-09-26".
+
 ## [1.0.0] - 2026-11-18
 
 **Theme:** A finished look, sections that fold away, and a way to stop chasing a win the bank will not pay.
