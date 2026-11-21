@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # LOTTO-0106 — Run the tracker as an Android app on the phone itself
 
-**Status:** spec draft (2026-11-21).
+**Status:** accepted (2026-11-21).
 **Kind:** feature.
 **Source:** ROADMAP LOTTO-0106 (user-request-2026-11-21). The scope decisions
 in §3 were taken with the user on 2026-11-21.
@@ -120,13 +120,15 @@ it, and it imports no Qt and no D-Bus.
 ```python
 def import_messages(rows: list[tuple[str, int, str]]) -> int
     # (address, date_ms, body) per inbox row; returns how many were written.
-    # Calls watch_sms.append_new() — the dump's one writer path and wanted()'s
-    # one filter. Imports watch_sms only, never watch_sms.connect().
+    # Calls paths.ensure_data(), then watch_sms.append_new() — the dump's one
+    # writer path and wanted()'s one filter. Imports watch_sms only, never
+    # watch_sms.connect(). Kotlin calls it before start_server() on each
+    # open, so the first build reads what was just imported.
 
 def since_ms() -> int
-    # watch_sms.high_water(): Kotlin asks the inbox only for rows newer than
-    # this, less one day, so the first open reads the whole inbox and every
-    # later one reads a day's worth. append_new()'s (date, body) key absorbs
+    # watch_sms.high_water() less one day, or 0 for an empty dump. Kotlin asks
+    # the inbox only for rows newer than this, so the first open reads the
+    # whole inbox and every later one reads a day's worth. append_new()'s (date, body) key absorbs
     # the overlap.
 
 def start_server() -> tuple[int, str]
@@ -139,9 +141,19 @@ def start_server() -> tuple[int, str]
 
 def stop_server() -> None
 
-def refresh() -> str           # the ⋮ menu's "Refresh results"
-def fetch_older() -> str       # the ⋮ menu's "Fetch older results":
-                               # supervise.fetch_older(), its FETCH_MESSAGE
+def refresh() -> str
+    # The ⋮ menu's "Refresh results": serve.refresh() on the running
+    # server's state. Returns at once with supervise.refresh_message() of
+    # REFRESH_RUNNING when it started, or of REFRESH_BUSY when one was
+    # already running; the page shows the result.
+
+def fetch_older() -> str
+    # The ⋮ menu's "Fetch older results": supervise.fetch_older(), waiting
+    # for the download, then its FETCH_MESSAGE sentence.
+
+def next_evening_ms() -> int
+    # Milliseconds from clock.now() to the next supervise.CHECK_AT in South
+    # African time: the evening job's first delay (§4.6).
 
 def evening(today_iso=None) -> list[str]
     # import is done by Kotlin first; this returns
@@ -150,7 +162,8 @@ def evening(today_iso=None) -> list[str]
 ```
 
 With `today_iso` left `None`, `today` is `clock.today()`, as everywhere else
-(ADR-0009). Kotlin passes nothing; only a test passes a date.
+(ADR-0009). Kotlin passes nothing; only a test passes a date. Kotlin calls
+every function here off the main thread.
 
 ### 4.3 Where the data lives: a third `paths.py` form
 
@@ -175,9 +188,11 @@ it sets a cookie `lotto_token=<token>` for that origin through
 `CookieManager`. Another app cannot read the WebView's cookie store.
 
 `serve.make_server()` gains a keyword, `token_on_every_route`, default `False`.
-When `True`, every route — `GET /` and `GET /status` included — accepts the
-request only when the token arrives in the existing header **or** that cookie,
-compared with `secrets.compare_digest`; anything else gets `403` with no body.
+When `True`, `GET /` and `GET /status` accept the request only when the token
+arrives in the existing header **or** that cookie, compared with
+`secrets.compare_digest`; anything else gets `403` with no body. The POST
+routes still require the header, as LOTTO-0014 §4.3 says: the cookie alone
+never satisfies a POST.
 `android_entry.start_server()` is the only caller that passes `True`. The
 desktop server is unchanged, byte for byte.
 
@@ -194,10 +209,10 @@ security headers, the body cap.
 `paths.ANDROID`, to every view it renders, beside `icon` and `font`, so the
 states with no model carry it too. `page.py` chooses its wording from it wherever the
 desktop form names the tray, KDE Connect, a terminal command or a desktop file:
-the phone form names the ⋮ menu or says nothing. The two settings switches
-(`autostart`, `open_on_start`), their "Tray" heading and the script's
-`wire()` calls for them are not rendered on Android — neither switch means
-anything there.
+the phone form names the ⋮ menu or says nothing. The same holds for the
+page's script, its comments included. The two settings switches
+(`autostart`, `open_on_start`) and their "Tray" heading are not rendered on
+Android — neither switch means anything there.
 
 `android_entry.PHONE_WORDING` maps each fixed `supervise` notice that names a
 desktop thing to its phone form, and passes every other string through:
@@ -218,8 +233,8 @@ becomes one notification. Every notification sets a **public version** reading
 date; the full text shows once the phone is unlocked. On Android 13 and later
 the app asks for `POST_NOTIFICATIONS` at first open.
 
-The evening job is a `PeriodicWorkRequest` of 24 hours, first run at the next
-22:00 SAST (`supervise.CHECK_AT`). WorkManager may run it later than asked;
+The evening job is a `PeriodicWorkRequest` of 24 hours, first run after
+`android_entry.next_evening_ms()`. WorkManager may run it later than asked;
 that is accepted, because a ticket warned about at 23:30 is still warned about
 before its last draw.
 
@@ -277,9 +292,10 @@ spec (`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
   *Test:* `tools/verify_page.py::android_routes_need_token`, which starts
   `make_server(..., token_on_every_route=True)` on `fixture_model()` and requests
   each route bare, with a wrong cookie, with a wrong header, with the right
-  cookie alone and with the right header alone.
+  cookie alone and with the right header alone; and `POST /refresh` with the
+  right cookie and no header, which gets `403`.
   *Breaks when:* `do_GET` checks the token only for POST, or reads the cookie
-  but not the header, or the reverse.
+  but not the header, or the reverse, or a POST accepts the cookie.
 
 - **INV-123** — The desktop server is unchanged: with `token_on_every_route`
   unset, `GET /` with no token still gets `200`.
@@ -292,7 +308,7 @@ spec (`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
   `sms_threads.json`, `expiry_warned.json` or `settings.json`, and none under
   `archive_cache/`.
   *Test:* `tools/verify_apk.py`, by hand, on the built APK — no arrow; it reads
-  the APK's zip listing.
+  the APK's zip listing and the listing of every archive inside it.
   *Breaks when:* the Gradle source set names the repository folder instead of
   the explicit list.
 
@@ -308,9 +324,11 @@ spec (`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
   no string `android_entry.evening()` can return contains "KDE Connect",
   "tray" or "restart".
   *Test:* `tools/verify_expiry.py::phone_wording`, which feeds every member of
-  `supervise.FAULT_NOTICES` and an `expiry_notice()` through `PHONE_WORDING`.
+  `supervise.FAULT_NOTICES` and an `expiry_notice()` through `PHONE_WORDING`,
+  then calls `evening()` on a temporary data folder holding no dump, with
+  `supervise._warn_state_unsaved` set, and checks what it returns.
   *Breaks when:* a new desktop notice is added to `supervise` and not to the
-  table.
+  table, or `evening()` skips the table.
 
 - **INV-127** — The phone's page never names a desktop thing: rendered with
   `platform: "android"`, the HTML, script included, contains none of "tray",
