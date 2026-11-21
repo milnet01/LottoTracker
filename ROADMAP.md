@@ -2545,6 +2545,13 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   tools/verify_expiry.py. The user's 2026-10-15 decisions: per-game
   board size confirmed; an oversized ticket is reported apart from
   verify_pools' unresolved count.
+  (y) Seen 2026-11-21 while testing LOTTO-0102 in a bare ubuntu:22.04
+  container: on a desktop with no system tray, `tray.py::main()` shows a
+  modal `QMessageBox.critical` and SIGTERM does not end it.
+  `quit_on_signals()` queues `app.quit`, which does not close a dialog's
+  own event loop; the process outlived `timeout 8` by minutes. Spawns no
+  child, so nothing is orphaned. Not from LOTTO-0102: the same code path
+  on any build.
   Source: cold-eyes-2026-08-01 loop 3.
 
 - ✅ [LOTTO-0026] **A feed-side rename of `MATCH n` scores every line as a loss.**
