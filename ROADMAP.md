@@ -2042,6 +2042,12 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   version where the user shares each message into the app (no SMS
   permission); F-Droid (rules not yet checked). The user asked
   2026-11-21 whether it can go on the Play Store.
+  2026-11-21: the design is docs/specs/LOTTO-0106-android-app.md,
+  accepted after its two-loop contract review (record:
+  docs/reviews/LOTTO-0106-android-app-loop-log.md). Seventeen findings
+  were fixed and none deferred. Its §14 lists what the first device
+  build must settle: HTTPS on Chaquopy, the permissions WorkManager
+  adds, and the cost of rebuilding on each open.
   **Layman:** A phone app that tracks your tickets on its own, with no computer needed.
   Kind: feature.
   Source: user-request-2026-11-21.
