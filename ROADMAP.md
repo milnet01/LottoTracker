@@ -1959,12 +1959,19 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   Kind: ux.
   Source: user-request-2026-11-18.
 
-- 📋 [LOTTO-0102] **Build the AppImage so it runs on older Linux systems, not only very new ones.**
+- ✅ [LOTTO-0102] **Build the AppImage so it runs on older Linux systems, not only very new ones.**
   Found 2026-11-18 while writing the README: the 0.2.0 AppImage was built
   on openSUSE Tumbleweed, whose GNU C library is 2.44 (ldd --version), and
   tools/build_appimage.sh says it runs only on systems at least as new.
   The usual fix is to build inside an older distribution's container.
   README.md, Getting started, tells users how to check their version.
+  Shipped 2026-11-21: PyInstaller now runs in an Ubuntu 22.04 container
+  (packaging/Containerfile), so the bundle needs glibc 2.35 at most
+  (objdump over every bundled file). Two fixes the older bundle needed:
+  the host's certificate file for HTTPS
+  (lottotracker.py::use_host_certificates) and the host's fontconfig,
+  freetype and harfbuzz. verify_appimage.py passes on openSUSE; the page
+  serves inside plain ubuntu:22.04.
   **Layman:** The download will not start on most Ubuntu or Mint computers yet; this fixes that.
   Kind: package.
   Source: user-request-2026-11-18.

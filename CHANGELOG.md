@@ -6,6 +6,14 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The AppImage runs on older Linux systems** (LOTTO-0102)
+  It now needs Ubuntu 22.04, Linux Mint 21, Debian 12 or newer, where it
+  needed openSUSE Tumbleweed's very new C library before. It is built inside
+  an Ubuntu 22.04 container, uses the computer's own certificates to reach the
+  results website, and uses the computer's own font libraries.
+
 ## [1.1.0] - 2026-11-21
 
 **Theme:** A warning when a prize can no longer be checked, and two small fixes.

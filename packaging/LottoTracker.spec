@@ -29,6 +29,12 @@ a = Analysis(  # noqa: F821
         "tkinter",
     ],
 )
+# The host's own font libraries, as the AppImage project's exclude list says:
+# the build system's older fontconfig cannot parse a newer host's font config
+# and prints an error per line of it (LOTTO-0102). freetype and harfbuzz go
+# with it, so the host's fontconfig never loads older ones than it was built for.
+HOST_ONLY = ("libfontconfig.so", "libfreetype.so", "libharfbuzz.so")
+a.binaries = [b for b in a.binaries if not os.path.basename(b[0]).startswith(HOST_ONLY)]
 pyz = PYZ(a.pure)  # noqa: F821
 exe = EXE(  # noqa: F821
     pyz, a.scripts, [],

@@ -152,6 +152,8 @@ tool; an Ants-verb read does not load it.
   **`lottotracker.py`** is the frozen build's entry point and nothing imports
   it: it dispatches `serve` and `watch` to their modules, imports each inside
   its branch so those children never load Qt, and exits on any other argument.
+  Before dispatching, `use_host_certificates()` points the bundled OpenSSL at
+  the host's certificates (LOTTO-0102).
   `supervise.py` also owns how a helper is started (`child_command()`), the
   environment a program that is not ours gets (`host_env()`, which strips the
   bundle's library and search paths), and the **Fetch older results** outcome

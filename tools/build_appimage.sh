@@ -3,8 +3,9 @@
 #
 #     tools/build_appimage.sh
 #
-# Built on this machine, for this machine: the bundle carries this Python and
-# these libraries, so it runs on systems at least as new as this one.
+# PyInstaller runs inside an Ubuntu 22.04 container (packaging/Containerfile,
+# LOTTO-0102): the bundle carries that system's Python and libraries, so it
+# runs on systems at least as new as that one. Needs podman.
 #
 # appimagetool and its runtime are not packaged for openSUSE, so they are
 # downloaded into build/tools/ and checked against the SHA-256 below BEFORE
@@ -48,8 +49,13 @@ mkdir -p "$TOOLS" dist
 fetch "$TOOL_URL" "$TOOL_SHA256" "$TOOLS/appimagetool-$TOOL_VERSION-x86_64.AppImage"
 fetch "$RUNTIME_URL" "$RUNTIME_SHA256" "$TOOLS/runtime-$RUNTIME_VERSION-x86_64"
 
-# The same interpreter that has dbus-python, PyGObject and PySide6.
-python3 -m PyInstaller --noconfirm --clean \
+# Rootless podman maps the container's root to the user, so build/ stays theirs.
+# label=disable, not :Z: relabelling would strip the files' own SELinux label
+# (on this machine, the Samba share's).
+IMAGE=localhost/lottotracker-build:22.04
+podman build -q -t "$IMAGE" -f packaging/Containerfile packaging >/dev/null
+podman run --rm --security-opt label=disable -v "$PWD:/src" -w /src "$IMAGE" \
+    python3 -m PyInstaller --noconfirm --clean \
     --distpath build/pyinstaller --workpath build/work packaging/LottoTracker.spec
 
 rm -rf "$APPDIR"

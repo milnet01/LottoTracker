@@ -58,10 +58,11 @@ Download the `.AppImage` file from the
 [latest release](https://github.com/milnet01/LottoTracker/releases/latest).
 It is one file that contains everything the app needs.
 
-**It needs a recent Linux.** The current file was built on openSUSE
-Tumbleweed and needs version 2.44 or newer of the GNU C library. To see yours,
-open a terminal and type `ldd --version`. If yours is older, the file will not
-start; run the app from source instead (see [For developers](#for-developers)).
+**It needs Ubuntu 22.04, Linux Mint 21, Debian 12 or newer** — version 2.35 or
+newer of the GNU C library. Release 1.1.0 and earlier need 2.44 or newer. To
+see yours, open a terminal and type `ldd --version`. If yours is older, the
+file will not start; run the app from source instead (see
+[For developers](#for-developers)).
 
 Make the file runnable: right-click it, open **Properties**, then
 **Permissions**, and tick the box that lets it run as a program. Then
@@ -315,14 +316,15 @@ is no total: for a partly paid ticket, what is still owed is not known.
 
 ### Building the AppImage
 
-After the setup above and `pip install pyinstaller`:
+It needs `podman`. The script builds an Ubuntu 22.04 container
+(`packaging/Containerfile`) and runs PyInstaller inside it:
 
 ```bash
 tools/build_appimage.sh                       # writes dist/LottoTracker-<version>-x86_64.AppImage
 ./dist/LottoTracker-*-x86_64.AppImage         # starts the tray, the page and the watcher
 ```
 
-It runs on systems at least as new as the one that built it.
+It runs on systems at least as new as Ubuntu 22.04, whatever system built it.
 
 ### Privacy checks
 

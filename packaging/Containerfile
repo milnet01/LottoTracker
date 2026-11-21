@@ -1,0 +1,25 @@
+# The AppImage's build system (LOTTO-0102). tools/build_appimage.sh builds
+# this image and runs PyInstaller inside it; nothing else uses it.
+#
+# Ubuntu 22.04 because its GNU C library is 2.35: the bundle carries this
+# system's Python and libraries, so the AppImage runs on systems at least as
+# new as this one (Ubuntu 22.04, Mint 21, Debian 12 and later).
+FROM docker.io/library/ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# binutils and libpython3.10 for PyInstaller. dbus-python and PyGObject from the
+# distribution, as on the build host; the
+# rest are the libraries Qt's platform plugins link to, so PyInstaller finds
+# and bundles them.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        binutils python3 libpython3.10 python3-pip python3-dbus python3-gi gir1.2-glib-2.0 \
+        libgl1 libegl1 libfontconfig1 libdbus-1-3 libglib2.0-0 \
+        libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
+        libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+        libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxcb-xfixes0 \
+        libwayland-client0 libwayland-cursor0 libwayland-egl1 libgtk-3-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# The versions the source checkout was released with.
+RUN python3 -m pip install --no-cache-dir PySide6-Essentials==6.11.0 pyinstaller==6.20.0

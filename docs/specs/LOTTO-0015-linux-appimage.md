@@ -64,9 +64,10 @@ different notice anyway, so this item corrects both.
 - **Older results come from a tray menu item, "Fetch older results", never
   automatically** (user, 2026-11-11). The page points at it while the archive
   is missing. Nothing slow or network-heavy starts without the user asking.
-- **Built on this machine, for this machine** (user, 2026-11-11). The AppImage
-  carries this machine's Python and libraries, so it runs on systems at least
-  as new as openSUSE Tumbleweed. A build for older systems is a separate item.
+- **Built inside an Ubuntu 22.04 container** (LOTTO-0102, the user's request
+  of 2026-11-18, replacing "built on this machine" of 2026-11-11). The AppImage
+  carries that system's Python and libraries, so it runs on systems at least as
+  new as Ubuntu 22.04 (GNU C library 2.35).
 
 Decided here, not by the user, each following from §2:
 
@@ -147,6 +148,12 @@ start a tray, which spawns two more. `serve.main()`
 and `watch_sms.main()` already exist. `watch_sms.main()` reads
 `sys.argv[1:]` for `--once`, so the dispatcher removes `"watch"` from
 `sys.argv` before calling it.
+
+Before any branch, `use_host_certificates()` points the bundled OpenSSL at the
+host's certificate file through `SSL_CERT_FILE`, when neither `SSL_CERT_FILE`
+nor `SSL_CERT_DIR` is set and OpenSSL's own default location is missing. The
+bundled OpenSSL looks where Ubuntu keeps them; on openSUSE or Fedora that
+folder does not exist, and every results fetch would fail.
 
 ### 4.3 Programs the frozen build starts that are not its own
 
@@ -257,8 +264,11 @@ New files:
   bundled program and sets no `LD_LIBRARY_PATH`, so §4.3's
   `LD_LIBRARY_PATH_ORIG` holds the host's value and INV-113's `SIGTERM` reaches
   the tray, not a shell.
-- `tools/build_appimage.sh` — runs PyInstaller, assembles the AppDir, and runs
-  `appimagetool`. Output: `dist/LottoTracker-<VERSION>-x86_64.AppImage`, the
+- `tools/build_appimage.sh` — runs PyInstaller inside the container
+  `packaging/Containerfile` describes (needs `podman`), assembles the AppDir,
+  and runs `appimagetool`. The recipe leaves out fontconfig, freetype and
+  harfbuzz, as the AppImage project's exclude list does, so the host's own are
+  used. Output: `dist/LottoTracker-<VERSION>-x86_64.AppImage`, the
   version read from `VERSION`.
 
 `appimagetool` is not installed and no openSUSE package carries it
@@ -440,7 +450,6 @@ The new verifiers are added to `.claude/rules/verifiers.md`, and
   security surface LOTTO-0014 bounds, for an action only the tray offers.
 - **Fetch older results automatically on first run.** Rejected by the user
   (§3).
-- **Build in an older container for wider reach.** Deferred by the user (§3).
 
 ## 9. Out of scope
 

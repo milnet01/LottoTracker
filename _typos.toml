@@ -9,3 +9,5 @@ empted = "empted"
 unparseable = "unparseable"
 # PyInstaller's own argument and attribute name (packaging/LottoTracker.spec).
 datas = "datas"
+# GObject Introspection, in the package gir1.2-glib-2.0 (packaging/Containerfile).
+gir = "gir"
