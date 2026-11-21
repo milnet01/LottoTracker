@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # LOTTO-0104 — Let the user accept a win the bank has not fully paid
 
-**Status:** accepted (2026-11-18).
+**Status:** shipped 1.0.0 (2026-11-18).
 **Kind:** feature.
 **Source:** ROADMAP LOTTO-0104 (user-request-2026-11-18, made while reviewing
 the LOTTO-0100 mock-up). The scope decisions in §3 were taken with the user on

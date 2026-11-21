@@ -24,7 +24,7 @@ findings were folded into the build. INV-68
 (`tools/verify_page.py::deadline_only_when_unpaid`) pass, each observed
 failing under its own breaks.
 **Amended 2026-11-18** for LOTTO-0104: §4.1, §4.3, §4.5, INV-63, INV-70,
-INV-87, INV-89, INV-96, INV-115, §11, §13.
+INV-87, INV-89, INV-96, INV-115, §11, §13. Shipped in 1.0.0.
 **Amended 2026-11-11** for LOTTO-0032: §4.5, INV-104, §7, §11.
 **Amended 2026-11-05** for LOTTO-0021: §4.5, INV-101, §7, §11.
 **Amended 2026-11-02** for LOTTO-0093: INV-100, §7, §11.
