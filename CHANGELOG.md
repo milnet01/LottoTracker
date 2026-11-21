@@ -6,6 +6,10 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-21
+
+**Theme:** A warning when a prize can no longer be checked, and two small fixes.
+
 ### Added
 
 - **The page warns if a prize can no longer be checked** (LOTTO-0105)
