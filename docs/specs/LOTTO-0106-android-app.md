@@ -61,7 +61,8 @@ consequences.
 
 - **Reuse the existing Python, not a rewrite.** The phone runs `tickets.py`,
   `check.py`, `history.py`, `results.py`, `backfill.py`, `expiry.py`,
-  `serve.py` and `page.py` as they are, through Chaquopy. One copy of the
+  `serve.py` and `page.py` as they are, with the modules they import, through
+  Chaquopy. One copy of the
   bank's wording and the scoring means a fix lands in both apps. The cost
   accepted: a larger download and a slower first open (§13).
 - **Install from a file on GitHub, signed under Google's free "limited
@@ -129,8 +130,12 @@ def since_ms() -> int
     # the overlap.
 
 def start_server() -> tuple[int, str]
-    # serve.make_server() on a free port in a daemon thread; returns
-    # (port, token). Requires the token on every route (§4.4).
+    # serve.main()'s steps, on a free port, serving in a daemon thread:
+    # paths.ensure_data(), serve.make_server(), then
+    # serve.refresh(state, serve.build_model), so each open builds afresh.
+    # Clears supervise._warn_state_unsaved first, so an open is the
+    # desktop's restart (LOTTO-0034 §3 item 5). Returns (port, token).
+    # Requires the token on every route (§4.4).
 
 def stop_server() -> None
 
@@ -138,14 +143,14 @@ def refresh() -> str           # the ⋮ menu's "Refresh results"
 def fetch_older() -> str       # the ⋮ menu's "Fetch older results":
                                # supervise.fetch_older(), its FETCH_MESSAGE
 
-def evening(today_iso: str) -> list[str]
+def evening(today_iso=None) -> list[str]
     # import is done by Kotlin first; this returns
     # supervise.expiry_notices(today) then supervise.sms_quiet_notices(today),
     # each string translated by PHONE_WORDING (§4.5).
 ```
 
-`today` comes from `clock.today()` inside Python, as everywhere else (ADR-0009);
-the Kotlin argument exists only so a test can pin it.
+With `today_iso` left `None`, `today` is `clock.today()`, as everywhere else
+(ADR-0009). Kotlin passes nothing; only a test passes a date.
 
 ### 4.3 Where the data lives: a third `paths.py` form
 
@@ -185,11 +190,13 @@ security headers, the body cap.
 
 ### 4.5 Phone wording
 
-`serve.build_model()` gains a `platform` field, `"desktop"` or `"android"`,
-from `paths.ANDROID`. `page.py` chooses its wording from it wherever the
+`serve.py`'s `do_GET` adds a `platform` key, `"desktop"` or `"android"` from
+`paths.ANDROID`, to every view it renders, beside `icon` and `font`, so the
+states with no model carry it too. `page.py` chooses its wording from it wherever the
 desktop form names the tray, KDE Connect, a terminal command or a desktop file:
 the phone form names the ⋮ menu or says nothing. The two settings switches
-(`autostart`, `open_on_start`) are not rendered on Android — neither means
+(`autostart`, `open_on_start`), their "Tray" heading and the script's
+`wire()` calls for them are not rendered on Android — neither switch means
 anything there.
 
 `android_entry.PHONE_WORDING` maps each fixed `supervise` notice that names a
@@ -218,10 +225,11 @@ before its last draw.
 
 ### 4.7 First run and permissions
 
-At first open the page shows a notice naming the one step outside the app:
+Until a lottery SMS has been imported, the page is the existing no-dump notice.
+Its phone form names the one step outside the app:
 *Settings → Apps → Lotto Tracker → ⋮ → Allow restricted settings*, then allow
-SMS. Until `READ_SMS` is granted, the page is the existing no-dump notice in its
-phone wording — never an empty ticket table (`CLAUDE.md`'s cardinal rule; LOTTO-0002
+SMS. The page has no separate permission state: to Python, a denied permission
+and an inbox with no lottery SMS look the same. Never an empty ticket table (`CLAUDE.md`'s cardinal rule; LOTTO-0002
 §6). Source for the restricted-settings step:
 https://www.androidauthority.com/android-15-restricted-settings-sideloading-3481098/
 
@@ -233,8 +241,10 @@ holding a pinned JDK, Android command-line tools and Gradle. `versionName` is
 `VERSION`'s text; `versionCode` is `major*10000 + minor*100 + patch`, so every
 release is higher than the one before.
 
-**The Python sources are an explicit list** in the Gradle file — the modules
-`android_entry.py` imports, and `icons/` and `fonts/` — never the repository
+**The Python sources are an explicit list** in the Gradle file — every project module
+`android_entry.py` reaches, directly or through another module, function-level
+imports included (`serve.build_model()` imports `check`, `history` and
+`tickets` inside its body), and `icons/` and `fonts/` — never the repository
 folder. The working tree holds `lotto_sms_raw.txt`, `archive_results.json` and
 `archive_cache/`, all gitignored and all real data, and a folder-wide source set
 would ship them inside the APK.
@@ -257,8 +267,8 @@ the friend installs.
 
 ## 5. Invariants
 
-Numbered after LOTTO-0104's INV-121, the highest in the project
-(`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
+Numbered after LOTTO-0001's INV-121, the highest in the project before this
+spec (`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
 `INV-121`).
 
 - **INV-122** — On the phone, every route refuses a request carrying no token:
@@ -266,7 +276,8 @@ Numbered after LOTTO-0104's INV-121, the highest in the project
   a zero-length body, and no ticket field appears in any response to them.
   *Test:* `tools/verify_page.py::android_routes_need_token`, which starts
   `make_server(..., token_on_every_route=True)` on `fixture_model()` and requests
-  each route bare, with a wrong cookie, and with the right one.
+  each route bare, with a wrong cookie, with a wrong header, with the right
+  cookie alone and with the right header alone.
   *Breaks when:* `do_GET` checks the token only for POST, or reads the cookie
   but not the header, or the reverse.
 
@@ -302,8 +313,9 @@ Numbered after LOTTO-0104's INV-121, the highest in the project
   table.
 
 - **INV-127** — The phone's page never names a desktop thing: rendered with
-  `platform: "android"`, the HTML contains none of "tray", "KDE Connect",
-  "python3" or "autostart", in every notice state `fixture_model()` can produce.
+  `platform: "android"`, the HTML, script included, contains none of "tray",
+  "KDE Connect", "python3" or "autostart" in any letter case, in every notice
+  state `fixture_model()` can produce.
   *Test:* `tools/verify_page.py::android_page_wording`.
   *Breaks when:* `page.py` gains a desktop sentence with no `platform` branch.
 
@@ -426,7 +438,7 @@ draw and run the job from Android's developer options.
 | INV-129 | `tools/verify_watch.py::android_import` |
 | Kotlin holds no decision (§4.1) | **nothing** — a reviewer reading the Kotlin |
 | Lock-screen public version (§4.6) | **nothing** — the manual recipe in §7 |
-| Signing key kept off the repo and backed up (§4.8) | **Partial:** `verify_privacy.py` and `.gitignore` keep a key file out of git; nothing checks the backup exists |
+| Signing key kept off the repo and backed up (§4.8) | **nothing** — no `.gitignore` pattern or `verify_privacy.py` check covers a key file, and nothing checks the backup exists |
 | Evening job runs after 22:00 SAST (§4.6) | **nothing** — the manual recipe in §7 |
 
 ## 11. Cross-doc impact
@@ -475,3 +487,10 @@ Rows live in `../reviews/LOTTO-0106-android-app-loop-log.md`.
 - **Whether `supervise.fetch_older()`'s scrape is acceptable on a phone's data
   plan.** One fetch per pool per year since `backfill.FIRST_YEAR` (2022);
   measure the bytes on the first build and say it on the page if large.
+- **Which permissions AndroidX WorkManager merges into the manifest.** INV-125's
+  set assumes it adds none. Settled by `aapt2 dump permissions` on the first
+  build; INV-125 is amended to that list if it differs.
+- **Whether each open should rebuild.** `start_server()` builds afresh on every
+  `onStart`, so returning to the app re-fetches results. Measure the time and
+  bytes on the first build; keeping the model for the process's life is the
+  alternative.
