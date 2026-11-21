@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: LOTTO=105 -->
+<!-- ants-roadmap-id-high-water: LOTTO=106 -->
 
 # ROADMAP — LottoTracker
 
@@ -2010,6 +2010,23 @@ Status keys: 📋 planned · 🚧 in progress · ✅ shipped · 💭 considered
   **Layman:** You can mark a prize the bank underpaid or never paid as accepted, and the app stops flagging it.
   Kind: feature.
   Source: user-request-2026-11-18.
+
+- 📋 [LOTTO-0106] **Build an Android app that reads the ticket SMSes on the phone itself.**
+  The user, 2026-11-21: a friend (a Standard Bank customer) wants to
+  use the app, and asked for Windows and Android versions; they chose
+  Android first, because the friend would then need only the phone.
+  None of the current code runs on Android: it is desktop Python with
+  PySide6, and it reads SMSes over KDE Connect on Linux. So this is a
+  new app, and it needs a design (write-spec) first.
+  Open questions for the design: which toolkit; how the app is
+  installed, since Google Play is understood to limit which apps may
+  read SMS (unverified: check the current Play policy before
+  designing); how results are fetched on the phone; and how the
+  re-buy warning (the app's primary job) works as a phone notification
+  within the notification privacy rule in CLAUDE.md.
+  **Layman:** A phone app that tracks your tickets on its own, with no computer needed.
+  Kind: feature.
+  Source: user-request-2026-11-21.
 
 ## Hardening
 
