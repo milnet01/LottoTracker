@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lotto Tracker</string>
+    <string name="menu_refresh">Refresh results</string>
+    <string name="menu_fetch_older">Fetch older results</string>
+    <string name="fetch_older_running">Fetching older results…</string>
+    <string name="channel_name">Ticket warnings</string>
+    <string name="notice_public">Lotto Tracker has a reminder for you</string>
+    <string name="starting">Starting…</string>
+</resources>

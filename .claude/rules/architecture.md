@@ -167,6 +167,12 @@ tool; an Ants-verb read does not load it.
   into the dump's one writer path (INV-129). Its server requires the token on
   every route (`serve.make_server(..., token_on_every_route=True)`, INV-122),
   and `PHONE_WORDING` gives each desktop-naming notice its phone form (INV-126).
+- **`android/`** is the Android app's Gradle project (LOTTO-0106 §4.1). Its
+  Kotlin holds no decision: it moves inbox rows, strings and clicks to
+  `android_entry.py` and back. **Its Python is an explicit file list in
+  `android/app/build.gradle.kts`, never the repository folder**, which holds
+  the real dump and archive (INV-124). A module `android_entry.py` comes to
+  import must be added there, or the phone fails at that import.
 - **`tools/verify_*.py`** import the modules directly via a `sys.path` insert.
 
 ## Load-bearing decisions — do not "simplify" these

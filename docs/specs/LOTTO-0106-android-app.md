@@ -251,8 +251,9 @@ https://www.androidauthority.com/android-15-restricted-settings-sideloading-3481
 ### 4.8 Build, signing and release
 
 `tools/build_apk.sh` builds `dist/LottoTracker-<VERSION>.apk` inside a podman
-container, as `tools/build_appimage.sh` does, from a `packaging/` Containerfile
-holding a pinned JDK, Android command-line tools and Gradle. `versionName` is
+container, as `tools/build_appimage.sh` does, from
+`packaging/Containerfile.android`, which pins the JDK, the Android
+command-line tools and Gradle. `versionName` is
 `VERSION`'s text; `versionCode` is `major*10000 + minor*100 + patch`, so every
 release is higher than the one before.
 
@@ -267,8 +268,9 @@ would ship them inside the APK.
 `android:allowBackup="false"`, plus `dataExtractionRules` excluding every
 domain: Android's cloud backup would otherwise copy the dump to Google Drive.
 
-The signing key lives outside the repository, at a path given to the build by
-an environment variable, and the user keeps a second copy off this machine.
+The signing key lives outside the repository, in the folder
+`LOTTO_KEYSTORE_DIR` names (default `~/.config/LottoTracker-signing`), and the
+user keeps a second copy off this machine.
 **An app's updates must be signed with the key that signed its first install**;
 a lost key means the friend uninstalls, which deletes their data.
 
@@ -310,16 +312,22 @@ spec (`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
   `sms_threads.json`, `expiry_warned.json` or `settings.json`, and none under
   `archive_cache/`.
   *Test:* `tools/verify_apk.py`, by hand, on the built APK — no arrow; it reads
-  the APK's zip listing and the listing of every archive inside it.
+  the APK's zip listing and the listing of every archive inside it. Red under
+  `--break data_file`.
   *Breaks when:* the Gradle source set names the repository folder instead of
   the explicit list.
 
 - **INV-125** — The APK asks for exactly `READ_SMS`, `INTERNET` and
-  `POST_NOTIFICATIONS`, and its manifest sets `allowBackup="false"`.
-  *Test:* `tools/verify_apk.py`, reading the manifest with the SDK's `aapt2
-  dump xmltree` inside the build container.
-  *Breaks when:* a library merges in another permission, or backup is left at
-  its default of on.
+  `POST_NOTIFICATIONS`, plus what AndroidX WorkManager merges in:
+  `WAKE_LOCK`, `ACCESS_NETWORK_STATE`, `RECEIVE_BOOT_COMPLETED`,
+  `FOREGROUND_SERVICE` and AndroidX's own
+  `<package>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`. Android grants those
+  five at install without asking. Its manifest sets `allowBackup="false"`.
+  *Test:* `tools/verify_apk.py`, reading the merged manifest with the SDK's
+  `aapt2 dump permissions` and `aapt2 dump xmltree` inside the build
+  container. Red under `--break extra_permission` and `--break backup_on`.
+  *Breaks when:* a library merges in a permission not in the list, or backup
+  is left at its default of on.
 
 - **INV-126** — No phone notification carries ticket data beyond the re-buy
   exception, and every phone notice that names a desktop thing is translated:
@@ -492,8 +500,8 @@ Rows live in `../reviews/LOTTO-0106-android-app-loop-log.md`.
 ## 13. Resource cost
 
 - **Download size.** Chaquopy bundles a Python runtime; the stdlib-only code
-  adds little. Expected in the tens of megabytes; **unmeasured** until the
-  first build, and `verify_apk.py` prints it.
+  adds little. 38.8 MB for 1.1.1 with both ABIs (`verify_apk.py`, which prints
+  it, 2026-11-22).
 - **Storage.** The archive download on the desktop holds `archive_cache/` at
   25M (`du -sh archive_cache`, this machine, 2026-11-21) and
   `archive_results.json` at about 450 KB (`ls -la`). The phone holds the same.
@@ -501,8 +509,9 @@ Rows live in `../reviews/LOTTO-0106-android-app-loop-log.md`.
   screen and for the evening job's few seconds. No service stays resident, no
   loop polls, and the WebView page runs no script while idle (`CLAUDE.md`
   § Working conventions).
-- **New dependencies.** Chaquopy (Gradle plugin), AndroidX WorkManager and
-  AndroidX WebKit — build-time and on-phone only. The desktop gains none.
+- **New dependencies.** Chaquopy (Gradle plugin) and AndroidX WorkManager —
+  build-time and on-phone only. The WebView and its cookie store are
+  Android's own. The desktop gains none.
 
 ## 14. Open questions
 
@@ -514,9 +523,6 @@ Rows live in `../reviews/LOTTO-0106-android-app-loop-log.md`.
 - **Whether `supervise.fetch_older()`'s scrape is acceptable on a phone's data
   plan.** One fetch per pool per year since `backfill.FIRST_YEAR` (2022);
   measure the bytes on the first build and say it on the page if large.
-- **Which permissions AndroidX WorkManager merges into the manifest.** INV-125's
-  set assumes it adds none. Settled by `aapt2 dump permissions` on the first
-  build; INV-125 is amended to that list if it differs.
 - **Whether each open should rebuild.** `start_server()` builds afresh on every
   `onStart`, so returning to the app re-fetches results. Measure the time and
   bytes on the first build; keeping the model for the process's life is the

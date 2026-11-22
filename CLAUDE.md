@@ -51,6 +51,10 @@ tools/build_appimage.sh        # LOTTO-0015: dist/LottoTracker-<VERSION>-x86_64.
                                # its data lives in ~/.local/share/LottoTracker
 python3 tools/verify_appimage.py  # the built AppImage end to end: by hand, before a
                                # release, phone unreachable. Not in ./local-CI.sh
+tools/build_apk.sh             # LOTTO-0106: dist/LottoTracker-<VERSION>.apk, in podman;
+                               # signs with the key in ~/.config/LottoTracker-signing
+python3 tools/verify_apk.py    # the built APK: no data file, the exact permissions,
+                               # backup off. By hand, before a release
 ```
 
 **A data path comes from `paths.py`, never from a module's own folder**: the
@@ -123,10 +127,13 @@ Data flows in one direction, and the two halves are independent:
 
 ```
 phone ──adb over USB─────────┐                        ┌─ parse() ──────────> [Ticket]
-       (bulk history)        ├─> lotto_sms_raw.txt ───┤   (a purchase)
-phone ──watch_sms.py─────────┘   (two writers,        └─ parse_payout() ──> [Payout]
-       (KDE Connect, new           ONE reader)            (a prize the bank paid)
-        messages, no cable)
+       (bulk history)        │                        │   (a purchase)
+phone ──watch_sms.py─────────┼─> lotto_sms_raw.txt ───┤
+       (KDE Connect, new     │   (two writers,        └─ parse_payout() ──> [Payout]
+        messages, no cable)  │    ONE reader)             (a prize the bank paid)
+phone inbox ─android_entry.py┘
+       (the Android app, on the phone itself: LOTTO-0106.
+        It writes through watch_sms.append_new(), not a writer of its own)
 
 results.py    (official API, 2026-06-01 on, has issue)  ──┐
 backfill.py   (scraped archive, FIRST_YEAR on, no issue) ┴─ history.py ──┐

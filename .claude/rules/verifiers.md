@@ -99,6 +99,16 @@ tools/build_appimage.sh                     # dist/LottoTracker-<VERSION>-x86_64
 python3 tools/verify_appimage.py [--scratch DIR]
 ```
 
+`tools/verify_apk.py` (INV-124, INV-125) is on **neither** lane either. It reads
+the built APK and, through the build image's `aapt2`, its merged manifest; it
+needs podman and no phone. `--break data_file`, `extra_permission` or
+`backup_on` plants one defect after reading, and the named case must fail:
+
+```bash
+tools/build_apk.sh                          # dist/LottoTracker-<VERSION>.apk
+python3 tools/verify_apk.py [--break NAME] [APK]
+```
+
 `verify_page.py` and `verify_paths.py` need PySide6 installed — the first's
 `tray_headless_when_managed` case and the second's `resources_from_bundle`
 import `tray.py` in a subprocess. Neither needs a display.

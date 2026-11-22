@@ -32,3 +32,8 @@ __pycache__/
 # Build output: tools/build_appimage.sh (LOTTO-0015).
 build/
 dist/
+
+# The Android build (LOTTO-0106): Gradle state and the SDK path file.
+android/.gradle/
+android/.kotlin/
+android/local.properties

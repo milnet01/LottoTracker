@@ -96,6 +96,25 @@ tray icon's menu once.
 The app keeps your messages and results in `~/.local/share/LottoTracker`. On
 the first run that folder is empty, and the page names it.
 
+### On an Android phone
+
+**Not released yet.** The phone app is built but still being tested on a
+real phone, so no release carries it.
+
+The app runs on the phone itself, with no computer. It reads the phone's
+lottery SMSes, shows the same page, and warns you each evening when a ticket
+is about to run out.
+
+1. Download the `.apk` file from the release, on the phone, and open it.
+   Android asks whether to allow installs from your browser; allow it.
+2. Open **Lotto Tracker** once. Android blocks its SMS permission at first,
+   because the app did not come from the Play Store.
+3. Go to Settings → Apps → Lotto Tracker → ⋮ → **Allow restricted settings**.
+4. Open the app again and allow SMS and notifications.
+
+Your messages and results stay in the app's own folder on the phone. Android
+does not back them up to Google Drive.
+
 ## The page and the tray icon
 
 The app puts an icon by the clock. Click it to open the page in your web
@@ -325,6 +344,22 @@ tools/build_appimage.sh                       # writes dist/LottoTracker-<versio
 ```
 
 It runs on systems at least as new as Ubuntu 22.04, whatever system built it.
+
+### Building the Android app
+
+It needs `podman`. The script builds a Debian container
+(`packaging/Containerfile.android`) holding the JDK, the Android SDK and
+Gradle, and runs Gradle inside it:
+
+```bash
+tools/build_apk.sh                            # writes dist/LottoTracker-<version>.apk
+python3 tools/verify_apk.py                   # no data file inside, exact permissions
+```
+
+It signs with the key in `~/.config/LottoTracker-signing` (`release.jks` and
+`password`), or the folder `LOTTO_KEYSTORE_DIR` names. Every update must be
+signed with the key that signed the first install, so keep a copy of that
+folder off the computer.
 
 ### Privacy checks
 

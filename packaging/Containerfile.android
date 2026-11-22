@@ -1,0 +1,39 @@
+# The Android app's build system (LOTTO-0106 §4.8). tools/build_apk.sh builds
+# this image and runs Gradle inside it; tools/verify_apk.py reads the APK's
+# manifest with its aapt2. Nothing else uses it.
+#
+# Debian 13 for its Python 3.13: Chaquopy compiles the app's Python to .pyc
+# with a build-host Python of the same version as the phone's. Each download
+# is checked against the SHA-256 its publisher gives, and a mismatch stops
+# the build.
+FROM docker.io/library/debian:trixie
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openjdk-21-jdk-headless python3 curl unzip ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Android command-line tools: developer.android.com/studio, "Command line tools only".
+ARG CMDLINE_TOOLS=commandlinetools-linux-15859902_latest.zip
+ARG CMDLINE_TOOLS_SHA256=4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
+ENV ANDROID_HOME=/opt/android-sdk
+RUN curl -fsSL -o /tmp/tools.zip "https://dl.google.com/android/repository/$CMDLINE_TOOLS" \
+    && echo "$CMDLINE_TOOLS_SHA256  /tmp/tools.zip" | sha256sum -c - \
+    && mkdir -p "$ANDROID_HOME/cmdline-tools" \
+    && unzip -q /tmp/tools.zip -d "$ANDROID_HOME/cmdline-tools" \
+    && mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest" \
+    && rm /tmp/tools.zip
+RUN yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null \
+    && "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+        "platforms;android-36" "build-tools;36.0.0" >/dev/null
+
+# Gradle: services.gradle.org publishes the .sha256 beside each distribution.
+ARG GRADLE=9.6.0
+ARG GRADLE_SHA256=bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01
+RUN curl -fsSL -o /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-$GRADLE-bin.zip" \
+    && echo "$GRADLE_SHA256  /tmp/gradle.zip" | sha256sum -c - \
+    && unzip -q /tmp/gradle.zip -d /opt \
+    && ln -s "/opt/gradle-$GRADLE/bin/gradle" /usr/local/bin/gradle \
+    && rm /tmp/gradle.zip
+
+ENV PATH="$ANDROID_HOME/build-tools/36.0.0:$PATH"

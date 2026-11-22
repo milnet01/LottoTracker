@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- icons/tray-running.svg, as an Android vector drawable. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="22" android:viewportHeight="22">
+    <path android:fillColor="#3a9440" android:strokeColor="#1d5a1d"
+        android:strokeWidth="1.2"
+        android:pathData="M2,11a9,9 0,1 0,18 0a9,9 0,1 0,-18 0z" />
+    <path android:strokeColor="#ffffff" android:strokeWidth="2.2"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M6.5,11.3l3,3 6,-6.4" />
+</vector>

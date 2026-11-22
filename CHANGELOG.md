@@ -14,6 +14,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   page, and words each warning for a phone. On the phone the page needs the
   app's secret on every request, keeps its data in the app's private folder,
   and names the ⋮ menu where the computer's names the tray.
+- **The Android app builds** (LOTTO-0106)
+  `tools/build_apk.sh` makes `LottoTracker-<version>.apk`: a phone app that
+  reads the phone's lottery SMSes, shows the same page, and posts the re-buy
+  warning each evening. Not yet tested on a phone, so no release carries it.
+  `tools/verify_apk.py` checks the file holds no personal data, asks only for
+  its listed permissions, and keeps its data out of Android's backups.
 
 ## [1.1.1] - 2026-11-21
 
