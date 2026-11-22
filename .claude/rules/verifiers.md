@@ -56,13 +56,16 @@ python3 tools/verify_expiry.py    # INV-49..INV-56, INV-61, INV-64: the re-buy
                                   # date and count, and that dates are SAST
                                   # whatever $TZ says. INV-81..INV-83: it finds the
                                   # dump from any folder, and says when no SMS
-                                  # has arrived for 14 days; --break/--list like
-                                  # verify_page
+                                  # has arrived for 14 days. INV-126: no phone
+                                  # notice names a desktop thing; --break/--list
+                                  # like verify_page
 python3 tools/verify_watch.py     # INV-32..INV-39: the cable-free SMS path writes
                                   # what adb would, never twice, and its child is
                                   # spawned, observed and reaped; two watchers
                                   # appending at once collide never; and a KDE
-                                  # Connect restart is read as one
+                                  # Connect restart is read as one. INV-129: the
+                                  # Android app imports through the same writer;
+                                  # its red test is LOTTO_BREAK=import_own_writer
 python3 tools/verify_senders.py   # INV-72..INV-75: a lottery SMS from a sender
                                   # the bank is not known to use is KEPT and
                                   # flagged on the page and in check.py, never
@@ -79,7 +82,9 @@ python3 tools/verify_paths.py     # INV-105..INV-109: a frozen build keeps its d
                                   # in the user's data folder and its icons in the
                                   # bundle, starts its helpers by name in that
                                   # folder, names the .AppImage in autostart, and
-                                  # hands a browser the host's environment. Each
+                                  # hands a browser the host's environment.
+                                  # INV-128: on Android the data lies under
+                                  # $XDG_DATA_HOME. Each
                                   # set-up runs in a fresh interpreter; needs no
                                   # data, so both lanes; --break/--list like
                                   # verify_page

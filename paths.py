@@ -1,10 +1,13 @@
 """Where the tracker's files are: one answer for every module (LOTTO-0015 §4.1).
 
-Two forms. A source checkout keeps its data in the repository folder, as it
+Three forms. A source checkout keeps its data in the repository folder, as it
 always has. A frozen build (PyInstaller, inside the AppImage) runs from a
 read-only folder, so its data goes to $XDG_DATA_HOME/LottoTracker, or
 ~/.local/share/LottoTracker when that is unset, and its bundled icons and
-fonts are read from the bundle (sys._MEIPASS).
+fonts are read from the bundle (sys._MEIPASS). On Android (LOTTO-0106 §4.3)
+the data goes to $XDG_DATA_HOME/LottoTracker too, which the app points into
+its private storage before Python starts; the icons and fonts stay beside
+the code, where Chaquopy installs them.
 
 Stdlib only and Qt-free. Importing this touches no file: the data folder is
 created by ensure_data(), which tray.main() and each child's main() call, so
@@ -20,6 +23,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 
 FROZEN = bool(getattr(sys, "frozen", False))
 RESOURCES = getattr(sys, "_MEIPASS", _HERE) if FROZEN else _HERE
+# "android" is what CPython 3.13 and later report there (PEP 738).
+ANDROID = sys.platform == "android"
 
 
 def _data_home():
@@ -30,7 +35,7 @@ def _data_home():
     return os.path.join(base, "LottoTracker")
 
 
-DATA = _data_home() if FROZEN else _HERE
+DATA = _data_home() if FROZEN or ANDROID else _HERE
 DUMP = os.path.join(DATA, "lotto_sms_raw.txt")
 THREADS = os.path.join(DATA, "sms_threads.json")
 ARCHIVE = os.path.join(DATA, "archive_results.json")

@@ -553,6 +553,51 @@ def sms_quiet_notice_is_fixed():
     return "one fixed sentence, a fault, and it is not said only once"
 
 
+# LOTTO-0106 INV-126: what no phone notice may say, in any letter case.
+DESKTOP_WORDS = ("kde connect", "tray", "restart")
+
+
+def phone_wording():
+    """INV-126 (LOTTO-0106): no phone notice names a desktop thing.
+
+    Every fault notice and a re-buy notice through the table, then evening()
+    itself, on a data folder holding no dump and a settings folder that cannot
+    be written. The re-buy record then fails to save, so evening() returns the
+    paused notice and the quiet notice, the two the table must translate.
+    """
+    import android_entry
+
+    for notice in sorted(supervise.FAULT_NOTICES) + [
+            supervise.expiry_notice("PowerBall", TODAY, 2)]:
+        said = android_entry.phone(notice).lower()
+        for word in DESKTOP_WORDS:
+            assert word not in said, f"a phone notice says {word!r}: {said!r}"
+    rebuy = supervise.expiry_notice("PowerBall", TODAY, 2)
+    assert android_entry.phone(rebuy) == rebuy, "the re-buy notice was reworded"
+
+    real = (supervise.DUMP, supervise.load_tickets, os.environ.get("XDG_CONFIG_HOME"))
+    blocked = os.path.dirname(_unwritable_state())  # a file, not a folder
+    supervise._warn_state_unsaved = False
+    try:
+        supervise.DUMP = os.path.join(os.path.dirname(_tmp_state()), "no-dump.txt")
+        def one_qualifying(path):
+            return [ticket(start=datetime.datetime(2026, 8, 21), ndraws=2)]
+        supervise.load_tickets = one_qualifying
+        os.environ["XDG_CONFIG_HOME"] = blocked
+        got = android_entry.evening(TODAY.isoformat())
+    finally:
+        supervise.DUMP, supervise.load_tickets = real[0], real[1]
+        if real[2] is None:
+            os.environ.pop("XDG_CONFIG_HOME", None)
+        else:
+            os.environ["XDG_CONFIG_HOME"] = real[2]
+        supervise._warn_state_unsaved = False
+    want = [android_entry.PHONE_WORDING[supervise.WARN_STATE_NOTICE],
+            android_entry.PHONE_WORDING[supervise.SMS_QUIET_NOTICE]]
+    assert got == want, f"evening() returned {got!r}"
+    return "fault and re-buy notices, and evening() itself, name no desktop thing"
+
+
 def draws_left_today_boundary():
     """INV-61: draws_left is 1 on a ticket's own final draw day, 0 the day after.
 
@@ -657,6 +702,7 @@ CASES = [
     ("tickets_load_from_any_directory", "INV-81", tickets_load_from_any_directory),
     ("sms_quiet_rule", "INV-82", sms_quiet_rule),
     ("sms_quiet_notice_is_fixed", "INV-83", sms_quiet_notice_is_fixed),
+    ("phone_wording", "INV-126", phone_wording),
 ]
 
 BREAKS = {
@@ -680,6 +726,7 @@ BREAKS = {
     "quiet_ignores_no_record": "sms_quiet_rule",
     "quiet_counts_tickets_only": "sms_quiet_rule",
     "quiet_notice_names_date": "sms_quiet_notice_is_fixed",
+    "phone_wording_skipped": "phone_wording",
 }
 
 
@@ -810,6 +857,10 @@ def _apply_break(name):
         real = supervise.sms_quiet_notices
         supervise.sms_quiet_notices = lambda today, path=None: [
             f"{body} Last seen {today}." for body in real(today, path)]
+    elif name == "phone_wording_skipped":
+        # A desktop notice with no phone form: the table left empty.
+        import android_entry
+        android_entry.PHONE_WORDING = {}
     elif name == "notice_per_unknown_ticket":
         real = supervise.expiry_notices
 

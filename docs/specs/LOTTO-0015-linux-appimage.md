@@ -87,8 +87,10 @@ A new Qt-free, stdlib-only module. Every other module takes its paths from it.
 
 ```python
 FROZEN: bool              # getattr(sys, "frozen", False): True under PyInstaller
+ANDROID: bool             # sys.platform == "android" (LOTTO-0106 §4.3)
 RESOURCES: str            # FROZEN: sys._MEIPASS; else this file's folder
-DATA: str                 # FROZEN: $XDG_DATA_HOME or ~/.local/share, + "/LottoTracker"
+DATA: str                 # FROZEN or ANDROID: $XDG_DATA_HOME or ~/.local/share,
+                          #   + "/LottoTracker"
                           # else: this file's folder (the repository)
 DUMP: str                 # DATA + "/lotto_sms_raw.txt"
 THREADS: str              # DATA + "/sms_threads.json"

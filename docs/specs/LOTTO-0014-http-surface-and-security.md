@@ -284,6 +284,14 @@ anything that serialises a model. The renderer embeds it; INV-13's case asserts
 the rendered page carries it, because a page without it 403s on every toggle
 while every other case still passes.
 
+**On the phone the GETs need the token too** (LOTTO-0106 §4.4, INV-122).
+`make_server()` takes a keyword, `token_on_every_route`, default `False`. When
+`True`, `GET /` and `GET /status` answer only a request carrying the token in
+`X-Lotto-Token` or in a `lotto_token` cookie, and give anything else a `403`
+with no body. A POST still needs the header. Only
+`android_entry.start_server()` passes `True`; on the desktop the GETs stay open
+(INV-123).
+
 ### 4.4 Response headers, and what may never appear in one
 
 **Every response carries `X-Frame-Options: DENY` and

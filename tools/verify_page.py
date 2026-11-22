@@ -221,12 +221,12 @@ class Stub:
         return self.model
 
 
-def serve_on(builder, token="tok"):
+def serve_on(builder, token="tok", **kw):
     """A real server on an ephemeral port. Returns (server, state, port, thread)."""
     import threading
 
     port = supervise.free_port()
-    srv, state = serve.make_server(builder, token, port)
+    srv, state = serve.make_server(builder, token, port, **kw)
     # The breaks below swap methods on the handler CLASS at runtime; typed as
     # Any so a type checker does not read it as the callable make_server
     # declares.
@@ -247,6 +247,17 @@ def serve_on(builder, token="tok"):
         handler._token_ok = lambda self: (
             True if self.path.split("?")[0] == "/refresh" else real(self)
         )
+    if broken("get_token_unchecked"):
+        # RED-TEST for INV-122: the phone's GETs left open, as the desktop's are.
+        handler._get_token_ok = lambda self: True
+    if broken("cookie_ignored"):
+        # RED-TEST for INV-122: the header alone, so the app's own page 403s.
+        handler._cookie_token = lambda self: ""
+    if broken("post_takes_cookie"):
+        # RED-TEST for INV-122: a POST satisfied by the cookie alone.
+        real_tok = handler._token_ok
+        handler._token_ok = lambda self: (
+            real_tok(self) or self._matches(self._cookie_token()))
     if broken("reflect_path"):
         # RED-TEST for INV-14: reflect self.path RAW. No X-Injected header
         # results, which is why the case asserts the whole header name set.
@@ -480,6 +491,70 @@ EXPECTED_HEADERS = {
     "server", "date", "content-length", "x-frame-options",
     "content-security-policy", "cache-control",
 }
+
+
+def android_routes_need_token():
+    """LOTTO-0106 INV-122 — on the phone, a GET with no right token gets an empty 403.
+
+    Another app on the phone can reach 127.0.0.1, so on Android the page and
+    /status answer only the header or the `lotto_token` cookie. A POST still
+    needs the header: the cookie alone is refused.
+    """
+    home = temp_home()
+    stub = Stub()
+    tok = "phonetoken-abcdefghij"
+    srv, state, port, _t = serve_on(stub, token=tok, token_on_every_route=True)
+    host = f"127.0.0.1:{port}"
+    try:
+        state.finish(fixture_model())  # a model with ticket rows to leak
+        # A proper prefix, for token_required's reason: it catches startswith.
+        refused = [({}, "bare"),
+                   ({"Cookie": "lotto_token=phonetoken-abcde"}, "wrong cookie"),
+                   ({"Cookie": "other=" + tok}, "right value, wrong cookie name"),
+                   ({"X-Lotto-Token": "phonetoken-abcde"}, "wrong header")]
+        for hdrs, label in refused:
+            for path in ("/", "/status"):
+                st, _h, body = req(port, "GET", path, host=host, headers=hdrs)
+                need(st == 403, f"GET {path} ({label}): expected 403, got {st}")
+                need(body == b"", f"GET {path} ({label}): the 403 carries a body")
+        allowed = [({"Cookie": f"theme=x; lotto_token={tok}"}, "right cookie alone"),
+                   ({"X-Lotto-Token": tok}, "right header alone")]
+        for hdrs, label in allowed:
+            st, _h, body = req(port, "GET", "/", host=host, headers=hdrs)
+            need(st == 200, f"GET / ({label}): expected 200, got {st}")
+            # The converse, so the refusals above are about the token and not
+            # about a page that carried no ticket in the first place.
+            need(SENTINEL.encode() in body, f"GET / ({label}): no ticket on the page")
+            st, _h, _b = req(port, "GET", "/status", host=host, headers=hdrs)
+            need(st == 200, f"GET /status ({label}): expected 200, got {st}")
+        st, _h, _b = req(port, "POST", "/refresh", host=host,
+                         headers={"Cookie": f"lotto_token={tok}"})
+        need(st == 403, f"POST /refresh with the cookie alone: expected 403, got {st}")
+        need(stub.calls == 0, "POST /refresh with the cookie alone started a build")
+    finally:
+        srv.shutdown()
+        shutil.rmtree(home, ignore_errors=True)
+
+
+def desktop_get_needs_no_token():
+    """LOTTO-0106 INV-123 — the desktop default still serves GET with no token."""
+    home = temp_home()
+    if broken("token_default_on"):
+        # RED-TEST: the keyword's default flipped.
+        defaults = serve.make_server.__kwdefaults__
+        need(defaults is not None, "make_server has no keyword-only defaults")
+        assert defaults is not None  # for the type checkers
+        defaults["token_on_every_route"] = True
+    srv, state, port, _t = serve_on(Stub())
+    host = f"127.0.0.1:{port}"
+    try:
+        state.finish(fixture_model())
+        for path in ("/", "/status"):
+            st, _h, _b = req(port, "GET", path, host=host)
+            need(st == 200, f"GET {path} with no token: expected 200, got {st}")
+    finally:
+        srv.shutdown()
+        shutil.rmtree(home, ignore_errors=True)
 
 
 def no_reflected_headers():
@@ -3412,6 +3487,44 @@ def no_dump_names_folder():
         need(bad not in body, f"{bad!r} renders beneath the no-messages notice")
 
 
+# LOTTO-0106 INV-127: what the phone's page may never name, in any letter case.
+DESKTOP_WORDS = ("tray", "kde connect", "python3", "autostart")
+
+
+def android_page_wording():
+    """LOTTO-0106 INV-127 — the phone's page names no desktop thing, script included.
+
+    Every notice state fixture_model() can produce, each rendered twice: on the
+    phone none of the words may appear, and on the desktop the same state must
+    still say what it said, so a branch that dropped a sentence for both is seen.
+    """
+    temp_home()
+    settings = {"autostart": False, "open_on_start": True}
+    states = {
+        "built": fixture_model(),
+        "building": fixture_model(building=True, built=None),
+        "no_dump": {"no_dump": True, "data_dir": FIXTURE_DATA_DIR, "settings": settings},
+        "no_build": {"no_build": True, "settings": settings},
+        "error": {"error": {"what": "unreachable", "pools": ["lotto"]},
+                  "settings": settings},
+        "stale": fixture_model(stale=True),
+        "no_archive": fixture_model(no_archive=True),
+        "quiet": fixture_model(sms_quiet={"newest": "2026-07-01", "days": 20}),
+        "quiet_none": fixture_model(sms_quiet={"newest": None, "days": None}),
+    }
+    for name, model in states.items():
+        html = render_pure(dict(model, platform="android")).lower()
+        for word in DESKTOP_WORDS:
+            need(word not in html, f"{name}: the phone's page says {word!r}")
+    desktop = {n: render_pure(dict(m, platform="desktop")) for n, m in states.items()}
+    need("KDE Connect" in desktop["no_dump"], "the desktop no-messages notice lost its way in")
+    need("tray menu" in desktop["no_archive"], "the desktop older-results notice lost its menu")
+    need("KDE Connect" in desktop["quiet"], "the desktop quiet notice lost its check")
+    need('id="autostart"' in desktop["built"], "the desktop lost its autostart switch")
+    need("Allow restricted settings" in render_pure(dict(states["no_dump"], platform="android")),
+         "the phone's no-messages notice does not name the restricted-settings step")
+
+
 def no_archive_points_at_menu():
     """LOTTO-0015 INV-111 — a missing archive is said, above the tabs, beside the tickets."""
     temp_home()
@@ -3469,6 +3582,8 @@ def division_gap_shown():
 CASES = [
     ("host_allowlist", "INV-12", host_allowlist),
     ("token_required", "INV-13", token_required),
+    ("android_routes_need_token", "INV-122", android_routes_need_token),
+    ("desktop_get_needs_no_token", "INV-123", desktop_get_needs_no_token),
     ("no_reflected_headers", "INV-14", no_reflected_headers),
     ("uncheckable_not_a_loss", "INV-15", uncheckable_not_a_loss),
     ("spend_over_checkable", "INV-16", spend_over_checkable),
@@ -3515,11 +3630,15 @@ CASES = [
     ("evening_check_reports_only_wins", "INV-103", evening_check_reports_only_wins),
     ("no_dump_names_folder", "INV-110", no_dump_names_folder),
     ("no_archive_points_at_menu", "INV-111", no_archive_points_at_menu),
+    ("android_page_wording", "INV-127", android_page_wording),
     ("fetch_older_reports_outcome", "INV-112", fetch_older_reports_outcome),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
 BREAKS = {
+    "android_tray_heading": "android_page_wording",
+    "android_notice_desktop_words": "android_page_wording",
+    "android_js_wires_switches": "android_page_wording",
     "oldest_first": "latest_first_and_sortable",
     "iso_dates_shown": "dates_read_as_words",
     "sort_reads_the_words": "dates_read_as_words",
@@ -3559,6 +3678,10 @@ BREAKS = {
     "host_endswith": "host_allowlist",
     "no_security_headers": "host_allowlist",
     "token_exempt_refresh": "token_required",
+    "get_token_unchecked": "android_routes_need_token",
+    "cookie_ignored": "android_routes_need_token",
+    "post_takes_cookie": "android_routes_need_token",
+    "token_default_on": "desktop_get_needs_no_token",
     "reflect_path": "no_reflected_headers",
     "blank_money_cell": "uncheckable_not_a_loss",
     "dash_for_unscorable": "uncheckable_not_a_loss",
@@ -3614,6 +3737,14 @@ BREAKS = {
 
 
 def apply_render_breaks():
+    # LOTTO-0106 INV-127: one phone branch each, rendered as the desktop's.
+    real_settings, real_notice_a = page._settings_section, page._notice
+    if broken("android_tray_heading"):
+        page._settings_section = lambda m: real_settings(dict(m, platform="desktop"))
+    if broken("android_notice_desktop_words"):
+        page._notice = lambda m: real_notice_a(dict(m, platform="desktop"))
+    if broken("android_js_wires_switches"):
+        page._switch_wiring = lambda m: page.WIRE_SWITCHES
     """Breaks that live in the renderer rather than the server."""
     real_bank_view, real_bank_row, real_bank = serve.bank_view, page._bank_row, page._bank_section
     if broken("bank_figure_adopted"):

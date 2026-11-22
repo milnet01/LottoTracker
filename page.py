@@ -257,6 +257,15 @@ def _sorted_table(table_id, columns, rows, default_col, default_dir="desc"):
     )
 
 
+def _android(model):
+    """Is this page on the phone? serve.py sets `platform` (LOTTO-0106 §4.5).
+
+    Where the desktop sentence names the tray, KDE Connect, a terminal command
+    or a desktop file, the phone's names the ⋮ menu or says nothing (INV-127).
+    """
+    return model.get("platform") == "android"
+
+
 def _notice(model):
     """The three states in which the page shows no ticket data (LOTTO-0002 §6).
 
@@ -278,6 +287,17 @@ def _notice(model):
             '<div class="notice"><strong>No build was performed</strong> '
             "(LOTTO_NO_BUILD is set). No ticket has been checked, and nothing "
             "below is a result.</div>"
+        )
+    if model.get("no_dump") and _android(model):
+        # LOTTO-0106 §4.7: a denied permission and an inbox with no lottery SMS
+        # look the same from here, so the one step outside the app is named.
+        return (
+            '<div class="notice bad"><strong>No messages found.</strong> '
+            "The app has not read any lottery SMS on this phone, so there are "
+            "no tickets to check — this is not zero wins. If it is not yet "
+            "allowed to read SMS, open <strong>Settings → Apps → Lotto Tracker "
+            "→ ⋮ → Allow restricted settings</strong>, then allow SMS for the "
+            "app and open it again.</div>"
         )
     if model.get("no_dump"):
         # LOTTO-0015 INV-110: name the folder, and only ways in that WRITE the
@@ -312,7 +332,7 @@ def _archive_section(model):
         '<div class="notice"><strong>Older results have not been fetched.</strong> '
         "Tickets for draws before the official results feed began show as not "
         "checkable until they are. Choose <strong>Fetch older results</strong> "
-        "in the tray menu to fetch them.</div>"
+        f"in the {'⋮' if _android(model) else 'tray'} menu to fetch them.</div>"
     )
 
 
@@ -332,11 +352,14 @@ def _sms_quiet_section(model):
             f"<strong>No lottery SMS for {_count(quiet['days'], 'day', 'days')}."
             f"</strong> The newest one here is from {_e(quiet['newest'])}. "
         )
+    check = (
+        "Check that the app is still allowed to read SMS." if _android(model)
+        else "Check that your phone is connected through KDE Connect and that the "
+        "Lotto Tracker tray icon is running."
+    )
     return (
         f'<div class="notice bad">{lead}If you have bought a ticket since then, '
-        "it is not on this page and the app cannot warn you when it runs out. "
-        "Check that your phone is connected through KDE Connect and that the "
-        "Lotto Tracker tray icon is running.</div>"
+        f"it is not on this page and the app cannot warn you when it runs out. {check}</div>"
     )
 
 
@@ -1187,11 +1210,15 @@ def _settings_section(model):
         f'<select id="theme">{opts}</select></div>'
     )
 
-    return _fold("settings", "Settings", "", (
-        theme
-        + "<h3>Tray</h3>"
+    # Neither switch means anything on the phone, which has no tray (§4.5).
+    tray = "" if _android(model) else (
+        "<h3>Tray</h3>"
         + sw("autostart", "Start the tray when I log in")
         + sw("open_on_start", "Open this page when the tray starts")
+    )
+    return _fold("settings", "Settings", "", (
+        theme
+        + tray
         # role=status + aria-live: the switches write their result here, and
         # without it a screen reader is told nothing at all.
         + '<p class="muted" id="settings-msg" role="status" '
@@ -1643,11 +1670,11 @@ function wire(id){
   });
  });
 }
-wire("autostart");wire("open_on_start");
+%s
 // The theme. It writes a data-theme attribute and one localStorage key holding
 // a theme NAME, and nothing else: no query parameter, no fragment, no history
 // entry, and no ticket data anywhere (INV-21, INV-63). It deliberately does not
-// POST: the two switches above are the tray's business, a colour is this
+// POST: the two switches above are settings the server keeps, a colour is this
 // browser's, and routing it through /settings would give settings.json a second
 // writer for no gain.
 var th=document.getElementById("theme");
@@ -1912,6 +1939,14 @@ if(%s)poll();
 """
 
 
+# The settings switches' wiring; the phone renders neither switch (§4.5).
+WIRE_SWITCHES = 'wire("autostart");wire("open_on_start");'
+
+
+def _switch_wiring(model):
+    return "" if _android(model) else WIRE_SWITCHES
+
+
 def render(model, token):
     """The model dict plus the run token -> one HTML string.
 
@@ -2024,6 +2059,7 @@ def render(model, token):
         )
     script = JS % (
         _js(token),
+        _switch_wiring(model),
         _js(built),
         "true" if building else "false",
     )

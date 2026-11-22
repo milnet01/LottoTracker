@@ -13,6 +13,7 @@ statement used to make for free:
   INV-37  what the tray says about an arrival names an action the user can take
   INV-38  two watchers appending at once lose nothing and collide never
   INV-39  a KDE Connect restart is noticed rather than survived by half
+  INV-129 the Android app imports through the same writer path (LOTTO-0106)
 
 INV-32 is checked against SQLite rather than against a second transcription of
 the WHERE clause in Python. The clause below is copied from LOTTO-0001 §4.1, but
@@ -698,6 +699,54 @@ def notice_names_a_live_action():
     return bad
 
 
+def android_import():
+    """INV-129: the phone's import writes through append_new() and wanted().
+
+    One wanted row, one EXCLUDE row and the wanted row again: one record
+    written, and a second call writes nothing. This file has no --break flag,
+    so its red test is LOTTO_BREAK=import_own_writer, which swaps in a writer
+    of the phone's own that skips the filter.
+    """
+    import android_entry
+
+    bad = 0
+    real_dump = watch_sms.DUMP
+    with tempfile.TemporaryDirectory() as tmp:
+        watch_sms.DUMP = os.path.join(tmp, "dump.txt")
+        real_import = android_entry.import_messages
+        if os.environ.get("LOTTO_BREAK") == "import_own_writer":
+            def own_writer(rows):
+                with open(watch_sms.DUMP, "a", encoding="utf-8") as fh:
+                    for i, (a, d, b) in enumerate(rows):
+                        fh.write(watch_sms.format_row(i, a, d, b))
+                return len(rows)
+            android_entry.import_messages = own_writer
+        try:
+            rows = [("Std Bank", 1767936736696, BODIES[0]),
+                    ("Std Bank", 1767936736697, BODIES[6]),  # EXCLUDE: kWh
+                    ("Std Bank", 1767936736696, BODIES[0])]
+            first = android_entry.import_messages(rows)
+            if first != 1:
+                print(f"  WROTE: the first import wrote {first} of 1 wanted row")
+                bad += 1
+            written = tickets.rows(open(watch_sms.DUMP, errors="replace").read())
+            if [b for _a, _d, b in written if not watch_sms.wanted(b)]:
+                print("  LEAK: the phone's import wrote a row wanted() refuses")
+                bad += 1
+            again = android_entry.import_messages(rows)
+            if again:
+                print(f"  DUPLICATES: importing the same rows again wrote {again}")
+                bad += 1
+            since = android_entry.since_ms()
+            if since != 1767936736696 - android_entry.DAY_MS:
+                print(f"  SINCE: since_ms() is {since}, not a day before the newest")
+                bad += 1
+        finally:
+            android_entry.import_messages = real_import
+            watch_sms.DUMP = real_dump
+    return bad
+
+
 CASES = (
     ("filter_matches_adb", filter_matches_adb),
     ("round_trip", round_trip),
@@ -712,6 +761,7 @@ CASES = (
     ("not_ready_at_start_is_waited_for", not_ready_at_start_is_waited_for),
     ("notice_names_a_live_action", notice_names_a_live_action),
     ("empty_list_is_not_finished", empty_list_is_not_finished),
+    ("android_import", android_import),
 )
 
 

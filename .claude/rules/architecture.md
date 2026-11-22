@@ -160,6 +160,13 @@ tool; an Ants-verb read does not load it.
   and wording (`fetch_older()`, `FETCH_MESSAGE`), Qt-free for
   `refresh_message()`'s reason. `backfill.write_archive()` is the archive's one
   writer.
+- **`android_entry.py`** is the Android app's one entry (LOTTO-0106 §4.2), the
+  phone's counterpart of `lottotracker.py`: the Kotlin calls it and nothing on
+  the desktop imports it. It imports no Qt and no D-Bus, and writes the dump
+  only through `watch_sms.append_new()`, so the phone's inbox is a third source
+  into the dump's one writer path (INV-129). Its server requires the token on
+  every route (`serve.make_server(..., token_on_every_route=True)`, INV-122),
+  and `PHONE_WORDING` gives each desktop-naming notice its phone form (INV-126).
 - **`tools/verify_*.py`** import the modules directly via a `sys.path` insert.
 
 ## Load-bearing decisions — do not "simplify" these

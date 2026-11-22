@@ -837,9 +837,16 @@ def refresh(state, build_model_fn):
 _settings_lock = threading.Lock()
 
 
-def make_server(build_model_fn, token, port):
+def make_server(build_model_fn, token, port, *, token_on_every_route=False):
     """Build the server. The seam is the BUILDER, not the model: handing this a
-    finished model would leave POST /refresh nothing to invoke."""
+    finished model would leave POST /refresh nothing to invoke.
+
+    `token_on_every_route` is the phone's boundary (LOTTO-0106 §4.4, INV-122):
+    there every installed app is a separate party that can reach 127.0.0.1, so
+    the GETs need the token too, in the header or the `lotto_token` cookie the
+    app's own page view sets. Only android_entry.start_server() passes True;
+    the desktop default leaves GET open (INV-123). A POST still needs the
+    header: the cookie alone never satisfies one."""
     state = State()
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     allowed_origins = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
@@ -913,7 +920,20 @@ def make_server(build_model_fn, token, port):
             return origin is None or origin in allowed_origins
 
         def _token_ok(self):
-            got = self.headers.get("X-Lotto-Token") or ""
+            return self._matches(self.headers.get("X-Lotto-Token") or "")
+
+        def _cookie_token(self):
+            for part in (self.headers.get("Cookie") or "").split(";"):
+                name, _eq, value = part.strip().partition("=")
+                if name == "lotto_token":
+                    return value
+            return ""
+
+        def _get_token_ok(self):
+            """The phone's GET check: the header OR the cookie (INV-122)."""
+            return self._token_ok() or self._matches(self._cookie_token())
+
+        def _matches(self, got):
             # compare_digest refuses a str carrying any code point above
             # U+007F, and http.client decodes headers as iso-8859-1 - so the
             # bytes 0x80-0xFF, which Fetch permits in a header value, reach
@@ -985,6 +1005,9 @@ def make_server(build_model_fn, token, port):
             path = self._route("GET")
             if path is None:
                 return
+            if token_on_every_route and not self._get_token_ok():
+                self._send(403)
+                return
             model, building, built, stale, error, found = state.get()
             requests = results.requests_made
             if path == "/status":
@@ -1017,6 +1040,9 @@ def make_server(build_model_fn, token, port):
                     "running": running_view(model or {}, clock.today()),
                     "icon": APP_ICON,
                     "font": APP_FONT,
+                    # Which wording the page uses (LOTTO-0106 §4.5). Here, not in
+                    # the model, so the states with no model carry it too.
+                    "platform": "android" if paths.ANDROID else "desktop",
                 }
             )
             if model is None and not error and not building:

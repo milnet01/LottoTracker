@@ -6,6 +6,15 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The tracker's Python half is ready for the Android app** (LOTTO-0106)
+  Nothing changes on the computer. A new file, `android_entry.py`, is what the
+  coming phone app will call: it imports the phone's lottery SMSes, runs the
+  page, and words each warning for a phone. On the phone the page needs the
+  app's secret on every request, keeps its data in the app's private folder,
+  and names the ⋮ menu where the computer's names the tray.
+
 ## [1.1.1] - 2026-11-21
 
 **Theme:** The Linux download runs on older systems: Ubuntu 22.04, Mint 21, Debian 12 and newer.

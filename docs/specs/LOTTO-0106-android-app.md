@@ -293,13 +293,15 @@ spec (`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
   `make_server(..., token_on_every_route=True)` on `fixture_model()` and requests
   each route bare, with a wrong cookie, with a wrong header, with the right
   cookie alone and with the right header alone; and `POST /refresh` with the
-  right cookie and no header, which gets `403`.
+  right cookie and no header, which gets `403`. Red under `--break`
+  `get_token_unchecked`, `cookie_ignored` and `post_takes_cookie`.
   *Breaks when:* `do_GET` checks the token only for POST, or reads the cookie
   but not the header, or the reverse, or a POST accepts the cookie.
 
 - **INV-123** — The desktop server is unchanged: with `token_on_every_route`
   unset, `GET /` with no token still gets `200`.
-  *Test:* `tools/verify_page.py::desktop_get_needs_no_token`.
+  *Test:* `tools/verify_page.py::desktop_get_needs_no_token`; red under
+  `--break token_default_on`.
   *Breaks when:* the default flips, so the desktop page loaded from the tray's
   plain URL starts answering `403`.
 
@@ -325,8 +327,11 @@ spec (`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
   "tray" or "restart".
   *Test:* `tools/verify_expiry.py::phone_wording`, which feeds every member of
   `supervise.FAULT_NOTICES` and an `expiry_notice()` through `PHONE_WORDING`,
-  then calls `evening()` on a temporary data folder holding no dump, with
-  `supervise._warn_state_unsaved` set, and checks what it returns.
+  then calls `evening()` on a temporary data folder holding no dump, with one
+  qualifying ticket and a settings folder that cannot be written, and checks
+  it returns exactly the phone forms of `WARN_STATE_NOTICE` and
+  `SMS_QUIET_NOTICE`. A pause already set would attempt no save, so it would
+  never produce the paused notice. Red under `--break phone_wording_skipped`.
   *Breaks when:* a new desktop notice is added to `supervise` and not to the
   table, or `evening()` skips the table.
 
@@ -334,21 +339,25 @@ spec (`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
   `platform: "android"`, the HTML, script included, contains none of "tray",
   "KDE Connect", "python3" or "autostart" in any letter case, in every notice
   state `fixture_model()` can produce.
-  *Test:* `tools/verify_page.py::android_page_wording`.
+  *Test:* `tools/verify_page.py::android_page_wording`; red under `--break`
+  `android_tray_heading`, `android_notice_desktop_words` and
+  `android_js_wires_switches`.
   *Breaks when:* `page.py` gains a desktop sentence with no `platform` branch.
 
 - **INV-128** — On the phone, `paths.DATA` is under `$XDG_DATA_HOME` and never
   the code folder.
   *Test:* `tools/verify_paths.py::android_form`, which sets
   `sys.platform = "android"` and `XDG_DATA_HOME` in a subprocess before importing
-  `paths`, as INV-105's frozen case does.
+  `paths`, as INV-105's frozen case does; red under
+  `--break android_data_is_code`.
   *Breaks when:* `DATA` tests `FROZEN` alone.
 
 - **INV-129** — The phone imports through the dump's one writer path: every
   message `android_entry.import_messages()` writes passes `watch_sms.wanted()`,
   and a second call with the same rows writes nothing.
   *Test:* `tools/verify_watch.py::android_import`, on a temporary dump, with
-  one wanted row, one `EXCLUDE` row and a repeat.
+  one wanted row, one `EXCLUDE` row and a repeat; red under
+  `LOTTO_BREAK=import_own_writer`, since that verifier has no `--break` flag.
   *Breaks when:* `import_messages()` writes the dump itself, or filters with its
   own keyword list.
 

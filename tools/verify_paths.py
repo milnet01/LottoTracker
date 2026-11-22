@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """LOTTO-0015 INV-105 to INV-109: where a frozen build keeps things, and how it
-starts its helpers.
+starts its helpers. LOTTO-0106 INV-128: where the Android app keeps them.
 
     python3 tools/verify_paths.py            # every case
     python3 tools/verify_paths.py --list
@@ -22,7 +22,8 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BREAK = os.environ.get("LOTTO_BREAK") or ""
 
-# The child: argv is ROOT, case, mode ("frozen" or "source"), bundle folder.
+# The child: argv is ROOT, case, mode ("frozen", "android" or "source"), bundle
+# folder.
 # EXPECT_DATA in its environment is the data folder the case expects.
 CHILD = r'''
 import base64, os, sys
@@ -32,6 +33,8 @@ EXPECT = os.environ.get("EXPECT_DATA", "")
 if MODE == "frozen":
     sys.frozen = True
     sys._MEIPASS = BUNDLE
+if MODE == "android":
+    sys.platform = "android"
 sys.path.insert(0, ROOT)
 
 
@@ -74,6 +77,27 @@ def resources_from_bundle():
     for name in ("ICON_RUNNING", "ICON_STOPPED"):
         p = getattr(tray, name)
         need(p.startswith(BUNDLE + os.sep), f"tray.{name} is {p}, not in the bundle")
+
+
+def android_form():
+    if BREAK == "android_data_is_code":
+        # LOTTO-0106 INV-128's defect: DATA tests FROZEN alone. Paths are fixed
+        # at import, so the defect is put into the source and that is imported.
+        import types
+        src = open(os.path.join(ROOT, "paths.py")).read()
+        need("if FROZEN or ANDROID else" in src, "BREAK ANCHOR GONE: paths.py changed")
+        mod = types.ModuleType("paths")
+        mod.__file__ = os.path.join(ROOT, "paths.py")
+        exec(compile(src.replace("if FROZEN or ANDROID else", "if FROZEN else"),
+                     mod.__file__, "exec"), mod.__dict__)
+        sys.modules["paths"] = mod
+    import paths
+    need(paths.ANDROID and not paths.FROZEN, "sys.platform 'android' is not read as Android")
+    here = os.path.realpath(ROOT)
+    need(os.path.realpath(paths.RESOURCES) == here,
+         f"paths.RESOURCES is {paths.RESOURCES}, not the code folder")
+    need(os.path.realpath(paths.DATA) != here, "paths.DATA is the code folder")
+    data_paths()
 
 
 def child_commands():
@@ -244,6 +268,12 @@ def resources_from_bundle():
     run("resources_from_bundle", "frozen", want, extra)
 
 
+def android_form():
+    """LOTTO-0106 INV-128 — on Android the data lies under $XDG_DATA_HOME."""
+    extra, want = frozen_xdg()
+    run("android_form", "android", want, extra)
+
+
 def child_commands():
     """INV-107 — the frozen build starts itself by name, in the data folder."""
     extra, want = frozen_xdg()
@@ -272,6 +302,7 @@ CASES = [
     ("child_commands", "INV-107", child_commands),
     ("autostart_exec", "INV-108", autostart_exec),
     ("host_env", "INV-109", host_env),
+    ("android_form", "INV-128", android_form),
 ]
 
 # Each break must make exactly the named case fail. Named in the *Test:* clauses.
@@ -283,6 +314,7 @@ BREAKS = {
     "autostart_names_mount": "autostart_exec",
     "browser_bundle_env": "host_env",
     "bundle_paths_kept": "host_env",
+    "android_data_is_code": "android_form",
 }
 
 

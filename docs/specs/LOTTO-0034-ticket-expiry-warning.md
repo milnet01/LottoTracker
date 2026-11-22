@@ -543,6 +543,10 @@ from any ticket. Of the form:
 > which tickets it has already warned you about. Check that your settings
 > folder can be written to.
 
+On the phone, `android_entry.PHONE_WORDING` holds the phone form of this
+notice and of `SMS_QUIET_NOTICE`, because both name desktop things
+(LOTTO-0106 §4.5, INV-126).
+
 ## 5. Invariants
 
 - **INV-49** — `expiry.DRAW_DAYS` agrees with observed draw history in both
