@@ -139,6 +139,13 @@ def start_server() -> tuple[int, str]
     # desktop's restart (LOTTO-0034 §3 item 5). Returns (port, token).
     # Requires the token on every route (§4.4).
 
+def resume(written: int, metered: bool) -> tuple[int, str, bool] | None
+    # The app came back with its server running: (port, token, rebuilding),
+    # or None when no server runs (§4.4).
+
+def should_rebuild(written, metered, choice, built_at, now) -> bool
+    # §4.4's return rule; pure, so INV-130 tests it with no server.
+
 def stop_server() -> None
 
 def refresh() -> str
@@ -196,9 +203,30 @@ never satisfies a POST.
 `android_entry.start_server()` is the only caller that passes `True`. The
 desktop server is unchanged, byte for byte.
 
-The port is a fresh free port each open (`supervise.free_port()`); the token a
-fresh `secrets.token_urlsafe(32)`. The server starts in `onStart` and stops in
-`onStop`, so it listens only while the page is on screen.
+The port is a fresh free port (`supervise.free_port()`); the token a fresh
+`secrets.token_urlsafe(32)`. The server starts on the process's first
+`onStart` and runs until the process ends, so switching away and back keeps
+the page on screen as it was (the user, 2026-11-23: a page reset on every
+return was the first device test's main fault). The token guards it while the
+app is in the background as while it is on screen.
+
+**Returning to the app.** Kotlin imports the inbox, then calls
+`android_entry.resume(written, metered)`, with `metered` from
+`ConnectivityManager.isActiveNetworkMetered`. `resume()` returns `None` when
+no server runs, and Kotlin calls `start_server()`; otherwise it returns the
+running port and token, and whether it started a background rebuild. The page
+is not reloaded. When a rebuild started, Kotlin calls the page's `poll()`,
+which reloads the page once the rebuild is done. Whether to rebuild is
+`android_entry.should_rebuild()`'s decision (INV-130). Each build downloads
+results, so on a metered network a return never rebuilds; the user refreshes
+from the ⋮ menu. On an unmetered one the page's *Updating results* choice
+decides: every return (the default), at most hourly, daily or weekly, or
+never. A newly imported lottery SMS also rebuilds, unless the choice is
+never. The choice is `wifi_refresh` in `settings.json`, read by
+`supervise.read_settings()` and written by `serve.write_settings()`, which
+keeps the file's other key (INV-131). Allowing SMS for the first time always
+starts a fresh server and build, whatever the network: the page built before
+holds no tickets.
 
 The rest of LOTTO-0014 holds as written: the `Host` check, the five routes, the
 security headers, the body cap.
@@ -369,6 +397,25 @@ spec (`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
   *Breaks when:* `import_messages()` writes the dump itself, or filters with its
   own keyword list.
 
+- **INV-130** — Returning to the app never downloads results on a metered
+  network, nor with the choice `off`; on an unmetered one it rebuilds on a new
+  lottery SMS, or once the stored choice's interval has passed since the last
+  build, and on every return with `always`, the default.
+  *Test:* `tools/verify_page.py::android_return_rule`, a table of
+  `should_rebuild()` rows on each side of each interval; red under `--break`
+  `metered_rebuilds` and `interval_ignored`.
+  *Breaks when:* the metered test is dropped, or a choice's interval is not
+  read.
+
+- **INV-131** — The Wi-Fi choice is stored beside `open_on_start` and writing
+  either keeps the other; the phone's page marks the stored choice and wires
+  it to save; the desktop page has no such control; `POST /settings` refuses a
+  value that is not a choice.
+  *Test:* `tools/verify_page.py::wifi_choice_stored`; red under `--break`
+  `settings_write_one_key` and `wifi_choice_unmarked`.
+  *Breaks when:* `write_settings()` writes only the key it was handed, as it
+  did before this choice existed.
+
 LOTTO-0014's invariants and LOTTO-0034's INV-52 to INV-56 hold unchanged on the
 phone; this spec adds the boundary above and does not restate them.
 
@@ -409,6 +456,8 @@ phone; this spec adds the boundary above and does not restate them.
 | `android_routes_need_token` | INV-122 | `tools/verify_page.py` |
 | `desktop_get_needs_no_token` | INV-123 | `tools/verify_page.py` |
 | `android_page_wording` | INV-127 | `tools/verify_page.py` |
+| `android_return_rule` | INV-130 | `tools/verify_page.py` |
+| `wifi_choice_stored` | INV-131 | `tools/verify_page.py` |
 | `phone_wording` | INV-126 | `tools/verify_expiry.py` |
 | `android_form` | INV-128 | `tools/verify_paths.py` |
 | `android_import` | INV-129 | `tools/verify_watch.py` |
@@ -471,6 +520,9 @@ draw and run the job from Android's developer options.
 | INV-127 | `tools/verify_page.py::android_page_wording` |
 | INV-128 | `tools/verify_paths.py::android_form` |
 | INV-129 | `tools/verify_watch.py::android_import` |
+| INV-130 | `tools/verify_page.py::android_return_rule` |
+| INV-131 | `tools/verify_page.py::wifi_choice_stored` |
+| The page kept, and a rebuild run, on a return (§4.4) | **nothing** — the manual recipe in §7 |
 | Kotlin holds no decision (§4.1) | **nothing** — a reviewer reading the Kotlin |
 | Lock-screen public version (§4.6) | **nothing** — the manual recipe in §7 |
 | Signing key kept off the repo and backed up (§4.8) | **nothing** — no `.gitignore` pattern or `verify_privacy.py` check covers a key file, and nothing checks the backup exists |
@@ -505,10 +557,10 @@ Rows live in `../reviews/LOTTO-0106-android-app-loop-log.md`.
 - **Storage.** The archive download on the desktop holds `archive_cache/` at
   25M (`du -sh archive_cache`, this machine, 2026-11-21) and
   `archive_results.json` at about 450 KB (`ls -la`). The phone holds the same.
-- **Memory and battery.** The Python runtime runs only while the page is on
-  screen and for the evening job's few seconds. No service stays resident, no
-  loop polls, and the WebView page runs no script while idle (`CLAUDE.md`
-  § Working conventions).
+- **Memory and battery.** The Python runtime lives as long as Android keeps
+  the app's process; in the background its server thread waits on a socket
+  and uses no CPU. No service stays resident, no loop polls, and the WebView
+  page runs no script while idle (`CLAUDE.md` § Working conventions).
 - **New dependencies.** Chaquopy (Gradle plugin) and AndroidX WorkManager —
   build-time and on-phone only. The WebView and its cookie store are
   Android's own. The desktop gains none.
@@ -523,7 +575,7 @@ Rows live in `../reviews/LOTTO-0106-android-app-loop-log.md`.
 - **Whether `supervise.fetch_older()`'s scrape is acceptable on a phone's data
   plan.** One fetch per pool per year since `backfill.FIRST_YEAR` (2022);
   measure the bytes on the first build and say it on the page if large.
-- **Whether each open should rebuild.** `start_server()` builds afresh on every
-  `onStart`, so returning to the app re-fetches results. Measure the time and
-  bytes on the first build; keeping the model for the process's life is the
-  alternative.
+- **Whether a cold start on mobile data should download.** A return no longer
+  rebuilds on a metered network (§4.4), but a process Android has ended starts
+  a fresh build, and so a download, on the next open. Measure its bytes; a
+  model saved to the data folder is the alternative.

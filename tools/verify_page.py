@@ -3525,6 +3525,88 @@ def android_page_wording():
          "the phone's no-messages notice does not name the restricted-settings step")
 
 
+def android_return_rule():
+    """LOTTO-0106 INV-130 — returning to the app downloads only on Wi-Fi, per the choice.
+
+    should_rebuild() is the whole decision; Kotlin passes it the network and
+    the count of messages just imported. Each row is one (written, metered,
+    choice, seconds since the last build) and the answer it must give.
+    """
+    import android_entry
+    rule = android_entry.should_rebuild
+    if broken("metered_rebuilds"):
+        def rule(written, metered, choice, built_at, now):
+            return android_entry.should_rebuild(written, False, choice, built_at, now)
+    if broken("interval_ignored"):
+        def rule(written, metered, choice, built_at, now):
+            return android_entry.should_rebuild(
+                written, metered, "always" if choice != "off" else choice, built_at, now)
+    hour, day = 60 * 60, 24 * 60 * 60
+    rows = [
+        (0, True, "always", day, False),   # mobile data: never by itself
+        (5, True, "always", day, False),   # not even for a new SMS
+        (5, False, "off", day, False),     # off on Wi-Fi: never
+        (0, False, "always", 1, True),     # always: every return
+        (0, False, "hourly", hour - 60, False),
+        (0, False, "hourly", hour, True),
+        (1, False, "hourly", 60, True),    # a new SMS on Wi-Fi rebuilds
+        (0, False, "daily", day - 60, False),
+        (0, False, "daily", day, True),
+        (0, False, "weekly", 7 * day - 60, False),
+        (0, False, "weekly", 7 * day, True),
+        (0, False, "unknown", day * 30, False),
+    ]
+    now = 10_000_000.0
+    for written, metered, choice, ago, want in rows:
+        got = rule(written, metered, choice, now - ago, now)
+        need(got is want, f"written={written} metered={metered} {choice} "
+             f"{ago}s ago: rebuild={got}, want {want}")
+    # On Wi-Fi the default must be "every return", the user's choice.
+    import supervise
+    need(supervise.WIFI_REFRESH_DEFAULT == "always", "the Wi-Fi default is not 'always'")
+
+
+def wifi_choice_stored():
+    """LOTTO-0106 INV-131 — the phone's refresh choice is shown, saved, and keeps the other setting.
+
+    settings.json holds open_on_start and wifi_refresh together, so writing one
+    must keep the other; the phone's page marks the stored choice; the desktop
+    page has no such control; and POST /settings refuses a value not offered.
+    """
+    temp_home()
+    import supervise
+    write = serve.write_settings
+    if broken("settings_write_one_key"):
+        # The writer before this change: only the key it was handed.
+        def write(changes):
+            supervise.write_atomic(supervise.settings_path(), json.dumps(
+                {k: v for k, v in changes.items() if k != "autostart"}))
+            return supervise.read_settings()
+    need(supervise.read_settings()["wifi_refresh"] == "always",
+         "with no settings file the choice is not the default")
+    write({"wifi_refresh": "weekly"})
+    after = write({"open_on_start": True})
+    need(after["wifi_refresh"] == "weekly", "saving open_on_start reset the Wi-Fi choice")
+    after = write({"wifi_refresh": "off"})
+    need(after["open_on_start"] is True, "saving the Wi-Fi choice reset open_on_start")
+    for bad in ("sometimes", ["always"], 1, True, None):
+        need(not serve._settings_body_ok({"wifi_refresh": bad}),
+             f"POST /settings accepts wifi_refresh={bad!r}")
+    need(serve._settings_body_ok({"wifi_refresh": "daily"}), "a real choice is refused")
+    choices = list(supervise.WIFI_REFRESH.items())
+    settings = {"autostart": False, "open_on_start": False, "wifi_refresh": "daily"}
+    model = dict(fixture_model(), settings=settings, wifi_choices=choices)
+    phone = render_pure(dict(model, platform="android"))
+    if broken("wifi_choice_unmarked"):
+        phone = phone.replace(' selected>', '>')
+    need('<select id="wifi_refresh">' in phone, "the phone's page has no Wi-Fi choice")
+    need('<option value="daily" selected>' in phone,
+         "the phone's page does not mark the stored choice")
+    need('wire("wifi_refresh")' in phone, "the phone's choice is not wired to save")
+    desktop = render_pure(dict(model, platform="desktop"))
+    need('id="wifi_refresh"' not in desktop, "the desktop page shows the phone's choice")
+
+
 def no_archive_points_at_menu():
     """LOTTO-0015 INV-111 — a missing archive is said, above the tabs, beside the tickets."""
     temp_home()
@@ -3584,6 +3666,8 @@ CASES = [
     ("token_required", "INV-13", token_required),
     ("android_routes_need_token", "INV-122", android_routes_need_token),
     ("desktop_get_needs_no_token", "INV-123", desktop_get_needs_no_token),
+    ("android_return_rule", "INV-130", android_return_rule),
+    ("wifi_choice_stored", "INV-131", wifi_choice_stored),
     ("no_reflected_headers", "INV-14", no_reflected_headers),
     ("uncheckable_not_a_loss", "INV-15", uncheckable_not_a_loss),
     ("spend_over_checkable", "INV-16", spend_over_checkable),
@@ -3682,6 +3766,10 @@ BREAKS = {
     "cookie_ignored": "android_routes_need_token",
     "post_takes_cookie": "android_routes_need_token",
     "token_default_on": "desktop_get_needs_no_token",
+    "metered_rebuilds": "android_return_rule",
+    "interval_ignored": "android_return_rule",
+    "settings_write_one_key": "wifi_choice_stored",
+    "wifi_choice_unmarked": "wifi_choice_stored",
     "reflect_path": "no_reflected_headers",
     "blank_money_cell": "uncheckable_not_a_loss",
     "dash_for_unscorable": "uncheckable_not_a_loss",

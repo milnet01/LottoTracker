@@ -47,7 +47,9 @@ DUMP = paths.DUMP
 ACCEPTED = paths.ACCEPTED
 DEFAULT_PORT = 4322
 MAX_BODY = 4096  # LOTTO-0014 §4.1: an unbounded rfile.read() is a hang
-BODY_KEYS = ("autostart", "open_on_start")
+BODY_KEYS = ("autostart", "open_on_start", "wifi_refresh")
+# The keys settings.json holds; autostart is the desktop file's presence.
+SETTINGS_FILE_KEYS = ("open_on_start", "wifi_refresh")
 
 # Header values come from literals only. BaseHTTPRequestHandler does NOT
 # validate CRLF in a header value - measured - so send_header() is never called
@@ -90,6 +92,7 @@ from supervise import (  # noqa: E402
     MAX_PORT,
     MIN_PORT,
     WARN_AT,
+    WIFI_REFRESH,
     autostart_path,
     day_label,
     read_settings,
@@ -158,17 +161,26 @@ def write_settings(changes):
                     os.remove(path)
                 except FileNotFoundError:
                     pass
-        if "open_on_start" in changes:
+        # settings.json holds both, so each write carries the other's stored
+        # value: writing one key alone would reset the other to its default.
+        kept = {k: changes[k] for k in SETTINGS_FILE_KEYS if k in changes}
+        if kept:
+            stored = read_settings()
             write_atomic(
                 settings_path(),
-                json.dumps({"open_on_start": changes["open_on_start"]}),
+                json.dumps({k: kept.get(k, stored[k]) for k in SETTINGS_FILE_KEYS}),
             )
         return read_settings()
 
 
 def _settings_body_ok(obj):
-    """POST /settings: the two booleans, each optional, and nothing else."""
-    return all(k in BODY_KEYS and isinstance(v, bool) for k, v in obj.items())
+    """POST /settings: each key optional, each of its own type, nothing else."""
+    return all(
+        k in BODY_KEYS
+        and (isinstance(v, str) and v in WIFI_REFRESH if k == "wifi_refresh"
+             else isinstance(v, bool))
+        for k, v in obj.items()
+    )
 
 
 # --------------------------------------------------------- accepted wins I/O
@@ -1043,6 +1055,9 @@ def make_server(build_model_fn, token, port, *, token_on_every_route=False):
                     # Which wording the page uses (LOTTO-0106 §4.5). Here, not in
                     # the model, so the states with no model carry it too.
                     "platform": "android" if paths.ANDROID else "desktop",
+                    # The phone's refresh choices and labels, so page.py
+                    # imports nothing of supervise's.
+                    "wifi_choices": list(WIFI_REFRESH.items()),
                 }
             )
             if model is None and not error and not building:

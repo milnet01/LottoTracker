@@ -261,8 +261,8 @@ Plus `/accept` added to the route lists of LOTTO-0014's `host_allowlist`,
 
 - **Widen `POST /settings` with an `accepted` key.** Rejected: `settings.json`
   is the tray's file, read by `supervise.read_settings()`, and win keys have no
-  business there. It would also break `POST /settings`'s rule that a body is
-  those two booleans and nothing else.
+  business there. It would also break `POST /settings`'s rule that a body
+  holds its fixed keys and nothing else.
 - **Keep acceptances in the browser's `localStorage`.** Rejected: the choice
   would live in one browser and vanish with its data, and LOTTO-0002 INV-63
   forbids ticket data in browser storage.

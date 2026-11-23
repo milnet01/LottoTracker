@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Bundle
 import android.view.Menu
@@ -18,12 +19,16 @@ import java.util.concurrent.Executors
 
 /** The page, in a WebView, from the app's own loopback server (LOTTO-0106 §4.4).
  *
- *  The server listens only while the page is on screen: started in onStart,
- *  stopped in onStop, on a fresh port and token each time. The token reaches
- *  the server as the lotto_token cookie, which no other app can read.
+ *  The server starts on the first onStart, on a fresh port and token, and
+ *  runs until the app's process ends, so switching away and back keeps the
+ *  page as it was. Every route needs the token, which reaches the server as
+ *  the lotto_token cookie that no other app can read. On a return,
+ *  android_entry.resume() decides whether to rebuild in the background.
  *  Every Python call runs off the main thread. */
 class MainActivity : Activity() {
     private lateinit var web: WebView
+    // The port this activity's WebView has loaded, or 0 before the first.
+    private var shownPort = 0
 
     // Opening and closing run in order on one thread; a slow menu action
     // (Fetch older results waits for its download) runs on another, so it
@@ -54,31 +59,50 @@ class MainActivity : Activity() {
         open()
     }
 
-    override fun onStop() {
-        super.onStop()
-        lifecycle.execute { Py.entry(this).callAttr("stop_server") }
-    }
-
     override fun onDestroy() {
+        // The server is left running: the next activity in this process finds
+        // it through resume(), and it ends with the process.
         lifecycle.shutdown()
         actions.shutdown()
         web.destroy()
         super.onDestroy()
     }
 
-    /** Import the inbox, then start the server: the first build reads what was
-     *  just imported (§4.2). start_server() stops any server already running. */
-    private fun open() {
+    /** Import the inbox, then resume the running server or start one: the
+     *  first build reads what was just imported (§4.2). A page already on
+     *  screen is kept; when resume() started a rebuild, the page's own poll()
+     *  reloads it once the rebuild is done. `fresh` starts a new server and
+     *  build whatever the network: the page built before SMS was allowed
+     *  holds no tickets. */
+    private fun open(fresh: Boolean = false) {
         lifecycle.execute {
-            SmsReader.importNew(this)
-            val started = Py.entry(this).callAttr("start_server").asList()
-            val port = started[0].toInt()
-            val token = started[1].toString()
-            runOnUiThread { show(port, token) }
+            val written = SmsReader.importNew(this)
+            val entry = Py.entry(this)
+            val resumed = if (fresh) null else entry.callAttr("resume", written, metered())
+            if (resumed == null) {
+                val started = entry.callAttr("start_server").asList()
+                val port = started[0].toInt()
+                val token = started[1].toString()
+                runOnUiThread { show(port, token) }
+                return@execute
+            }
+            val r = resumed.asList()
+            val port = r[0].toInt()
+            val token = r[1].toString()
+            val rebuilding = r[2].toBoolean()
+            runOnUiThread {
+                if (shownPort != port) show(port, token)
+                else if (rebuilding) web.evaluateJavascript("poll()", null)
+            }
         }
     }
 
+    /** Android's word on the network: mobile data, or a hotspot, is metered. */
+    private fun metered(): Boolean =
+        getSystemService(ConnectivityManager::class.java).isActiveNetworkMetered
+
     private fun show(port: Int, token: String) {
+        shownPort = port
         val url = "http://127.0.0.1:$port/"
         val cookies = CookieManager.getInstance()
         cookies.setCookie(url, "lotto_token=$token; Path=/; HttpOnly; SameSite=Strict") {
@@ -98,7 +122,7 @@ class MainActivity : Activity() {
                                             grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         // SMS allowed just now: import and rebuild, so the page shows the tickets.
-        if (SmsReader.allowed(this)) open()
+        if (SmsReader.allowed(this)) open(fresh = true)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

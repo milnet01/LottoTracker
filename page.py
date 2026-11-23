@@ -1160,6 +1160,25 @@ def _periods_section(model):
     ))
 
 
+def _wifi_refresh(model):
+    """The phone's refresh choice (LOTTO-0106 §4.4). Unlike the theme, the
+    server stores it, so the stored choice is the one marked selected."""
+    chosen = model.get("settings", {}).get("wifi_refresh")
+    opts = "".join(
+        f'<option value="{_e(value)}"'
+        + (" selected" if value == chosen else "")
+        + f">{_e(label)}</option>"
+        for value, label in model.get("wifi_choices", ())
+    )
+    return (
+        "<h3>Updating results</h3>"
+        '<p class="muted">On mobile data the app never downloads results by '
+        "itself: use Refresh results in the ⋮ menu.</p>"
+        '<div class="row"><label for="wifi_refresh">On Wi-Fi, download new '
+        f'results</label> <select id="wifi_refresh">{opts}</select></div>'
+    )
+
+
 def _settings_section(model):
     st = model.get("settings", {})
 
@@ -1219,6 +1238,7 @@ def _settings_section(model):
     return _fold("settings", "Settings", "", (
         theme
         + tray
+        + (_wifi_refresh(model) if _android(model) else "")
         # role=status + aria-live: the switches write their result here, and
         # without it a screen reader is told nothing at all.
         + '<p class="muted" id="settings-msg" role="status" '
@@ -1656,16 +1676,21 @@ function msg(t){var e=document.getElementById("settings-msg");if(e)e.textContent
 // The result of a refresh goes in the bar. #settings-msg sits in a tab that is
 // usually hidden, and a failure said where nobody can see it was not said (INV-89).
 function note(t){var e=document.getElementById("top-msg");if(e)e.textContent=t;else msg(t)}
+// A switch posts true or false; the phone's dropdown posts its choice.
+function val(el){return el.type==="checkbox"?el.checked:el.value}
+function put(el,v){if(el.type==="checkbox")el.checked=!!v;else el.value=v}
 function wire(id){
  var el=document.getElementById(id);if(!el)return;
+ var was=val(el);
  el.addEventListener("change",function(){
-  var want={};want[id]=el.checked;
+  var want={};want[id]=val(el);
   post("/settings",want,function(code,text){
    if(code===403){msg("This page is from an earlier session - reload it.");return}
-   if(code!==200){el.checked=!el.checked;msg("Could not save that setting.");return}
+   if(code!==200){put(el,was);msg("Could not save that setting.");return}
    try{var s=JSON.parse(text);
        // Snap back to what is actually stored, never to what was asked for.
-       for(var k in s){var n=document.getElementById(k);if(n)n.checked=!!s[k]}
+       for(var k in s){var n=document.getElementById(k);if(n)put(n,s[k])}
+       was=val(el);
        msg("Saved.")}catch(e){msg("Saved, but the reply was unreadable.")}
   });
  });
@@ -1943,8 +1968,12 @@ if(%s)poll();
 WIRE_SWITCHES = 'wire("autostart");wire("open_on_start");'
 
 
+# The phone's one stored setting is a choice, not a switch (§4.4).
+WIRE_CHOICE = 'wire("wifi_refresh");'
+
+
 def _switch_wiring(model):
-    return "" if _android(model) else WIRE_SWITCHES
+    return WIRE_CHOICE if _android(model) else WIRE_SWITCHES
 
 
 def render(model, token):

@@ -20,6 +20,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   warning each evening. Not yet tested on a phone, so no release carries it.
   `tools/verify_apk.py` checks the file holds no personal data, asks only for
   its listed permissions, and keeps its data out of Android's backups.
+- **The phone app keeps its page when you switch away and back** (LOTTO-0106)
+  Found on the first phone test: every return reset the page to "reading
+  SMSes". Now the page stays as it was, and results update in the background.
+  On mobile data the app never downloads results by itself; use Refresh
+  results in the ⋮ menu. On Wi-Fi it updates on every return, and Settings →
+  Updating results changes that to hourly, daily, weekly or never.
 
 ## [1.1.1] - 2026-11-21
 

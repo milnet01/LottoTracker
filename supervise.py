@@ -666,7 +666,7 @@ def expiry_state_path():
 
 
 def read_settings():
-    """The two settings as currently stored.
+    """The settings as currently stored.
 
     A missing, unreadable or malformed settings.json yields the default rather
     than raising. All three readers share that rule, because each fails
@@ -679,17 +679,35 @@ def read_settings():
     switch on the page still turns it on.
     """
     open_on_start = False
+    wifi_refresh = WIFI_REFRESH_DEFAULT
     try:
         with open(settings_path(), encoding="utf-8") as fh:
             data = json.load(fh)
         if isinstance(data, dict) and isinstance(data.get("open_on_start"), bool):
             open_on_start = data["open_on_start"]
+        if isinstance(data, dict) and data.get("wifi_refresh") in WIFI_REFRESH:
+            wifi_refresh = data["wifi_refresh"]
     except (OSError, ValueError):
         pass
     return {
         "autostart": os.path.exists(autostart_path()),
         "open_on_start": open_on_start,
+        "wifi_refresh": wifi_refresh,
     }
+
+
+# The phone's one setting (LOTTO-0106 §4.4): how often returning to the app on
+# Wi-Fi downloads results again, with the page's label for each. The interval
+# behind each choice is android_entry's decision. The desktop stores the
+# default and reads nothing from it.
+WIFI_REFRESH = {
+    "always": "Every time I open the app",
+    "hourly": "At most once an hour",
+    "daily": "At most once a day",
+    "weekly": "At most once a week",
+    "off": "Never (I refresh by hand)",
+}
+WIFI_REFRESH_DEFAULT = "always"
 
 
 BROWSER_WAIT = 10  # seconds open_browser() waits for the opener to report

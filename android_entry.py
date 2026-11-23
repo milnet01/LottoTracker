@@ -13,6 +13,7 @@ filter only, never connect(). Kotlin calls every function off the main thread.
 import datetime
 import secrets
 import threading
+import time
 
 import clock
 import paths
@@ -36,8 +37,21 @@ PHONE_WORDING = {
 
 DAY_MS = 24 * 60 * 60 * 1000
 
+# Seconds since the last build after which returning to the app on Wi-Fi
+# rebuilds, per supervise.WIFI_REFRESH choice. None: every return. "off" is
+# absent: never. Each build downloads results; on mobile data no return
+# rebuilds (the user, 2026-11-23).
+WIFI_INTERVAL_S = {
+    "always": None,
+    "hourly": 60 * 60,
+    "daily": 24 * 60 * 60,
+    "weekly": 7 * 24 * 60 * 60,
+}
+
 # The running server and its state, or None. Set by start_server() only.
 _running = None
+# time.monotonic() when the last build started, or None before the first.
+_built_at = None
 
 
 def phone(notice: str) -> str:
@@ -85,17 +99,58 @@ def start_server():
     server, state = serve.make_server(serve.build_model, token, port,
                                       token_on_every_route=True)
     # Bound before the build, as in serve.main(): the page answers at once.
-    serve.refresh(state, serve.build_model)
+    _rebuild(state)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    _running = (server, state)
+    _running = (server, state, port, token)
     return port, token
+
+
+def _rebuild(state):
+    """serve.refresh(), noting when it started; -> whether it started."""
+    global _built_at
+    started = serve.refresh(state, serve.build_model)
+    if started:
+        _built_at = time.monotonic()
+    return started
+
+
+def should_rebuild(written, metered, choice, built_at, now):
+    """Whether returning to the app rebuilds (LOTTO-0106 §4.4, INV-130).
+
+    Never on a metered network or with the choice "off". Otherwise on a new
+    lottery SMS, or once the choice's interval has passed since the last build.
+    """
+    if metered or choice not in WIFI_INTERVAL_S:
+        return False
+    interval = WIFI_INTERVAL_S[choice]
+    return (written > 0 or interval is None or built_at is None
+            or now - built_at >= interval)
+
+
+def resume(written, metered):
+    """The app came back to the screen with its server still running.
+
+    `written` is what import_messages() just wrote; `metered` is Android's
+    word on the network. -> None when no server is running, so Kotlin calls
+    start_server(); else (port, token, rebuilding). The page stays as it is:
+    a rebuild runs in the background and the page's own poll() reloads it
+    once the rebuild finishes.
+    """
+    if _running is None:
+        return None
+    _server, state, port, token = _running
+    choice = supervise.read_settings()["wifi_refresh"]
+    rebuilding = (should_rebuild(int(written), bool(metered), choice,
+                                 _built_at, time.monotonic())
+                  and _rebuild(state))
+    return port, token, rebuilding
 
 
 def stop_server():
     global _running
     if _running is None:
         return
-    server, _state = _running
+    server = _running[0]
     _running = None
     server.shutdown()
     server.server_close()
@@ -104,9 +159,9 @@ def stop_server():
 def refresh():
     """The ⋮ menu's Refresh results. Returns at once; the page shows the result."""
     if _running is None:
-        # Kotlin offers the menu only while the page, and so the server, is up.
+        # Kotlin's menu is on the page, which the first open's server serves.
         return supervise.refresh_message(supervise.REFRESH_FAILED)
-    started = serve.refresh(_running[1], serve.build_model)
+    started = _rebuild(_running[1])
     return supervise.refresh_message(
         supervise.REFRESH_RUNNING if started else supervise.REFRESH_BUSY)
 
@@ -116,7 +171,7 @@ def fetch_older():
     it went. On success the page re-scores, as the tray's does."""
     outcome = supervise.fetch_older()
     if outcome == supervise.FETCH_DONE and _running is not None:
-        serve.refresh(_running[1], serve.build_model)
+        _rebuild(_running[1])
     return supervise.FETCH_MESSAGE[outcome]
 
 

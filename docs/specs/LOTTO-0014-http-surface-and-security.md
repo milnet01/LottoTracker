@@ -84,12 +84,14 @@ Five routes, and nothing else — every other path is 404.
 | POST | `/settings` | 200 + the settings as now stored | writes or removes LOTTO-0002 §4.7's two files |
 | POST | `/accept` | 200 + `{"accepted": int}`, the entries now stored; 409 when the request names no win it may change | writes LOTTO-0104's accepted-wins store |
 
-`POST /settings` takes `{"autostart": bool, "open_on_start": bool}` as JSON and
-returns the same shape **re-read from disk after writing**, not the request
+`POST /settings` takes `{"autostart": bool, "open_on_start": bool,
+"wifi_refresh": <choice>}` as JSON, where a choice is a key of
+`supervise.WIFI_REFRESH` (the phone's, LOTTO-0106 §4.4), and returns the same
+shape **re-read from disk after writing**, not the request
 echoed back — so a switch that failed to apply snaps back to the truth rather
 than showing what was asked for. Both keys are optional; an absent key leaves
 that setting alone, and `{}` is valid — a no-op returning 200 with the settings
-unchanged. A body that is not an object of those two keys with boolean values is
+unchanged. A body holding any other key, or a value not of its key's kind, is
 400, and nothing is written. `POST /refresh` takes no body.
 
 `POST /accept` takes `{"win": <key>, "accepted": bool}`, where the key is an
@@ -110,7 +112,7 @@ negative `Content-Length` is **400**. **The socket carries a read timeout**
 (`timeout` on the handler), because reading exactly `Content-Length` bytes hangs
 just as completely when a client declares 4000 and sends 1 — a cap on size is
 not a cap on time. A body that under-delivers against its declared length is
-closed rather than waited on. The two settings are two booleans, so 4 KiB is
+closed rather than waited on. The settings are two booleans and a short word, so 4 KiB is
 generous by three orders of magnitude — the cap exists because an unbounded read
 on a local socket is a hang, and because the obvious implementation
 (`self.rfile.read()`) is the one that has it.
