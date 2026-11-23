@@ -8,7 +8,8 @@ in §3 were taken with the user on 2026-11-21.
 
 **Pairs with:** LOTTO-0014 (the HTTP surface, whose boundary §4.4 changes on
 the phone only), LOTTO-0015 (`paths.py`, which §4.3 gives a third form),
-LOTTO-0034 (the re-buy warning, whose notice §4.6 posts unchanged) and
+LOTTO-0034 (the re-buy warning, whose notice §4.6 replaces with a fixed
+sentence on the phone) and
 LOTTO-0083 (the stale-data notice, which needs phone wording).
 
 *Layman: an app your friend installs on their Android phone that reads their
@@ -18,10 +19,12 @@ ticket is about to run out — with no computer involved.*
 ## 1. Goal
 
 After this ships, one file, `LottoTracker-<version>.apk`, attached to the
-GitHub release, installs on an Android phone. Opened, it reads the phone's
+GitHub release, installs on an Android phone through an app-store installer
+(§4.7). Opened, it reads the phone's
 lottery SMSes, fetches results, and shows the same page `serve.py` serves on
 the desktop, fitted to the phone's width. Each evening it imports new messages
-and posts the re-buy warning (LOTTO-0034) as a phone notification. Nothing
+and, when a ticket is running out (LOTTO-0034), posts a notification that
+names no ticket; the page names it. Nothing
 leaves the phone except the results fetches the desktop app already makes. The
 desktop app behaves as it does today.
 
@@ -87,8 +90,7 @@ Three narrower calls made while drafting, each reversible at review:
   fetch costs network and battery for a secondary sign.
 - **`READ_SMS` only, no `RECEIVE_SMS`.** The app reads the inbox when it opens
   and once each evening. Nothing time-critical waits on a message arriving
-  sooner, and each restricted permission is one more setting the friend must
-  allow by hand.
+  sooner.
 - **The app's folder lives at `android/` in this repository**, so a release
   builds both artifacts from one commit.
 
@@ -256,9 +258,13 @@ the desktop and goes out unchanged.
 ### 4.6 Notifications
 
 One channel, "Ticket warnings". Each notice from `android_entry.evening()`
-becomes one notification. Every notification sets a **public version** reading
-"Lotto Tracker has a reminder for you", so the lock screen shows no game and no
-date; the full text shows once the phone is unlocked. On Android 13 and later
+becomes one notification. **`evening()` turns every re-buy notice into
+`android_entry.REMINDER`**, "Lotto Tracker has a reminder for you", said once
+however many tickets qualify; tapping it opens the page, whose Overview names
+the ticket (`serve.running_view()`). Only `supervise.FAULT_NOTICES`' fixed
+sentences pass through, in their phone form (INV-132). A public version alone
+does not hide the text: a phone set to show notification content shows the
+full notice on the locked screen (measured on the user's phone, 2026-11-23). On Android 13 and later
 the app asks for `POST_NOTIFICATIONS` at first open.
 
 The evening job is a `PeriodicWorkRequest` of 24 hours, first run after
@@ -268,13 +274,21 @@ before its last draw.
 
 ### 4.7 First run and permissions
 
+**The friend installs through Obtainium, an open-source app-store installer,
+pointed at the GitHub release.** Google Play Protect blocks an app asking for
+`READ_SMS` when it is installed from a downloaded file, a chat app or a
+browser, with "App blocked to protect your device" and no way past. Through
+Obtainium the same file installs, Android records it as a store install
+(`packageSource=2`), and the SMS permission is asked for directly: no
+restricted-settings step. Play Protect's scan of the new file still reads
+"Harmful app blocked", with "Install anyway" (measured on the user's phone,
+2026-11-23); an appeal to Google is the remedy (§14).
+
 Until a lottery SMS has been imported, the page is the existing no-dump notice.
 Its phone form names the one step outside the app:
-*Settings → Apps → Lotto Tracker → ⋮ → Allow restricted settings*, then allow
-SMS. The page has no separate permission state: to Python, a denied permission
+*Settings → Apps → Lotto Tracker → Permissions → SMS*. The page has no separate permission state: to Python, a denied permission
 and an inbox with no lottery SMS look the same. Never an empty ticket table (`CLAUDE.md`'s cardinal rule; LOTTO-0002
-§6). Source for the restricted-settings step:
-https://www.androidauthority.com/android-15-restricted-settings-sideloading-3481098/
+§6).
 
 ### 4.8 Build, signing and release
 
@@ -357,8 +371,8 @@ spec (`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
   *Breaks when:* a library merges in a permission not in the list, or backup
   is left at its default of on.
 
-- **INV-126** — No phone notification carries ticket data beyond the re-buy
-  exception, and every phone notice that names a desktop thing is translated:
+- **INV-126** — No phone notification carries ticket data (INV-132), and
+  every phone notice that names a desktop thing is translated:
   no string `android_entry.evening()` can return contains "KDE Connect",
   "tray" or "restart".
   *Test:* `tools/verify_expiry.py::phone_wording`, which feeds every member of
@@ -416,13 +430,26 @@ spec (`grep -oh "INV-[0-9]\+" docs/specs/*.md | sort -t- -k2 -n | tail -1` →
   *Breaks when:* `write_settings()` writes only the key it was handed, as it
   did before this choice existed.
 
+- **INV-132** — No string `android_entry.evening()` returns names a game, a
+  date or a draw count: every notice that is not one of
+  `supervise.FAULT_NOTICES` becomes `android_entry.REMINDER`, and two
+  qualifying tickets give it once.
+  *Test:* `tools/verify_expiry.py::phone_names_no_ticket`, which calls
+  `evening()` with two qualifying tickets, no dump and a writable settings
+  folder, and checks it returns exactly `REMINDER` and the phone form of
+  `SMS_QUIET_NOTICE`. Red under `--break phone_shows_rebuy`.
+  *Breaks when:* `evening()` passes a re-buy notice through `phone()` as the
+  desktop does.
+
 LOTTO-0014's invariants and LOTTO-0034's INV-52 to INV-56 hold unchanged on the
 phone; this spec adds the boundary above and does not restate them.
 
 ## 6. Failure modes
 
-- **The friend never allows restricted settings.** `READ_SMS` stays denied; the
-  page shows §4.7's notice, never an empty table. Nothing else is attempted.
+- **The friend installs the downloaded APK directly.** Play Protect blocks it
+  and nothing installs; the README sends them to Obtainium (§4.7).
+- **The friend denies SMS.** `READ_SMS` stays denied; the page shows §4.7's
+  notice, never an empty table. Nothing else is attempted.
 - **The friend revokes SMS later.** The evening import reads nothing; after
   `SMS_QUIET_DAYS` the phone-worded quiet notice says to check the permission.
 - **The results feed is unreachable.** As on the desktop: the page says results
@@ -458,6 +485,7 @@ phone; this spec adds the boundary above and does not restate them.
 | `android_page_wording` | INV-127 | `tools/verify_page.py` |
 | `android_return_rule` | INV-130 | `tools/verify_page.py` |
 | `wifi_choice_stored` | INV-131 | `tools/verify_page.py` |
+| `phone_names_no_ticket` | INV-132 | `tools/verify_expiry.py` |
 | `phone_wording` | INV-126 | `tools/verify_expiry.py` |
 | `android_form` | INV-128 | `tools/verify_paths.py` |
 | `android_import` | INV-129 | `tools/verify_watch.py` |
@@ -470,10 +498,13 @@ showing it red: no pre-fix code exists for greenfield cases, as `CLAUDE.md`
 
 **What no test reaches: the Kotlin.** The WebView, the cookie, the inbox query,
 WorkManager and the notification are checked by a manual recipe on the user's
-own phone before the friend gets a copy: install the APK, allow restricted
-settings and SMS, confirm the page lists the same tickets the desktop page
-does, then set the phone's clock to the evening before a ticket's last-but-one
-draw and run the job from Android's developer options.
+own phone before the friend gets a copy: install the APK through Obtainium,
+allow SMS, confirm the page lists the same tickets the desktop page does, then
+set the phone's clock to the evening before a ticket's last-but-one draw and
+run the job over adb with
+`cmd jobscheduler run -f -n androidx.work.systemjobscheduler <package> 0`.
+Without `-n` the job is not found. Pull the notification shade down on the
+locked phone: it shows only the fixed sentence.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -492,9 +523,13 @@ draw and run the job from Android's developer options.
   friend would forward each SMS by hand, which defeats "on its own". Kept as a
   possible later route, not built.
 - **`RECEIVE_SMS` to import each message as it arrives.** Rejected in §3.
-- **Leaving the lock screen to show the full re-buy notice.** The exception
-  in LOTTO-0034 §3.3 permits the content in a notification; the public version
-  costs nothing and keeps it off a phone lying face-up.
+- **A public version carrying the fixed sentence, the full notice inside.**
+  The phone's own setting overrides it: shown content is shown on the locked
+  screen (§4.6). The user chose a notice that never names the ticket.
+- **Posting the notice as `VISIBILITY_SECRET`.** It hides it from the locked
+  screen entirely, so the reminder is not seen until the phone is unlocked.
+- **The APK as a plain download.** Play Protect blocks it in South Africa
+  (§4.7).
 
 ## 9. Out of scope
 
@@ -522,9 +557,9 @@ draw and run the job from Android's developer options.
 | INV-129 | `tools/verify_watch.py::android_import` |
 | INV-130 | `tools/verify_page.py::android_return_rule` |
 | INV-131 | `tools/verify_page.py::wifi_choice_stored` |
+| INV-132 | `tools/verify_expiry.py::phone_names_no_ticket` |
 | The page kept, and a rebuild run, on a return (§4.4) | **nothing** — the manual recipe in §7 |
 | Kotlin holds no decision (§4.1) | **nothing** — a reviewer reading the Kotlin |
-| Lock-screen public version (§4.6) | **nothing** — the manual recipe in §7 |
 | Signing key kept off the repo and backed up (§4.8) | **nothing** — no `.gitignore` pattern or `verify_privacy.py` check covers a key file, and nothing checks the backup exists |
 | Evening job runs after 22:00 SAST (§4.6) | **nothing** — the manual recipe in §7 |
 
@@ -541,8 +576,8 @@ draw and run the job from Android's developer options.
 - **`.claude/rules/architecture.md`** — a note for `android_entry.py` and
   `android/`.
 - **`.claude/rules/verifiers.md`** — `verify_apk.py`'s row.
-- **`README.md`** — an "On an Android phone" install section, including the
-  restricted-settings step.
+- **`README.md`** — an "On an Android phone" install section, through
+  Obtainium.
 - **`CHANGELOG.md`** — the release that ships it.
 
 ## 12. Cold-eyes loop log
@@ -567,6 +602,13 @@ Rows live in `../reviews/LOTTO-0106-android-app-loop-log.md`.
 
 ## 14. Open questions
 
+- **Will Google clear the "Harmful app" label?** Play Protect's scan labels
+  the APK harmful when Obtainium installs it (§4.7). Google takes developer
+  appeals; whether it clears an app that reads SMS is unknown.
+- **How long Obtainium keeps working.** Its own first-run notice, read
+  2026-11-23, says it will stop working on certified Android devices once
+  Google requires every app's developer to be verified. Registering this app's
+  key (§4.8) does not register Obtainium.
 - **Does HTTPS work out of the box on Chaquopy's Python?** Settled by the first
   device build fetching results (§6).
 - **How a limited distribution account authorises a device** — Google's posts

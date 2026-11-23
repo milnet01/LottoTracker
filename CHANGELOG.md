@@ -26,6 +26,15 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   On mobile data the app never downloads results by itself; use Refresh
   results in the ⋮ menu. On Wi-Fi it updates on every return, and Settings →
   Updating results changes that to hourly, daily, weekly or never.
+- **The phone's evening reminder names no ticket** (LOTTO-0106)
+  Found on the phone test: a locked phone set to show notification content
+  showed the game and last-draw date. The notification now only says "Lotto
+  Tracker has a reminder for you"; opening the app shows which ticket.
+- **The phone app installs through Obtainium** (LOTTO-0106)
+  Found on the phone test: Google Play Protect blocks the app when its file is
+  opened from a download, because it reads SMS. Installed through Obtainium, a
+  free app installer, it installs and asks for SMS directly. The README's
+  phone steps say how.
 
 ## [1.1.1] - 2026-11-21
 

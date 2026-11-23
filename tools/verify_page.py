@@ -3521,8 +3521,13 @@ def android_page_wording():
     need("tray menu" in desktop["no_archive"], "the desktop older-results notice lost its menu")
     need("KDE Connect" in desktop["quiet"], "the desktop quiet notice lost its check")
     need('id="autostart"' in desktop["built"], "the desktop lost its autostart switch")
-    need("Allow restricted settings" in render_pure(dict(states["no_dump"], platform="android")),
-         "the phone's no-messages notice does not name the restricted-settings step")
+    phone_no_dump = render_pure(dict(states["no_dump"], platform="android"))
+    need("Permissions → SMS" in phone_no_dump,
+         "the phone's no-messages notice does not name the SMS permission")
+    # An install through an app store never meets the restricted-settings
+    # step, and a downloaded file is blocked before it (LOTTO-0106 §4.7).
+    need("restricted" not in phone_no_dump.lower(),
+         "the phone's no-messages notice names a step no install meets")
 
 
 def android_return_rule():

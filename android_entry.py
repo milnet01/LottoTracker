@@ -35,6 +35,11 @@ PHONE_WORDING = {
     ),
 }
 
+# What every re-buy notice becomes on the phone (§4.6, INV-132): a phone set
+# to show notification content shows it on the locked screen whatever the
+# app's public version says. The page names the ticket.
+REMINDER = "Lotto Tracker has a reminder for you"
+
 DAY_MS = 24 * 60 * 60 * 1000
 
 # Seconds since the last build after which returning to the app on Wi-Fi
@@ -193,4 +198,11 @@ def evening(today_iso=None):
     today = (datetime.date.fromisoformat(today_iso) if today_iso
              else clock.today())
     notices = supervise.expiry_notices(today) + supervise.sms_quiet_notices(today)
-    return [phone(n) for n in notices]
+    out = []
+    for n in notices:
+        # Only the fixed sentences pass; anything else is a re-buy notice,
+        # and an unknown string defaults to naming nothing (INV-132).
+        said = phone(n) if n in supervise.FAULT_NOTICES else REMINDER
+        if said not in out:
+            out.append(said)
+    return out

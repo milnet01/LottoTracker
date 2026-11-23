@@ -105,12 +105,20 @@ The app runs on the phone itself, with no computer. It reads the phone's
 lottery SMSes, shows the same page, and warns you each evening when a ticket
 is about to run out.
 
-1. Download the `.apk` file from the release, on the phone, and open it.
-   Android asks whether to allow installs from your browser; allow it.
-2. Open **Lotto Tracker** once. Android blocks its SMS permission at first,
-   because the app did not come from the Play Store.
-3. Go to Settings → Apps → Lotto Tracker → ⋮ → **Allow restricted settings**.
-4. Open the app again and allow SMS and notifications.
+Install it through **Obtainium**, a free app installer. Google Play Protect
+blocks the `.apk` file opened straight from a download or a chat, because the
+app reads SMS.
+
+1. Install Obtainium from its releases page,
+   https://github.com/ImranR98/Obtainium/releases.
+2. In Obtainium, tap **Add**, paste
+   `https://github.com/milnet01/LottoTracker`, and tap **Install**. Allow
+   Obtainium to install apps when Android asks.
+3. Play Protect may say **Harmful app blocked**. Tap **More details**, then
+   **Install anyway**.
+4. Open **Lotto Tracker** and allow SMS and notifications.
+
+Obtainium also tells you when a new version is out.
 
 Your messages and results stay in the app's own folder on the phone. Android
 does not back them up to Google Drive.

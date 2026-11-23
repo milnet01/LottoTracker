@@ -296,8 +296,7 @@ def _notice(model):
             "The app has not read any lottery SMS on this phone, so there are "
             "no tickets to check — this is not zero wins. If it is not yet "
             "allowed to read SMS, open <strong>Settings → Apps → Lotto Tracker "
-            "→ ⋮ → Allow restricted settings</strong>, then allow SMS for the "
-            "app and open it again.</div>"
+            "→ Permissions → SMS</strong>, allow it, and open the app again.</div>"
         )
     if model.get("no_dump"):
         # LOTTO-0015 INV-110: name the folder, and only ways in that WRITE the

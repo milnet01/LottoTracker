@@ -598,6 +598,41 @@ def phone_wording():
     return "fault and re-buy notices, and evening() itself, name no desktop thing"
 
 
+def phone_names_no_ticket():
+    """INV-132 (LOTTO-0106): no phone notice names a game or a date.
+
+    A phone set to show notification content shows it on the locked screen,
+    whatever the app's public version says (measured 2026-11-23). So evening()
+    turns every re-buy notice into one fixed sentence: two tickets qualifying
+    at once still give it once. The state folder is writable here, so the
+    re-buy notices are recorded and returned rather than paused.
+    """
+    import android_entry
+
+    real = (supervise.DUMP, supervise.load_tickets, os.environ.get("XDG_CONFIG_HOME"))
+    supervise._warn_state_unsaved = False
+    try:
+        supervise.DUMP = os.path.join(os.path.dirname(_tmp_state()), "no-dump.txt")
+        def two_qualifying(path):
+            start = datetime.datetime(2026, 8, 21)
+            return [ticket(start=start, ndraws=2),
+                    ticket(game="lotto", start=start, ndraws=2, ref="second")]
+        supervise.load_tickets = two_qualifying
+        os.environ["XDG_CONFIG_HOME"] = os.path.dirname(_tmp_state())
+        got = android_entry.evening(TODAY.isoformat())
+    finally:
+        supervise.DUMP, supervise.load_tickets = real[0], real[1]
+        if real[2] is None:
+            os.environ.pop("XDG_CONFIG_HOME", None)
+        else:
+            os.environ["XDG_CONFIG_HOME"] = real[2]
+        supervise._warn_state_unsaved = False
+    want = [android_entry.REMINDER,
+            android_entry.PHONE_WORDING[supervise.SMS_QUIET_NOTICE]]
+    assert got == want, f"evening() returned {got!r}"
+    return "two re-buy notices reach the phone as one sentence naming no ticket"
+
+
 def draws_left_today_boundary():
     """INV-61: draws_left is 1 on a ticket's own final draw day, 0 the day after.
 
@@ -703,6 +738,7 @@ CASES = [
     ("sms_quiet_rule", "INV-82", sms_quiet_rule),
     ("sms_quiet_notice_is_fixed", "INV-83", sms_quiet_notice_is_fixed),
     ("phone_wording", "INV-126", phone_wording),
+    ("phone_names_no_ticket", "INV-132", phone_names_no_ticket),
 ]
 
 BREAKS = {
@@ -727,6 +763,7 @@ BREAKS = {
     "quiet_counts_tickets_only": "sms_quiet_rule",
     "quiet_notice_names_date": "sms_quiet_notice_is_fixed",
     "phone_wording_skipped": "phone_wording",
+    "phone_shows_rebuy": "phone_names_no_ticket",
 }
 
 
@@ -861,6 +898,14 @@ def _apply_break(name):
         # A desktop notice with no phone form: the table left empty.
         import android_entry
         android_entry.PHONE_WORDING = {}
+    elif name == "phone_shows_rebuy":
+        # The re-buy notice passed through as the desktop words it.
+        import android_entry
+        def passes_rebuy(today_iso: str = TODAY.isoformat()):
+            today = datetime.date.fromisoformat(today_iso)
+            return [android_entry.phone(n) for n in
+                    supervise.expiry_notices(today) + supervise.sms_quiet_notices(today)]
+        android_entry.evening = passes_rebuy
     elif name == "notice_per_unknown_ticket":
         real = supervise.expiry_notices
 
