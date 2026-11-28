@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## What this is
 
 A personal tool that reads South African National Lottery ticket SMSes (Standard
@@ -9,27 +7,20 @@ Bank wording) off an Android phone and builds **one consolidated ledger** of
 every ticket: what was chosen, what was drawn, what it won, what it cost.
 
 **Its primary job is telling the user when a ticket is about to run out, so
-they buy the next one** — they buy for ten draws at a time. That was settled
-with the user on 2026-08-20 and it corrects the project's own earlier framing,
-which led with surfacing wins before the 365-day claim deadline. That framing
-was never the user's main need, and the bank pays most small wins back
-automatically anyway (LOTTO-0011). **The five signs of success are in
-`README.md` § How you would know it works** — read them before adding a
-feature, and take which are open from the standing line THERE rather than from
-a count here. This sentence carried its own tally until 2026-08-31 and was
-wrong for three consecutive items, most recently claiming the primary sign was
-the least built after LOTTO-0034 built it.
-The claim-deadline material is still true and still useful, but it is not the
-headline.
+they buy the next one** — they buy for ten draws at a time (settled with the
+user 2026-08-20). Surfacing wins before the 365-day claim deadline is still
+true and useful, but not the headline: the bank pays most small wins back
+automatically (LOTTO-0011). **The five signs of success are in `README.md`
+§ How you would know it works** — read them before adding a feature, and take
+which are open from the standing line there.
 
 Pure Python 3.9+ standard library. **`ruff.toml`'s `py39` target holds the
 SYNTAX floor; nothing checks library use** — CI runs a much newer Python — so
-check a new stdlib call's version by hand.
-Plus `dbus-python` (`find_lotto_sms.py`, `watch_sms.py`), PyGObject (`watch_sms.py`'s
-GLib main loop) and PySide6 (`tray.py`,
-and the one `verify_page.py` case that starts it in a subprocess). No package
-manager, no virtualenv, no test framework, no build step — everything runs as
-`python3 <file>` from the repository root.
+check a new stdlib call's version by hand. Plus `dbus-python`
+(`find_lotto_sms.py`, `watch_sms.py`), PyGObject (`watch_sms.py`'s GLib main
+loop) and PySide6 (`tray.py`, and the one `verify_page.py` case that starts it
+in a subprocess). No package manager, no virtualenv, no test framework, no
+build step — everything runs as `python3 <file>` from the repository root.
 
 ## Commands
 
@@ -58,206 +49,106 @@ python3 tools/verify_apk.py    # the built APK: no data file, the exact permissi
 ```
 
 **A data path comes from `paths.py`, never from a module's own folder**: the
-AppImage's code folder is read-only. `.claude/rules/architecture.md` says more.
+AppImage's code folder is read-only.
 
-**`./local-CI.sh` is the pre-push gate — run it before every `git push`.** It
-runs the verifiers below plus `ruff` and a syntax pass, and on the local lane
-`yamllint`, `typos`, `pyright` and `mypy` (LOTTO-0059) — but none of the
-`python3 -c` invariant commands at the end of this section, which stay
-hand-run. It is what
-`.github/workflows/ci.yml` invokes (as `./local-CI.sh --ci`), so the runner and
-this machine cannot drift apart — there is no second list of checks to forget.
-On a local run, a documentation-only push (every changed file `.md`) still runs
-`verify_privacy.py` at full strength — prose is its subject — and skips the
-rest; it fails if that check fails. `--force` runs everything. **Under `--ci`
-that branch is skipped entirely**, and `ci.yml` carries no `paths-ignore`, so
-the whole CI lane runs on a docs push too.
-
-**It classifies the push from the refs being pushed (`$GATE_RANGES`, which
-`.githooks/pre-push` passes in), falling back to `upstream..HEAD` on a hand
-run. Either way the unit is COMMITTED changes, so it is a push gate and not a
-pre-commit check.** Run it by hand with uncommitted code in the tree and it
-reads whatever is already committed: if that is documentation, it skips the
-rest of the gate having tested none of your edits.
-**Use `--force` to gate work you have not committed yet.** The
-push hook is unaffected, because by then the work is committed — which is
-exactly why the gap is easy to miss.
-
-Make it structural rather than remembered — **once per clone**, because git
-does not track hooks and `core.hooksPath` is local config:
+**`./local-CI.sh` is the pre-push gate — run it before every `git push`.** CI
+runs the same script (`--ci`). **It gates COMMITTED changes** (the refs being
+pushed, or `upstream..HEAD` by hand), and skips most checks when those are
+documentation only. **So use `--force` to gate work you have not committed
+yet**, or it may test none of your edits. Once per clone, since git does not
+track hooks:
 
 ```bash
 git config core.hooksPath .githooks   # pre-push runs the gate; pre-commit runs
                                       # the privacy check on the STAGED files
 ```
 
-The two lanes are **not** equal and must not be made so. Most verifiers need
-`lotto_sms_raw.txt` or the scraped archive, neither of which may reach a public
-runner, and `verify_privacy.py` drops to a weaker pattern-only mode without the
-dump — while still exiting 0. So a green tick on GitHub is weaker than a green
-`./local-CI.sh`, and the script asserts locally that the privacy check ran at
-full strength rather than trusting its exit code. `local-CI.sh`'s header holds
-the reasoning.
+The two lanes are **not** equal and must not be made so: most verifiers need
+`lotto_sms_raw.txt` or the scraped archive, which may never reach a public
+runner. A green tick on GitHub is weaker than a green `./local-CI.sh`;
+`local-CI.sh`'s header holds the reasoning.
 
-**The verifiers — what each checks, which lane runs it, and what each needs
-— are listed in `.claude/rules/verifiers.md`.** It loads when you Read a file
-under `tools/`, `local-CI.sh` or `.githooks/` natively; read it by hand
-otherwise.
+**What each verifier checks, which lane runs it, and how the gate picks what
+to run, are in `.claude/rules/verifiers.md`.** It loads when you Read a file
+under `tools/`, `local-CI.sh`, `.githooks/` or `.github/` natively; read it
+by hand otherwise.
 
-`verify_page.py` carries a `--break <name>` flag that applies one deliberate
-defect and asserts the named case goes red. That is not a debugging aid: these
-three items are greenfield, so there was no pre-fix code to red-test against,
-and the flag is what makes "every case observed failing" reproducible rather
-than a one-off hand edit. `--list` shows the breaks. It caught a real
-defect in a *case* rather than in the code — see CHANGELOG.
-
-Exit code is the signal, not the printed counts (`&& echo PASS`). Counts in the
-specs are dated snapshots that grow — **except** the unscorable ratio, which
-fails above 90% because that is what a missing `archive_results.json` looks
-like. The remaining invariants are one-line `python3 -c` commands recorded in
-their own spec's §5 — INV-1, INV-2 and INV-5 in
-`docs/specs/LOTTO-0001-lottery-ticket-tracker.md`, and INV-8, INV-9 and INV-10
-in `docs/specs/LOTTO-0009-entered-pools.md`. **INV-10 has no verifier at all**,
-so that command is the only thing checking it;
-run them from there rather than re-inventing them.
+Exit code is the signal, not the printed counts. Counts in the specs are dated
+snapshots that grow — **except** the unscorable ratio, which fails above 90%
+because that is what a missing `archive_results.json` looks like. The remaining
+invariants are one-line `python3 -c` commands in their spec's §5 — INV-1,
+INV-2 and INV-5 in `docs/specs/LOTTO-0001-lottery-ticket-tracker.md`, INV-8,
+INV-9 and INV-10 in `docs/specs/LOTTO-0009-entered-pools.md`. **INV-10 has no
+verifier at all.** Run them from there rather than re-inventing them.
 
 ## Architecture
 
-Data flows in one direction, and the two halves are independent:
-
-```
-phone ──adb over USB─────────┐                        ┌─ parse() ──────────> [Ticket]
-       (bulk history)        │                        │   (a purchase)
-phone ──watch_sms.py─────────┼─> lotto_sms_raw.txt ───┤
-       (KDE Connect, new     │   (two writers,        └─ parse_payout() ──> [Payout]
-        messages, no cable)  │    ONE reader)             (a prize the bank paid)
-phone inbox ─android_entry.py┘
-       (the Android app, on the phone itself: LOTTO-0106.
-        It writes through watch_sms.append_new(), not a writer of its own)
-
-results.py    (official API, 2026-06-01 on, has issue)  ──┐
-backfill.py   (scraped archive, FIRST_YEAR on, no issue) ┴─ history.py ──┐
-                                                                           │
-                      [Ticket] + history.py ─────────────────────────────> check.py::check()
-                                                                                  │
-                      [Payout] ──────────> check.py::reconcile() <────────────────┤
-                      (the bank's record against ours: LOTTO-0029. Flags a        │
-                       disagreement, never resolves it in the SMS's favour.)      │
-                                                                                  │
-                                        ┌─────────────────────────────────────────┤
-                                        ▼                                         ▼
-                            check.py::__main__                        serve.py ──> page.py
-                            (the terminal output)                     (the local page)
-                                                                          ▲   │
-                                                          tray.py ──> supervise.py
-                                                          (PySide6)   (spawns serve.py AND
-                                                                       watch_sms.py; owns the
-                                                                       settings reader both
-                                                                       import, and the re-buy
-                                                                       warning)
-                                                                          │
-                                                                          ▼
-                                                                      expiry.py
-                                                            (the draw calendar. Imports
-                                                             NOTHING of the project's.)
-```
-
-**What each file owns is in `.claude/rules/architecture.md`.** It loads
-when you Read a `.py` file natively. An Ants-verb read does not load it,
-so read it by hand before changing code you have only seen through a verb.
-
-### Load-bearing decisions — do not "simplify" these
-
-The rules not to undo are in `.claude/rules/architecture.md`, under the
-same heading. Read them before changing any `.py` file.
+**The data-flow diagram, what each file owns, and the load-bearing decisions
+not to "simplify" are in `.claude/rules/architecture.md`.** It loads when you
+Read a `.py` file natively. An Ants-verb read does not load it, so read it by
+hand before changing code you have only seen through a verb.
 
 ## Privacy — this repo is intended to be public
 
 `lotto_sms_raw.txt` and `archive_cache/` are real personal data and are
-gitignored. The non-obvious part: **never paste real message content into code,
-docs or commit messages**, even with the reference scrubbed — numbers, date and
-amount identify a ticket on their own. Two leaks got past weaker checks, one per
-review loop. Sample references must be the sentinel `VAS00000000000` — **the one sentinel,
-not a family of them.** Every reference-shaped string that is not exactly that
-is a leak, invented or not, and a test fixture needing a second distinct
-reference uses a name that is not reference-shaped at all (`tools/verify_payouts.py`
-does this).
+gitignored. **Never paste real message content into code, docs or commit
+messages**, even with the reference scrubbed — numbers, date and amount
+identify a ticket on their own. Sample references must be the sentinel
+`VAS00000000000` — **the one sentinel, not a family of them.** Every
+reference-shaped string that is not exactly that is a leak, invented or not; a
+fixture needing a second reference uses a name that is not reference-shaped
+(`tools/verify_payouts.py` does this).
 
-**A desktop notification carries no ticket data, in any branch — every
-notification path, including one added later.** The reason is not the pasting
-rule above: a notification may be logged and synced off the machine. It holds
-absolutely for `new_ticket_notice()` and `refresh_message()`.
-**One bounded exception, bounded on purpose (LOTTO-0034 §3.3):** the re-buy
-notice names the game, the final draw date and the number of draws left, and
-INV-54 is what holds that line. The user was shown the trade and chose
-usefulness — with two tickets running, a notice that will not name the game
-cannot say what to go and buy. It is the exception, not the pattern: a new
-notification takes the rule, not the exception. Run
-`python3 tools/verify_privacy.py --require-content` before any commit that
+**A notification carries no ticket data, in any branch — every notification
+path, including one added later**, because a notification may be logged and
+synced off the machine. It holds absolutely for `new_ticket_notice()` and
+`refresh_message()`. **One bounded exception (LOTTO-0034 §3.3):** the desktop
+re-buy notice names the game, the final draw date and the number of draws
+left, held by INV-54; the user chose that usefulness. A new notification
+takes the rule, not the exception.
+
+Run `python3 tools/verify_privacy.py --require-content` before any commit that
 touches prose or examples — **without that flag a missing dump exits 0** and
-the content half never ran. It runs two halves: tracked files compared against the dump's own
-text, and identifying patterns, which are what catch an INVENTED reference the
-dump never held. Without the dump only the pattern half runs.
-**It only reads TRACKED files, and that is the trap.** A NEW file passes every
-local run — including a full `./local-CI.sh` — right up until `git add` makes
-it tracked, and then fails at the push. LOTTO-0029's verifier did exactly this:
-clean on every run while it was untracked, three leaks the moment it was
-staged. `git add -A` first, then run the check, if the change adds a file.
+the content half never ran. **It only reads TRACKED files**: a new file passes
+every local run until `git add` makes it tracked, then fails at the push. If
+the change adds a file, `git add` it first, then run the check.
 
 ## Working conventions
 
-- Roadmap items are `LOTTO-000N` in `ROADMAP.md`; commits are
-  `LOTTO-000N: <description>`.
-  **The roadmap store is the source of truth, and `ROADMAP.md` is its
-  rendered output.** Write through `roadmap_log`, read through
-  `roadmap_query`, and never hand-edit the file. Before any `roadmap_log`
-  write, any `roadmap_migrate`, or any commit touching `ROADMAP.md`, read
-  `docs/roadmap-workflow.md`: when to re-migrate, how to review the
-  re-rendered diff, and the one-sentence `Layman:` rule.
+- Roadmap items are `LOTTO-000N`; commits are `LOTTO-000N: <description>`.
+  **The roadmap store is the source of truth; `ROADMAP.md` is its rendered
+  output.** Write through `roadmap_log`, read through `roadmap_query`, never
+  hand-edit the file. Before any `roadmap_log` write, any `roadmap_migrate`,
+  or any commit touching `ROADMAP.md`, read `docs/roadmap-workflow.md`.
   `CHANGELOG.md` follows Keep a Changelog and each entry cites its id.
 - Specs live in `docs/specs/LOTTO-000N-<topic>.md` and carry numbered
-  invariants (INV-n), failure modes, and a cold-eyes loop log. Code comments
-  reference those invariants — when changing behaviour, update the spec's
-  invariant and its "what checks this" row in the same change.
+  invariants (INV-n). Code comments cite them — when changing behaviour,
+  update the spec's invariant and its "what checks this" row in the same
+  change.
 - **Keep the app light: as little RAM, CPU and GPU as it can use** (the user,
-  2026-11-18, for every change). Nothing works while idle that need not: no
-  polling loop where an event will do, no animation or script running on an
-  idle page. Prefer what the browser and the standard library already provide
-  over a new dependency. Nothing checks this, so measure a change that could
-  cost memory or time before calling it done.
-- **Version numbers follow `~/.claude/standards/versioning.md`**: a
-  release with a feature raises the MINOR, fixes alone the PATCH.
-  `docs/standards/versioning-overrides.md` says what makes 1.0.0.
-- **Count in entries, not tickets.** `LOTTO-0009` shipped 2026-08-01: every
-  paid entry is scored, where before a ticket counted once however many pools
-  its price had paid for.
+  2026-11-18). No polling loop where an event will do, no animation or script
+  running on an idle page; prefer what the browser and standard library
+  provide over a new dependency. Nothing checks this, so measure a change that
+  could cost memory or time before calling it done.
+- **Count in entries, not tickets** (LOTTO-0009): every paid entry is scored.
   Read `docs/specs/LOTTO-0009-entered-pools.md` before touching `GAME_MAP`,
   `TIER_PRICES`, `Ticket`, or anything that counts tickets — §4.2's price
   table is hardcoded, like `DRAW_DAYS`, and is the one most likely to rot.
 - **The page must never let "no data" read as "did not win"** — the cardinal
-  rule, in its newest form. `page.py::_money_cell()` renders `won_cents: None`
-  as "not checkable" and an integer `0` as `R0.00`, and they must not converge;
-  `_draws_cell()` does the same for `draws_covered`/`draws_remaining`.
-  **`page.py::_periods_section()` needs neither, and that is the point**: a
-  period bucket exists only where a draw was actually scored, so its cells are
-  always integers and `R0.00` there always means *checked, won nothing*. The
-  three-valued question is settled at the source rather than at the cell — do
-  not "fix" it by adding a `None` branch, and do not emit a bucket for a period
-  nothing scored, which would put the two states back together. An empty
-  page is correct only when it carries a notice naming *why* (the dump is
-  missing, the first build failed, or `LOTTO_NO_BUILD` is set) — three states,
-  one rule — **and never a ticket table, a zero total or an empty wins list
-  beneath that notice**, all three of which read as "you have won nothing".
-  `LOTTO-0002` §6 owns the prohibition; the notice is necessary, not
-  sufficient. `tools/verify_page.py::uncheckable_not_a_loss` is what catches a
-  breach, and its forbidden-strings list includes the empty string.
+  rule. `page.py::_money_cell()` renders `won_cents: None` as "not checkable"
+  and an integer `0` as `R0.00`, and they must not converge; `_draws_cell()`
+  does the same for `draws_covered`/`draws_remaining`.
+  **`page.py::_periods_section()` needs neither**: a period bucket exists only
+  where a draw was scored, so `R0.00` there always means *checked, won
+  nothing*. Do not add a `None` branch there, and do not emit a bucket for a
+  period nothing scored. An empty page is correct only with a notice naming
+  *why* (the dump is missing, the first build failed, or `LOTTO_NO_BUILD` is
+  set) — **and never a ticket table, a zero total or an empty wins list
+  beneath it**. `LOTTO-0002` §6 owns the prohibition;
+  `tools/verify_page.py::uncheckable_not_a_loss` catches a breach.
 - **Every `review-code` sweep leaves a record file in `docs/reviews/`** —
-  what each lane found, verified and dismissed — not only roadmap items (the
-  user, 2026-09-28; LOTTO-0059). Without one, a sweep's claims about itself
-  are checkable only against the same session's own words.
-- Known deferred rough edges hang off `LOTTO-0007` as a lettered list in its
-  body; `roadmap_query` it by id before reporting one as new — an id fetch
-  returns the body, so the whole list comes back. **Add one with
-  `roadmap_log op:"annotate"` against `LOTTO-0007`, never by editing the file**
-  — that appends into the item's body, and a hand edit is reverted by the next
-  write.
+  what each lane found, verified and dismissed (the user, 2026-09-28).
+- Known deferred rough edges are a lettered list in `LOTTO-0007`'s body;
+  `roadmap_query` it by id before reporting one as new. **Add one with
+  `roadmap_log op:"annotate"` against `LOTTO-0007`**, never by editing the
+  file.

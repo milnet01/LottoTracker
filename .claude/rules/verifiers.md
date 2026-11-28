@@ -109,6 +109,31 @@ tools/build_apk.sh                          # dist/LottoTracker-<VERSION>.apk
 python3 tools/verify_apk.py [--break NAME] [APK]
 ```
 
+## How `./local-CI.sh` decides what to run
+
+It runs the verifiers above plus `ruff` and a syntax pass, and on the local
+lane `yamllint`, `typos`, `pyright` and `mypy` (LOTTO-0059) — but none of the
+`python3 -c` invariant commands, which stay hand-run. It is what
+`.github/workflows/ci.yml` invokes (as `./local-CI.sh --ci`), so the runner and
+this machine cannot drift apart — there is no second list of checks to forget.
+On a local run, a documentation-only push (every changed file `.md`) still runs
+`verify_privacy.py` at full strength — prose is its subject — and skips the
+rest; it fails if that check fails. `--force` runs everything. **Under `--ci`
+that branch is skipped entirely**, and `ci.yml` carries no `paths-ignore`, so
+the whole CI lane runs on a docs push too.
+
+It classifies the push from the refs being pushed (`$GATE_RANGES`, which
+`.githooks/pre-push` passes in), falling back to `upstream..HEAD` on a hand
+run. Either way the unit is COMMITTED changes, so it is a push gate and not a
+pre-commit check.
+
+`verify_page.py`'s `--break <name>` flag applies one deliberate defect and
+asserts the named case goes red; `--list` shows the breaks. It is not a
+debugging aid: there was no pre-fix code to red-test against, and the flag is
+what makes "every case observed failing" reproducible rather than a one-off
+hand edit. It caught a real defect in a *case* rather than in the code — see
+CHANGELOG.
+
 `verify_page.py` and `verify_paths.py` need PySide6 installed — the first's
 `tray_headless_when_managed` case and the second's `resources_from_bundle`
 import `tray.py` in a subprocess. Neither needs a display.

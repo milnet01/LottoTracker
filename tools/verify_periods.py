@@ -7,7 +7,7 @@
 
 This item is greenfield, so there was no pre-fix code to red-test against.
 `--break` is what makes "every case observed failing" reproducible rather than
-a one-off hand edit, exactly as CLAUDE.md records for verify_page.py and
+a one-off hand edit, exactly as .claude/rules/verifiers.md records for verify_page.py and
 verify_expiry.py.
 
 WHY THIS IS A NEW FILE AND NOT FOUR CASES IN verify_page.py.

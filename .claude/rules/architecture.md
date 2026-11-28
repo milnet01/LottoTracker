@@ -5,9 +5,49 @@ paths:
 
 # Architecture — what each file owns
 
-The detail behind the diagram in `CLAUDE.md` § Architecture. This file
-loads by itself when a session reads a `.py` file with the native Read
-tool; an Ants-verb read does not load it.
+This file loads by itself when a session reads a `.py` file with the
+native Read tool; an Ants-verb read does not load it.
+
+## Data flow
+
+Data flows in one direction, and the two halves are independent:
+
+```
+phone ──adb over USB─────────┐                        ┌─ parse() ──────────> [Ticket]
+       (bulk history)        │                        │   (a purchase)
+phone ──watch_sms.py─────────┼─> lotto_sms_raw.txt ───┤
+       (KDE Connect, new     │   (two writers,        └─ parse_payout() ──> [Payout]
+        messages, no cable)  │    ONE reader)             (a prize the bank paid)
+phone inbox ─android_entry.py┘
+       (the Android app, on the phone itself: LOTTO-0106.
+        It writes through watch_sms.append_new(), not a writer of its own)
+
+results.py    (official API, 2026-06-01 on, has issue)  ──┐
+backfill.py   (scraped archive, FIRST_YEAR on, no issue) ┴─ history.py ──┐
+                                                                           │
+                      [Ticket] + history.py ─────────────────────────────> check.py::check()
+                                                                                  │
+                      [Payout] ──────────> check.py::reconcile() <────────────────┤
+                      (the bank's record against ours: LOTTO-0029. Flags a        │
+                       disagreement, never resolves it in the SMS's favour.)      │
+                                                                                  │
+                                        ┌─────────────────────────────────────────┤
+                                        ▼                                         ▼
+                            check.py::__main__                        serve.py ──> page.py
+                            (the terminal output)                     (the local page)
+                                                                          ▲   │
+                                                          tray.py ──> supervise.py
+                                                          (PySide6)   (spawns serve.py AND
+                                                                       watch_sms.py; owns the
+                                                                       settings reader both
+                                                                       import, and the re-buy
+                                                                       warning)
+                                                                          │
+                                                                          ▼
+                                                                      expiry.py
+                                                            (the draw calendar. Imports
+                                                             NOTHING of the project's.)
+```
 
 ## Per-file notes
 

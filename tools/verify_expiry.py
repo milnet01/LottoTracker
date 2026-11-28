@@ -9,7 +9,7 @@ alone, in South African time.
 
 This item is greenfield, so there was no pre-fix code to red-test against.
 `--break` is what makes "every case observed failing" reproducible rather than
-a one-off hand edit, exactly as CLAUDE.md records for verify_page.py.
+a one-off hand edit, exactly as .claude/rules/verifiers.md records for verify_page.py.
 
 IT GOES IN local-CI.sh's DATA-DEPENDENT LANE, and it has no weak mode. Three
 cases need real data and not the same data:
